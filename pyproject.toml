@@ -1,15 +1,153 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAGScope — pyproject.toml
+#
+# Managed by uv. To add a dependency:  uv add <package>
+# To sync the environment:             uv sync
+# To upgrade all packages:             uv lock --upgrade
+# ═══════════════════════════════════════════════════════════════════════════════
+
 [project]
-name = "mdats79"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+name        = "ragscope"
+version     = "0.1.0"
+description = "Real-Time Observability and Evaluation Platform for RAG Systems"
+readme      = "README.md"
+license     = { file = "LICENSE" }
 requires-python = ">=3.12"
-dependencies = [
-    "altair>=6.0.0",
-    "pandas>=2.3.3",
-    "plotly>=6.6.0",
-    "pydantic>=2.12.5",
-    "streamlit>=1.55.0",
-    "torch>=2.10.0",
-    "transformers>=5.3.0",
+
+authors = [
+    { name = "Samuel Adole", email = "adoleichasamuel@gmail.com" },
 ]
+
+keywords = [
+    "rag",
+    "retrieval-augmented-generation",
+    "llm",
+    "observability",
+    "evaluation",
+    "ragas",
+    "hallucination",
+    "nlp",
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# ── Runtime dependencies ──────────────────────────────────────────────────────
+dependencies = [
+    # ── LLM / RAG ─────────────────────────────────────────────────────────────
+    "ollama>=0.2.0",                        # Ollama Python client
+    "chromadb>=0.5.0",                      # Vector store client
+    "sentence-transformers>=3.0.0",         # Embedding model (all-MiniLM-L6-v2)
+    "rank-bm25>=0.2.2",                     # BM25 sparse retrieval
+    "ragas>=0.1.10",                        # RAG evaluation framework
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+    "streamlit>=1.35.0",                    # Observability dashboard
+    "plotly>=5.22.0",                       # Interactive charts
+    "altair>=5.3.0",                        # Declarative visualisation
+
+    # ── Data processing ───────────────────────────────────────────────────────
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "datasets>=2.20.0",                     # HuggingFace Datasets (NQ, HotpotQA)
+    "ir-datasets>=0.5.5",                   # MS MARCO loader
+
+    # ── NLP utilities ─────────────────────────────────────────────────────────
+    "tiktoken>=0.7.0",                      # Token counting
+    "nltk>=3.8.1",
+    "scipy>=1.13.0",                        # Statistical analysis (Cohen's d)
+
+    # ── HTTP / async ──────────────────────────────────────────────────────────
+    "httpx>=0.27.0",
+    "tenacity>=8.3.0",                      # Retry logic for LLM calls
+
+    # ── Configuration & utilities ─────────────────────────────────────────────
+    "python-dotenv>=1.0.1",                 # .env file loading
+    "pydantic>=2.7.0",                      # Data validation & settings
+    "pydantic-settings>=2.3.0",
+    "rich>=13.7.0",                         # Terminal output formatting
+    "typer>=0.12.0",                        # CLI argument parsing
+    "loguru>=0.7.2",                        # Structured logging
+    "orjson>=3.10.0",                       # Fast JSON serialisation (telemetry)
+]
+
+# ── Optional / extras ─────────────────────────────────────────────────────────
+[project.optional-dependencies]
+notebooks = [
+    "jupyterlab>=4.2.0",
+    "ipywidgets>=8.1.0",
+    "matplotlib>=3.9.0",
+    "seaborn>=0.13.0",
+]
+
+# ── CLI entry points ──────────────────────────────────────────────────────────
+[project.scripts]
+ragscope-ingest    = "pipeline.ingestion:main"
+ragscope-query     = "pipeline.rag:main"
+ragscope-benchmark = "experiments.run_2x2_factorial:main"
+ragscope-analyse   = "experiments.analyse_results:main"
+ragscope-dashboard = "dashboard.app:main"
+
+# ── Build system ──────────────────────────────────────────────────────────────
+[build-system]
+requires      = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "pipeline",
+    "telemetry",
+    "evaluation",
+    "dashboard",
+    "data",
+    "experiments",
+]
+
+# ── uv settings ───────────────────────────────────────────────────────────────
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",                          # Linter + formatter
+    "mypy>=1.10.0",                         # Static type checking
+    "pre-commit>=3.7.0",
+]
+
+# ── Ruff (linter + formatter) ─────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py312"
+line-length    = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ── Pytest ────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths       = ["tests"]
+asyncio_mode    = "auto"
+addopts         = "-v --tb=short --cov=. --cov-report=term-missing"
+filterwarnings  = ["ignore::DeprecationWarning"]
+
+# ── Mypy ──────────────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version         = "3.12"
+strict                 = false
+ignore_missing_imports = true
