@@ -1,0 +1,82 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAGScope — .dockerignore
+#
+# Excludes files from the Docker build context. Keeping the context small:
+#   - Speeds up `docker build` (less data sent to the daemon)
+#   - Prevents secrets and large local artifacts entering the image
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── uv ────────────────────────────────────────────────────────────────────────
+# The lockfile IS included (needed for --frozen installs inside Docker).
+# The local cache is excluded.
+.uv/
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example           # Keep the example file; it contains no secrets
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+.dockerignore
+docker-compose.override.yml   # Dev-only; not needed in the production image
+
+# ── IDE / editor ─────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Testing & coverage ────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+
+# ── Large local data (managed via volumes, not baked into the image) ──────────
+data/raw/
+data/chroma_store/
+telemetry/store/
+experiments/results/
+.cache/
+
+# ── Notebooks (not needed in the production image) ───────────────────────────
+notebooks/
+*.ipynb
+.ipynb_checkpoints/
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+docs/
+*.md
+!README.md              # Keep README in the image for `docker inspect` context
+
+# ── Miscellaneous ─────────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.bak

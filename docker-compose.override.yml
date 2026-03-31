@@ -1,0 +1,77 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAGScope — Docker Compose Override (Development)
+#
+# Extends docker-compose.yml for local development. Activates:
+#   - Source volume mount → code changes reflected without rebuilding the image
+#   - Streamlit hot-reload (--server.runOnSave=true)
+#   - Jupyter notebook server on port 8888
+#   - More permissive restart policy for faster iteration
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up
+#
+# Or, set COMPOSE_FILE in your shell to avoid typing it every time:
+#   export COMPOSE_FILE=docker-compose.yml:docker-compose.override.yml
+#   docker compose up
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: ragscope
+
+services:
+
+  # ── RAGScope (dev mode) ────────────────────────────────────────────────────
+  ragscope:
+    # Mount the entire source tree so edits on the host are reflected
+    # immediately inside the container without a rebuild.
+    volumes:
+      - .:/app                              # Source mount (overrides image source)
+      - /app/.venv                          # Preserve the venv from the image layer
+                                            # (prevents the host mount from shadowing it)
+      - telemetry_data:/app/telemetry/store
+      - ./experiments/results:/app/experiments/results
+    environment:
+      STREAMLIT_SERVER_RUN_ON_SAVE: "true"  # Hot-reload on file save
+      STREAMLIT_SERVER_FILE_WATCHER_TYPE: auto
+      STREAMLIT_LOGGER_LEVEL: debug
+      PYTHONDONTWRITEBYTECODE: "1"
+    # Override the default entrypoint to start Streamlit directly
+    # without waiting for Ollama/ChromaDB (useful during pure UI development).
+    # Comment this out to restore the full health-check entrypoint.
+    # command: streamlit run dashboard/app.py --server.runOnSave=true
+
+  # ── Jupyter (dev only) ─────────────────────────────────────────────────────
+  # Provides an interactive notebook environment for exploratory analysis.
+  # Access at http://localhost:8888  (token printed in logs on first start).
+  jupyter:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    image: ragscope:latest
+    container_name: ragscope_jupyter
+    networks:
+      - ragscope_net
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
+      - /app/.venv
+    env_file:
+      - .env
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+    command: >
+      jupyter lab
+        --ip=0.0.0.0
+        --port=8888
+        --no-browser
+        --NotebookApp.token=''
+        --NotebookApp.password=''
+        --notebook-dir=/app/notebooks
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped

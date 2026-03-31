@@ -1,0 +1,171 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RAGScope — Docker Compose (Production / Research)
+#
+# Services
+# ────────
+#   chromadb     Vector store — persists embeddings across container restarts.
+#   ollama       Local LLM inference server — serves Llama 3 and Mistral 7B.
+#   ollama-init  One-shot model puller — runs once, then exits.
+#   ragscope     Main application — RAG pipeline, evaluation engine, dashboard.
+#
+# Quick start
+# ───────────
+#   cp .env.example .env
+#   docker compose up --build
+#
+# The dashboard is available at http://localhost:8501 once all services report
+# healthy. On first boot, expect 10–20 minutes for model downloads.
+#
+# Volumes
+# ───────
+#   ollama_models   Persists pulled LLM weights (~9 GB) between restarts.
+#   chroma_data     Persists embedded corpus between restarts.
+#   telemetry_data  Persists query telemetry JSON logs between restarts.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: ragscope
+
+# ── Shared network ────────────────────────────────────────────────────────────
+networks:
+  ragscope_net:
+    driver: bridge
+
+# ── Named volumes ─────────────────────────────────────────────────────────────
+volumes:
+  ollama_models:
+    driver: local
+  chroma_data:
+    driver: local
+  telemetry_data:
+    driver: local
+
+# ── Services ──────────────────────────────────────────────────────────────────
+services:
+
+  # ── ChromaDB ───────────────────────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: ragscope_chromadb
+    restart: unless-stopped
+    networks:
+      - ragscope_net
+    ports:
+      - "${CHROMA_PORT:-8000}:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+      CHROMA_SERVER_AUTHN_PROVIDER: ""      # No auth in local research context
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Ollama ─────────────────────────────────────────────────────────────────
+  ollama:
+    build:
+      context: .
+      dockerfile: docker/ollama/Dockerfile
+    container_name: ragscope_ollama
+    restart: unless-stopped
+    networks:
+      - ragscope_net
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_models:/models
+    environment:
+      OLLAMA_MODELS: /models
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 24h
+      # Uncomment to enable NVIDIA GPU support (requires nvidia-container-toolkit):
+      # NVIDIA_VISIBLE_DEVICES: all
+    # Uncomment the deploy block to enable NVIDIA GPU passthrough:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # ── Ollama Init (one-shot model puller) ────────────────────────────────────
+  # This service runs once on `docker compose up`, pulls the required models
+  # into the shared `ollama_models` volume, then exits with code 0.
+  # Compose does not restart it because restart_policy is set to on-failure.
+  # On subsequent `docker compose up` calls it checks if models are present
+  # and exits immediately — no redundant re-downloads.
+  ollama-init:
+    build:
+      context: .
+      dockerfile: docker/ollama/Dockerfile
+    container_name: ragscope_ollama_init
+    networks:
+      - ragscope_net
+    volumes:
+      - ollama_models:/models
+      - ./docker/scripts/pull_models.sh:/pull_models.sh:ro
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODELS: /models
+    entrypoint: ["/bin/bash", "/pull_models.sh"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: on-failure:3
+
+  # ── RAGScope Application ───────────────────────────────────────────────────
+  ragscope:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+      # Pass build-time args if needed (e.g. for private package registries)
+      args:
+        BUILDKIT_INLINE_CACHE: "1"
+    image: ragscope:latest
+    container_name: ragscope_app
+    restart: unless-stopped
+    networks:
+      - ragscope_net
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    volumes:
+      # Persist telemetry JSON logs to a named volume so query history
+      # survives container recreation.
+      - telemetry_data:/app/telemetry/store
+      # Persist experiment results to the host for direct file access.
+      - ./experiments/results:/app/experiments/results
+    env_file:
+      - .env
+    environment:
+      # Override service hostnames for Docker networking
+      # (these take precedence over .env values).
+      OLLAMA_BASE_URL: http://ollama:11434
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - "CMD"
+        - "python3"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
