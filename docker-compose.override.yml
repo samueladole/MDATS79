@@ -23,6 +23,8 @@ services:
   ragscope:
     # Mount the entire source tree so edits on the host are reflected
     # immediately inside the container without a rebuild.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app                              # Source mount (overrides image source)
       - /app/.venv                          # Preserve the venv from the image layer
@@ -48,6 +50,8 @@ services:
       dockerfile: docker/app/Dockerfile
     image: ragscope:latest
     container_name: ragscope_jupyter
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - ragscope_net
     ports:
@@ -58,7 +62,7 @@ services:
     env_file:
       - .env
     environment:
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: http://host.docker.internal:12434
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
     command: >
@@ -68,10 +72,11 @@ services:
         --no-browser
         --NotebookApp.token=''
         --NotebookApp.password=''
-        --notebook-dir=/app/notebooks
+        --notebook-dir=./notebooks
     depends_on:
       chromadb:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
+    models:
+      - mistral
+      - llama
     restart: unless-stopped

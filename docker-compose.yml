@@ -4,8 +4,7 @@
 # Services
 # ────────
 #   chromadb     Vector store — persists embeddings across container restarts.
-#   ollama       Local LLM inference server — serves Llama 3 and Mistral 7B.
-#   ollama-init  One-shot model puller — runs once, then exits.
+#   llm          Local LLM inference server — serves Llama 3 and Mistral 7B.
 #   ragscope     Main application — RAG pipeline, evaluation engine, dashboard.
 #
 # Quick start
@@ -18,7 +17,6 @@
 #
 # Volumes
 # ───────
-#   ollama_models   Persists pulled LLM weights (~9 GB) between restarts.
 #   chroma_data     Persists embedded corpus between restarts.
 #   telemetry_data  Persists query telemetry JSON logs between restarts.
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -32,12 +30,17 @@ networks:
 
 # ── Named volumes ─────────────────────────────────────────────────────────────
 volumes:
-  ollama_models:
-    driver: local
   chroma_data:
     driver: local
   telemetry_data:
     driver: local
+
+models:
+  mistral:
+    model: ai/mistral:latest
+
+  llama:
+    model: ai/llama3.1:latest
 
 # ── Services ──────────────────────────────────────────────────────────────────
 services:
@@ -58,70 +61,11 @@ services:
       ANONYMIZED_TELEMETRY: "FALSE"
       CHROMA_SERVER_AUTHN_PROVIDER: ""      # No auth in local research context
     healthcheck:
-      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD", "curl", "--silent", "--fail", "http://chromadb:8000/api/v1/heartbeat"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-
-  # ── Ollama ─────────────────────────────────────────────────────────────────
-  ollama:
-    build:
-      context: .
-      dockerfile: docker/ollama/Dockerfile
-    container_name: ragscope_ollama
-    restart: unless-stopped
-    networks:
-      - ragscope_net
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
-    volumes:
-      - ollama_models:/models
-    environment:
-      OLLAMA_MODELS: /models
-      OLLAMA_HOST: 0.0.0.0:11434
-      OLLAMA_KEEP_ALIVE: 24h
-      # Uncomment to enable NVIDIA GPU support (requires nvidia-container-toolkit):
-      # NVIDIA_VISIBLE_DEVICES: all
-    # Uncomment the deploy block to enable NVIDIA GPU passthrough:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:11434/api/tags"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-
-  # ── Ollama Init (one-shot model puller) ────────────────────────────────────
-  # This service runs once on `docker compose up`, pulls the required models
-  # into the shared `ollama_models` volume, then exits with code 0.
-  # Compose does not restart it because restart_policy is set to on-failure.
-  # On subsequent `docker compose up` calls it checks if models are present
-  # and exits immediately — no redundant re-downloads.
-  ollama-init:
-    build:
-      context: .
-      dockerfile: docker/ollama/Dockerfile
-    container_name: ragscope_ollama_init
-    networks:
-      - ragscope_net
-    volumes:
-      - ollama_models:/models
-      - ./docker/scripts/pull_models.sh:/pull_models.sh:ro
-    environment:
-      OLLAMA_HOST: http://ollama:11434
-      OLLAMA_MODELS: /models
-    entrypoint: ["/bin/bash", "/pull_models.sh"]
-    depends_on:
-      ollama:
-        condition: service_healthy
-    restart: on-failure:3
 
   # ── RAGScope Application ───────────────────────────────────────────────────
   ragscope:
@@ -134,6 +78,8 @@ services:
     image: ragscope:latest
     container_name: ragscope_app
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - ragscope_net
     ports:
@@ -149,16 +95,15 @@ services:
     environment:
       # Override service hostnames for Docker networking
       # (these take precedence over .env values).
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: http://host.docker.internal:12434
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
     depends_on:
       chromadb:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully
+    models:
+      - mistral
+      - llama
     healthcheck:
       test:
         - "CMD"
