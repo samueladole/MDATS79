@@ -21,7 +21,7 @@ warn()  { echo -e "${YELLOW}[entrypoint]${NC} $*"; }
 error() { echo -e "${RED}[entrypoint]${NC} $*" >&2; }
 
 # ── Configuration (override via environment) ──────────────────────────────────
-OLLAMA_HOST="${OLLAMA_BASE_URL:-http://ollama:11434}"
+OLLAMA_HOST="${OLLAMA_BASE_URL:-http://host.docker.internal:12434}"
 CHROMA_HOST="${CHROMA_HOST:-chromadb}"
 CHROMA_PORT="${CHROMA_PORT:-8000}"
 MAX_WAIT="${MAX_WAIT_SECONDS:-120}"   # maximum seconds to wait per service
