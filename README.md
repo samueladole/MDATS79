@@ -33,8 +33,8 @@
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
-  - [Option A — Docker (Recommended)](#option-a--docker-recommended)
-  - [Option B — Local with uv](#option-b--local-with-uv)
+  - [Option A - Docker (Recommended)](#option-a--docker-recommended)
+  - [Option B - Local with uv](#option-b--local-with-uv)
   - [Configuration](#configuration)
 - [Usage](#usage)
   - [Running the RAG Pipeline](#running-the-rag-pipeline)
@@ -88,51 +88,51 @@ RAGScope fills the integration gap: it combines the evaluative richness of RAGAS
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        RAGScope Platform                            │
 │                                                                     │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐  │
-│  │   Document   │    │  Embedding   │    │    Vector Database   │  │
-│  │  Ingestion   │───▶│  Generation  │───▶│      (ChromaDB)      │  │
-│  │  & Chunking  │    │(all-MiniLM)  │    │                      │  │
-│  └──────────────┘    └──────────────┘    └──────────┬───────────┘  │
-│                                                     │              │
-│  ┌──────────────────────────────────────────────────▼───────────┐  │
-│  │                      Query Pipeline                          │  │
-│  │                                                              │  │
-│  │   User Query ──▶ [Dense | Hybrid (BM25 + RRF)] Retrieval    │  │
-│  │                         │                                   │  │
-│  │                    Context Injection                         │  │
-│  │                         │                                   │  │
-│  │          ┌──────────────▼──────────────┐                    │  │
-│  │          │   LLM Generation (Ollama)   │                    │  │
-│  │          │  • Llama 3 (8B)             │                    │  │
-│  │          │  • Mistral 7B               │                    │  │
-│  │          └──────────────┬──────────────┘                    │  │
-│  └─────────────────────────┼────────────────────────────────── ┘  │
-│                            │                                       │
-│  ┌─────────────────────────▼──────────────────────────────────┐   │
-│  │               Telemetry & Evaluation Layer                  │   │
-│  │                                                             │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐  │   │
-│  │  │   Latency   │  │    Token    │  │   RAGAS Metrics   │  │   │
-│  │  │  Profiling  │  │  & Cost Log │  │  (Faithfulness,   │  │   │
-│  │  │             │  │             │  │   Relevance,      │  │   │
-│  │  │ • E2E       │  │ • Prompt    │  │   Correctness,    │  │   │
-│  │  │ • Retrieval │  │ • Completion│  │   Hallucination   │  │   │
-│  │  │ • Generation│  │ • Est. cost │  │   Risk Score)     │  │   │
-│  │  └──────┬──────┘  └──────┬──────┘  └────────┬──────────┘  │   │
-│  │         └────────────────┼──────────────────┘             │   │
-│  │                          │                                 │   │
-│  │              ┌───────────▼───────────┐                     │   │
-│  │              │  Telemetry JSON Store │                     │   │
-│  │              └───────────────────────┘                     │   │
-│  └─────────────────────────────────────────────────────────── ┘   │
-│                            │                                       │
-│  ┌─────────────────────────▼──────────────────────────────────┐   │
-│  │           Streamlit Observability Dashboard                 │   │
-│  │                                                             │   │
-│  │  • Real-time metric streams    • Query-level drill-down     │   │
-│  │  • Latency & cost histograms   • Retrieval chunk viewer     │   │
-│  │  • Comparative heatmaps        • Hallucination risk gauge   │   │
-│  └─────────────────────────────────────────────────────────── ┘   │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐   │
+│  │   Document   │    │  Embedding   │    │    Vector Database   │   │
+│  │  Ingestion   │───▶│  Generation  │───▶│      (ChromaDB)     │   │
+│  │  & Chunking  │    │(all-MiniLM)  │    │                      │   │
+│  └──────────────┘    └──────────────┘    └──────────┬───────────┘   │
+│                                                     │               │
+│  ┌──────────────────────────────────────────────────▼──────────┐    │
+│  │                      Query Pipeline                         │    │
+│  │                                                             │    │
+│  │   User Query ──▶ [Dense | Hybrid (BM25 + RRF)] Retrieval   │    │
+│  │                         │                                   │    │
+│  │                    Context Injection                        │    │
+│  │                         │                                   │    │
+│  │          ┌──────────────▼──────────────┐                    │    │
+│  │          │   LLM Generation (Ollama)   │                    │    │
+│  │          │  • Llama 3 (8B)             │                    │    │
+│  │          │  • Mistral 7B               │                    │    │
+│  │          └──────────────┬──────────────┘                    │    │
+│  └─────────────────────────┼───────────────────────────────────┘    │
+│                            │                                        │
+│  ┌─────────────────────────▼───────────────────────────────────┐    │
+│  │               Telemetry & Evaluation Layer                  │    │
+│  │                                                             │    │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │    │
+│  │  │   Latency   │  │    Token    │  │   RAGAS Metrics   │    │    │
+│  │  │  Profiling  │  │  & Cost Log │  │  (Faithfulness,   │    │    │
+│  │  │             │  │             │  │   Relevance,      │    │    │
+│  │  │ • E2E       │  │ • Prompt    │  │   Correctness,    │    │    │
+│  │  │ • Retrieval │  │ • Completion│  │   Hallucination   │    │    │
+│  │  │ • Generation│  │ • Est. cost │  │   Risk Score)     │    │    │
+│  │  └──────┬──────┘  └──────┬──────┘  └────────┬──────────┘    │    │
+│  │         └────────────────┼──────────────────┘               │    │
+│  │                          │                                  │    │
+│  │              ┌───────────▼───────────┐                      │    │
+│  │              │  Telemetry JSON Store │                      │    │
+│  │              └───────────────────────┘                      │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│                            │                                        │
+│  ┌─────────────────────────▼───────────────────────────────────┐    │
+│  │           Streamlit Observability Dashboard                 │    │
+│  │                                                             │    │
+│  │  • Real-time metric streams    • Query-level drill-down     │    │
+│  │  • Latency & cost histograms   • Retrieval chunk viewer     │    │
+│  │  • Comparative heatmaps        • Hallucination risk gauge   │    │
+│  └─────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -242,8 +242,7 @@ ragscope/
 │   ├── ollama/
 │   │   └── Dockerfile             # Ollama + model pre-pull layer
 │   └── scripts/
-│       ├── entrypoint.sh          # Container startup: health-check Ollama, then run
-│       └── pull_models.sh         # Pulls llama3 + mistral into Ollama on first boot
+│       ├── entrypoint.sh          # Container startup: health-check Ollama
 │
 ├── data/                          # Dataset loading and preprocessing
 │   ├── loaders/
@@ -346,7 +345,7 @@ Docker Compose orchestrates four services automatically: the RAGScope app, Ollam
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/<your-username>/ragscope.git
+git clone https://github.com/samueladole/ragscope.git
 cd ragscope
 ```
 
@@ -363,13 +362,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
-On first boot, the `ollama-init` service pulls `llama3` (~4.7 GB) and `mistral` (~4.1 GB). This is a one-time operation — subsequent starts are fast. The dashboard will be available at **http://localhost:8501** once all services are healthy.
+The dashboard will be available at **http://localhost:8501** once all services are healthy.
 
 ```
 [+] Running 4/4
  ✔ chromadb     Started   → http://localhost:8000
- ✔ ollama       Started   → http://localhost:11434
- ✔ ollama-init  Pulling models… (first run only)
+ ✔ ollama       Started   → http://localhost:12434
  ✔ ragscope     Started   → http://localhost:8501
 ```
 
@@ -402,7 +400,7 @@ Use this path for active development or when you need to run notebooks interacti
 **1. Clone and enter the repository**
 
 ```bash
-git clone https://github.com/<your-username>/ragscope.git
+git clone https://github.com/samueladole/ragscope.git
 cd ragscope
 ```
 
@@ -430,7 +428,8 @@ Install Ollama from [ollama.com](https://ollama.com), then:
 ollama serve &               # Start the Ollama daemon in the background
 
 ollama pull llama3           # ~4.7 GB
-ollama pull mistral          # ~4.1 GB
+ollama pull mistral          # ~4.4 GB
+ollama pull qwen2.5:7b       # ~4.7 GB (LLM Judge)
 ```
 
 **4. Start ChromaDB**
@@ -463,8 +462,8 @@ cp .env.example .env
 
 ```env
 # ── LLM ────────────────────────────────────────────────────────────────────
-OLLAMA_BASE_URL=http://ollama:11434   # Docker: service name; local: http://localhost:11434
-DEFAULT_LLM=llama3                    # llama3 | mistral
+OLLAMA_BASE_URL=http://localhost:11434   # Local: http://localhost:11434
+DEFAULT_LLM=llama3                       # llama3 | mistral
 
 # ── Retrieval ───────────────────────────────────────────────────────────────
 RETRIEVAL_STRATEGY=hybrid             # dense | hybrid
@@ -479,7 +478,7 @@ CHROMA_PORT=8000
 CHROMA_COLLECTION=ragscope_corpus
 
 # ── RAGAS ───────────────────────────────────────────────────────────────────
-RAGAS_JUDGE_MODEL=llama3              # LLM used to compute RAGAS metrics
+RAGAS_JUDGE_MODEL=qwen2.5:7b          # LLM used to compute RAGAS metrics
 
 # ── Cost Estimation ─────────────────────────────────────────────────────────
 COST_PER_1K_PROMPT_TOKENS=0.00        # 0.00 for local inference; set for cloud models
@@ -631,7 +630,6 @@ docker compose up -d
 
 # View logs for a specific service
 docker compose logs -f ragscope
-docker compose logs -f ollama
 
 # Open a shell in the app container
 docker compose exec ragscope bash
@@ -741,7 +739,7 @@ Preliminary findings and the full analysis report will be available in:
 The following limitations are acknowledged and discussed in full in the dissertation:
 
 - **Domain specificity:** The evaluation corpus is drawn from general-domain benchmarks (Wikipedia, web documents); findings may not generalise to specialist domains (e.g., clinical, legal).
-- **RAGAS judge bias:** RAGAS metrics are computed using an LLM judge, which may share biases with the evaluated model — particularly when the same model serves both roles. Mitigation: the judge model (Llama 3) is held constant and separated from the evaluated LLM configurations where possible.
+- **RAGAS judge bias:** RAGAS metrics are computed using an LLM judge, which may share biases with the evaluated model - particularly when the same model serves both roles. Mitigation: the judge model (Qwen 2.5) is held constant and separated from the evaluated LLM configurations where possible.
 - **Hardware constraints:** Local inference on consumer hardware does not replicate production-scale latency profiles. Reported latency figures should be interpreted comparatively within experimental conditions, not as absolute production benchmarks.
 - **Timeline constraints:** The 5.5-month dissertation window limits the scale of experimentation; a larger query benchmark would strengthen statistical conclusions.
 
@@ -766,9 +764,8 @@ If you use RAGScope in your own research, please cite:
 
 ```bibtex
 @mastersthesis{ragscope2026,
-  author  = {<Your Full Name>},
-  title   = {Real-Time Observability and Evaluation Platform for
-             Retrieval-Augmented Generation Systems},
+  author  = {Samuel Adole},
+  title   = {Real-Time Observability and Evaluation Platform for Retrieval-Augmented Generation Systems},
   school  = {Leeds Beckett University},
   year    = {2026},
   month   = {September},
