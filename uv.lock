@@ -2151,6 +2151,19 @@ wheels = [
 ]
 
 [[package]]
+name = "langchain-ollama"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "ollama" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d4/9b/6641afe8a5bf807e454fd464eddfc7eb2f2df53cb0b29744381171f9c609/langchain_ollama-1.1.0.tar.gz", hash = "sha256:f776f56f6782ae4da7692579b94a6575906118318d1023b455d7207f9d059811", size = 133075, upload-time = "2026-04-07T02:48:00.873Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/b2/c2acb076590a98bee2816ed5f285e00df162a34238f9e276e175e14ebc35/langchain_ollama-1.1.0-py3-none-any.whl", hash = "sha256:43ac83a6eacb0f43855810739794dd55019e0d9b17bdcf3ecb3b1991ac3b59dd", size = 31413, upload-time = "2026-04-07T02:47:59.642Z" },
+]
+
+[[package]]
 name = "langchain-openai"
 version = "1.1.12"
 source = { registry = "https://pypi.org/simple" }
@@ -4392,6 +4405,7 @@ dependencies = [
     { name = "datasets" },
     { name = "httpx" },
     { name = "ir-datasets" },
+    { name = "langchain-ollama" },
     { name = "loguru" },
     { name = "nltk" },
     { name = "numpy" },
@@ -4440,6 +4454,7 @@ requires-dist = [
     { name = "ipywidgets", marker = "extra == 'notebooks'", specifier = ">=8.1.0" },
     { name = "ir-datasets", specifier = ">=0.5.5" },
     { name = "jupyterlab", marker = "extra == 'notebooks'", specifier = ">=4.2.0" },
+    { name = "langchain-ollama", specifier = ">=1.1.0" },
     { name = "loguru", specifier = ">=0.7.2" },
     { name = "matplotlib", marker = "extra == 'notebooks'", specifier = ">=3.9.0" },
     { name = "nltk", specifier = ">=3.8.1" },
@@ -4451,7 +4466,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7.0" },
     { name = "pydantic-settings", specifier = ">=2.3.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
-    { name = "ragas", specifier = ">=0.1.10" },
+    { name = "ragas", specifier = ">=0.4.3" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "rich", specifier = ">=13.7.0" },
     { name = "scipy", specifier = ">=1.13.0" },
