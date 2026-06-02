@@ -4,7 +4,6 @@
 # Services
 # ────────
 #   chromadb     Vector store — persists embeddings across container restarts.
-#   llm          Local LLM inference server — serves Llama 3 and Mistral 7B.
 #   ragscope     Main application — RAG pipeline, evaluation engine, dashboard.
 #
 # Quick start
@@ -35,13 +34,6 @@ volumes:
   telemetry_data:
     driver: local
 
-models:
-  mistral:
-    model: ai/mistral:latest
-
-  llama:
-    model: ai/llama3.1:latest
-
 # ── Services ──────────────────────────────────────────────────────────────────
 services:
 
@@ -61,7 +53,7 @@ services:
       ANONYMIZED_TELEMETRY: "FALSE"
       CHROMA_SERVER_AUTHN_PROVIDER: ""      # No auth in local research context
     healthcheck:
-      test: ["CMD", "curl", "--silent", "--fail", "http://chromadb:8000/api/v1/heartbeat"]
+      test: ["CMD", "curl", "--silent", "--fail", "http://host.docker.internal:8000/api/v1/heartbeat"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -95,15 +87,12 @@ services:
     environment:
       # Override service hostnames for Docker networking
       # (these take precedence over .env values).
-      OLLAMA_BASE_URL: http://host.docker.internal:12434
+      # OLLAMA_BASE_URL: http://host.docker.internal:12434
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
     depends_on:
       chromadb:
         condition: service_healthy
-    models:
-      - mistral
-      - llama
     healthcheck:
       test:
         - "CMD"
