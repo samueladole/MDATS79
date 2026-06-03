@@ -22,7 +22,8 @@ build/
 # ── Large data and model files ────────────────────────────────────────────────
 data/raw/
 data/chroma_store/
-data/bm25_corpus.json
+data/bm25_corpus.jsonl
+data/ingestion_manifest.json
 
 # ── Telemetry and results (large, runtime-generated) ─────────────────────────
 telemetry/store/

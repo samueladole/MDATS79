@@ -62,6 +62,8 @@ coverage.xml
 # ── Large local data (managed via volumes, not baked into the image) ──────────
 data/raw/
 data/chroma_store/
+data/bm25_corpus.jsonl
+data/ingestion_manifest.json
 telemetry/store/
 experiments/results/
 .cache/
