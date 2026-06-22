@@ -613,14 +613,19 @@ This produces a Markdown report including descriptive statistics, Cohen's d effe
 
 ### Service Overview
 
-The `docker-compose.yml` defines four services:
+The `docker-compose.yml` defines two services:
 
 | Service | Image | Port | Role |
 |---|---|:---:|---|
 | `ragscope` | `./docker/app/Dockerfile` | 8501 | Main application (pipeline + dashboard) |
-| `ollama` | `./docker/ollama/Dockerfile` | 11434 | Local LLM inference server |
-| `ollama-init` | Same as `ollama` | — | One-shot model puller (exits after first run) |
 | `chromadb` | `chromadb/chroma:latest` | 8000 | Persistent vector store |
+
+The `docker-compose.override.yml` defines three services:
+| Service | Image | Port | Role |
+|---|---|:---:|---|
+| `ragscope` | `./docker/app/Dockerfile` | 8501 | Main application (pipeline + dashboard) |
+| `chromadb` | `chromadb/chroma:latest` | 8000 | Persistent vector store |
+| `jupyter (dev only)`  | `./docker/app/Dockerfile` | 8888 | Interactive notebook environment for exploratory analysis |
 
 ### Common Commands
 
