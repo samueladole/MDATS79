@@ -22,7 +22,7 @@ error() { echo -e "${RED}[entrypoint]${NC} $*" >&2; }
 
 # ── Configuration (override via environment) ──────────────────────────────────
 OLLAMA_HOST="${OLLAMA_BASE_URL:-http://host.docker.internal:12434}"
-CHROMA_HOST="${CHROMA_HOST:-chromadb}"
+CHROMA_HOST="${CHROMA_HOST:-localhost}"
 CHROMA_PORT="${CHROMA_PORT:-8000}"
 MAX_WAIT="${MAX_WAIT_SECONDS:-120}"   # maximum seconds to wait per service
 
@@ -67,7 +67,7 @@ done
 info "Ollama models confirmed. ✓"
 
 # ── Wait for ChromaDB ─────────────────────────────────────────────────────────
-wait_for "ChromaDB" "http://${CHROMA_HOST}:${CHROMA_PORT}/api/v1/heartbeat"
+wait_for "ChromaDB" "http://${CHROMA_HOST}:${CHROMA_PORT}/api/v2/heartbeat"
 
 # ── Start the application ─────────────────────────────────────────────────────
 if [[ $# -gt 0 ]]; then
