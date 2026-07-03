@@ -3,9 +3,13 @@
 # RAGScope — Container Entrypoint
 #
 # Responsibilities:
-#   1. Wait for Ollama to be reachable and have at least one model loaded.
+#   1. Wait for Ollama (running on the host) to be reachable and have at least
+#      one model loaded.
 #   2. Wait for ChromaDB to be reachable.
 #   3. Start the Streamlit dashboard (or any command passed as arguments).
+#
+# Note: Ollama runs on the HOST, not as a Docker service. Make sure it's
+# running and has a model pulled (`ollama pull llama3`) before `docker compose up`.
 #
 # Usage (automatic via Docker ENTRYPOINT):
 #   /entrypoint.sh                          → starts Streamlit dashboard
@@ -21,7 +25,9 @@ warn()  { echo -e "${YELLOW}[entrypoint]${NC} $*"; }
 error() { echo -e "${RED}[entrypoint]${NC} $*" >&2; }
 
 # ── Configuration (override via environment) ──────────────────────────────────
-OLLAMA_HOST="${OLLAMA_BASE_URL:-http://host.docker.internal:12434}"
+# Ollama runs on the host, so the container-side default points at the
+# Docker host gateway rather than localhost.
+OLLAMA_HOST="${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
 CHROMA_HOST="${CHROMA_HOST:-localhost}"
 CHROMA_PORT="${CHROMA_PORT:-8000}"
 MAX_WAIT="${MAX_WAIT_SECONDS:-120}"   # maximum seconds to wait per service
@@ -46,21 +52,22 @@ wait_for() {
     info "${service} is ready. ✓"
 }
 
-# ── Wait for Ollama ───────────────────────────────────────────────────────────
+# ── Wait for Ollama (host-side service) ───────────────────────────────────────
 wait_for "Ollama" "${OLLAMA_HOST}/api/tags"
 
-# Additionally confirm that at least one model is available.
-# The ollama-init service pulls models, but may still be running on first boot.
+# Confirm at least one model is available. Ollama is not managed by Compose,
+# so if this fails, run `ollama pull <model>` on the host and retry.
 info "Checking Ollama has models available …"
 elapsed=0
 until [[ $(curl --silent "${OLLAMA_HOST}/api/tags" | python3 -c \
     "import sys,json; d=json.load(sys.stdin); print(len(d.get('models',[])))" \
     2>/dev/null) -gt 0 ]]; do
     if (( elapsed >= MAX_WAIT )); then
-        error "Timed out waiting for Ollama models. Is ollama-init running?"
+        error "Timed out waiting for Ollama models."
+        error "Ollama runs on the host — pull a model there first, e.g.: ollama pull llama3"
         exit 1
     fi
-    warn "  No models found yet — waiting for ollama-init to finish pulling (${elapsed}s elapsed)"
+    warn "  No models found yet on host Ollama (${elapsed}s elapsed)"
     sleep 5
     (( elapsed += 5 ))
 done
