@@ -86,6 +86,8 @@ services:
       - ./experiments/results:/app/experiments/results
     env_file:
       - .env
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
     depends_on:
       chromadb:
         condition: service_healthy
