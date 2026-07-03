@@ -367,7 +367,6 @@ The dashboard will be available at **http://localhost:8501** once all services a
 ```
 [+] Running 4/4
  ✔ chromadb     Started   → http://localhost:8000
- ✔ ollama       Started   → http://localhost:12434
  ✔ ragscope     Started   → http://localhost:8501
 ```
 

@@ -47,13 +47,15 @@ services:
     ports:
       - "${CHROMA_PORT:-8000}:8000"
     volumes:
-      - chroma_data:/chroma/chroma
+      - chroma_data:/data
     environment:
       IS_PERSISTENT: "TRUE"
       ANONYMIZED_TELEMETRY: "FALSE"
       CHROMA_SERVER_AUTHN_PROVIDER: ""      # No auth in local research context
     healthcheck:
-      test: ["CMD", "curl", "--silent", "--fail", "http://host.docker.internal:8000/api/v1/heartbeat"]
+      test:
+        - "CMD-SHELL"
+        - "bash -c \"exec 3<>/dev/tcp/localhost/8000 && echo -e 'GET /api/v2/heartbeat HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'\""
       interval: 10s
       timeout: 5s
       retries: 5
@@ -84,12 +86,6 @@ services:
       - ./experiments/results:/app/experiments/results
     env_file:
       - .env
-    environment:
-      # Override service hostnames for Docker networking
-      # (these take precedence over .env values).
-      # OLLAMA_BASE_URL: http://host.docker.internal:12434
-      CHROMA_HOST: chromadb
-      CHROMA_PORT: "8000"
     depends_on:
       chromadb:
         condition: service_healthy
