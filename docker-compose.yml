@@ -87,7 +87,8 @@ services:
     env_file:
       - .env
     environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      CHROMA_HOST: chromadb
     depends_on:
       chromadb:
         condition: service_healthy

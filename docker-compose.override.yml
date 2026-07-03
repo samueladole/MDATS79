@@ -62,9 +62,8 @@ services:
     env_file:
       - .env
     environment:
-      # OLLAMA_BASE_URL: http://host.docker.internal:12434
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
       CHROMA_HOST: chromadb
-      CHROMA_PORT: "8000"
     command: >
       jupyter lab
         --ip=0.0.0.0
