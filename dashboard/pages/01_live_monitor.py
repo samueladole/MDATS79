@@ -42,8 +42,8 @@ if run_btn and query_text.strip():
     from pipeline.rag import RAGPipeline
     from telemetry.logger import get_telemetry_logger
 
-    with st.spinner("Running RAG pipeline …"):
-        try:
+    try:
+        with st.spinner("Running RAG pipeline …"):
             pipeline = RAGPipeline(
                 llm_model=llm_choice,
                 retrieval_strategy=retrieval_choice,
@@ -54,9 +54,9 @@ if run_btn and query_text.strip():
                 query_text=query_text,
                 ground_truth=ground_truth.strip() or None,
             )
-        except Exception as exc:
-            st.error(f"Pipeline error: {exc}")
-            st.stop()
+    except Exception as exc:
+        st.error(f"Pipeline error: {exc}")
+        st.stop()
 
     st.success("Query complete.")
     st.divider()
