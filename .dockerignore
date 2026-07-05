@@ -68,11 +68,6 @@ telemetry/store/
 experiments/results/
 .cache/
 
-# ── Notebooks (not needed in the production image) ───────────────────────────
-notebooks/
-*.ipynb
-.ipynb_checkpoints/
-
 # ── Documentation ─────────────────────────────────────────────────────────────
 docs/
 *.md
