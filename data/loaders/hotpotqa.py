@@ -95,8 +95,7 @@ def load_queries_and_passages(
         DATASET_NAME,
         DATASET_CONFIG,
         split="validation",
-        cache_dir=str(CACHE_DIR),
-        trust_remote_code=True,
+        cache_dir=str(CACHE_DIR)
     )
 
     bridge_pool: list[dict] = []

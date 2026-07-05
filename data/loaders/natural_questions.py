@@ -81,8 +81,7 @@ def load_queries_and_passages(
     ds = load_dataset(
         DATASET_NAME,
         split="validation",
-        cache_dir=str(CACHE_DIR),
-        trust_remote_code=True,
+        cache_dir=str(CACHE_DIR)
     )
 
     queries: list[dict] = []

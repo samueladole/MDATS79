@@ -78,8 +78,7 @@ def load_corpus(
         DATASET_NAME,
         DATASET_CONFIG,
         split="train",
-        cache_dir=str(CACHE_DIR),
-        trust_remote_code=True,
+        cache_dir=str(CACHE_DIR)
     )
 
     # MS MARCO v2.1 stores passages in a nested list under "passages".
@@ -152,8 +151,7 @@ def load_queries(
         DATASET_NAME,
         DATASET_CONFIG,
         split="validation",
-        cache_dir=str(CACHE_DIR),
-        trust_remote_code=True,
+        cache_dir=str(CACHE_DIR)
     )
 
     single: list[dict] = []
@@ -207,8 +205,7 @@ def stream_corpus() -> Iterator[dict]:
         DATASET_CONFIG,
         split="train",
         cache_dir=str(CACHE_DIR),
-        streaming=True,
-        trust_remote_code=True,
+        streaming=True
     )
     for example in ds:
         for i, passage_text in enumerate(example.get("passages", {}).get("passage_text", [])):
