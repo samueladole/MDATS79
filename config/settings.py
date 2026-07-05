@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     )
 
     # ── Logging ────────────────────────────────────────────────────────────────
-    log_level: str = Field(default="INFO")
+    log_level: str = Field(default="DEBUG", description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL")
     log_format: str = Field(
         default="{time:YYYY-MM-DD HH:mm:ss} | {level:<8} | {name}:{line} — {message}"
     )
