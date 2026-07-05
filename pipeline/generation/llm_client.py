@@ -80,7 +80,8 @@ class BaseLLMClient(ABC):
         "If the context does not contain enough information to answer confidently, "
         "state that clearly. Do not use any prior knowledge or make assumptions "
         "beyond what is explicitly stated in the context. "
-        "Keep your answer concise and directly address the question."
+        "Keep your answer concise and directly address the question." \
+        "\n\nIMPORTANT: Only use the provided context. Do not use outside knowledge."
     )
 
     def __init__(
@@ -142,8 +143,12 @@ class BaseLLMClient(ABC):
         text = raw.get("response", "").strip()
 
         # Ollama returns eval_count (completion tokens) and prompt_eval_count.
-        completion_tokens = raw.get("eval_count", 0)
-        prompt_tokens = raw.get("prompt_eval_count", 0)
+        completion_tokens = raw.get("eval_count") or raw.get("completion_tokens") or 0
+        prompt_tokens = raw.get("prompt_eval_count") or raw.get("prompt_tokens") or 0
+
+        # Warn if the expected eval_count is missing, but still return a response.
+        if "eval_count" not in raw:
+            logger.warning("Missing eval_count in Ollama response")
 
         return GenerationResponse(
             text=text,
@@ -160,7 +165,7 @@ class BaseLLMClient(ABC):
         try:
             resp = self._client.get(f"{self._base_url}/api/tags", timeout=5)
             models = [m["name"] for m in resp.json().get("models", [])]
-            return any(self.model_name in m for m in models)
+            return self.model_name in models
         except Exception:
             return False
 
@@ -176,22 +181,30 @@ class BaseLLMClient(ABC):
 
     def _build_prompt(self, query: str, context_chunks: list[str]) -> str:
         """
-        Format the RAG prompt by injecting context before the question.
-
+        Build a RAG prompt with stronger grounding, better structure,
+        and controlled context size by injecting context before the question.
         Override in subclasses if the model requires a specific template.
         """
-        context = "\n\n---\n\n".join(
-            f"[Passage {i + 1}]\n{chunk}" for i, chunk in enumerate(context_chunks)
+
+        context = "\n\n".join(
+            f"<<<PASSAGE {i + 1}>>>\n{chunk}\n<<<END PASSAGE>>>"
+            for i, chunk in enumerate(context_chunks)
         )
+
         return (
-            f"[SYSTEM]\n{self.SYSTEM_PROMPT}\n\n"
-            f"[CONTEXT]\n{context}\n\n"
-            f"[QUESTION]\n{query}\n\n"
-            f"[ANSWER]"
+            f"[SYSTEM]\n"
+            f"{self.SYSTEM_PROMPT}\n\n"
+            f"[RETRIEVED CONTEXT - USE ONLY THIS]\n"
+            f"{context}\n\n"
+            f"[QUESTION]\n"
+            f"{query}\n\n"
+            f"Instruction: Answer ONLY using the evidence above. "
+            f"If the answer is not present, say 'Not found in provided context.'\n\n"
+            f"[ANSWER]\n"
         )
 
     @retry(
-        retry=retry_if_exception_type((httpx.HTTPError, httpx.TimeoutException)),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.ConnectError)),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         stop=stop_after_attempt(3),
         reraise=True,
@@ -208,6 +221,10 @@ class BaseLLMClient(ABC):
         )
         response.raise_for_status()
         return response.json()
+    
+    def close(self) -> None:
+        """Close the underlying HTTP client."""
+        self._client.close()
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(model='{self.model_name}')"
