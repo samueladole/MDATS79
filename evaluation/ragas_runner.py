@@ -10,7 +10,7 @@ Metrics computed
 * answer_correctness  : Semantic match with the ground-truth answer (when provided).
 
 The auxiliary LLM used for RAGAS metric computation is set to
-``settings.ragas_judge_model`` (default: ``llama3``) and is held constant
+``settings.ragas_judge_model`` (default: ``qwen2.5:7b``) and is held constant
 across ALL experimental conditions to ensure comparability. This is a key
 methodological control identified in the proposal (Es et al., 2023).
 

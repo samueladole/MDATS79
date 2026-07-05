@@ -9,7 +9,7 @@ during ingestion, then performs an approximate nearest-neighbour search
 
 This module implements Condition A and C of the 2×2 factorial experiment:
     * Condition A: Llama 3  + Dense retrieval
-    * Condition C: Qwen  + Dense retrieval
+    * Condition C: Mistral + Dense retrieval
 
 Reference
 ---------

@@ -5,8 +5,8 @@ Executes the full benchmark experiment across all four experimental conditions:
 
     Condition A: Llama3  + Dense retrieval
     Condition B: Llama3  + Hybrid retrieval
-    Condition C: Qwen + Dense retrieval
-    Condition D: Qwen + Hybrid retrieval
+    Condition C: Mistral + Dense retrieval
+    Condition D: Mistral + Hybrid retrieval
 
 Each condition is evaluated against the full 200-query benchmark
 (60 MS MARCO + 40 NQ + 100 HotpotQA). Results are written to a
@@ -49,8 +49,8 @@ RESULTS_DIR = Path("experiments/results")
 ALL_CONDITIONS: list[tuple[str, str]] = [
     ("llama3", "dense"),
     ("llama3", "hybrid"),
-    ("qwen", "dense"),
-    ("qwen", "hybrid"),
+    ("mistral", "dense"),
+    ("mistral", "hybrid"),
 ]
 
 
@@ -61,10 +61,10 @@ def main(
     ),
     conditions: str = typer.Option(
         "all",
-        help="Conditions to run: 'all' or comma-separated e.g. 'llama3_dense,qwen_hybrid'",
+        help="Conditions to run: 'all' or comma-separated e.g. 'llama3_dense,mistral_hybrid'",
     ),
     llm: str = typer.Option(
-        "", help="LLM for single-condition run: llama3 | qwen (overrides --conditions)"
+        "", help="LLM for single-condition run: llama3 | mistral (overrides --conditions)"
     ),
     retrieval: str = typer.Option(
         "", help="Retrieval for single-condition run: dense | hybrid (overrides --conditions)"

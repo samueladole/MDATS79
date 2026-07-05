@@ -21,15 +21,15 @@ METRICS = [
 CONDITIONS = [
     ("llama3", "dense"),
     ("llama3", "hybrid"),
-    ("qwen", "dense"),
-    ("qwen", "hybrid"),
+    ("mistral", "dense"),
+    ("mistral", "hybrid"),
 ]
 
 CONDITION_LABELS = {
     ("llama3", "dense"): "Llama3 + Dense",
     ("llama3", "hybrid"): "Llama3 + Hybrid",
-    ("qwen", "dense"): "Qwen + Dense",
-    ("qwen", "hybrid"): "Qwen + Hybrid",
+    ("mistral", "dense"): "Mistral + Dense",
+    ("mistral", "hybrid"): "Mistral + Hybrid",
 }
 
 

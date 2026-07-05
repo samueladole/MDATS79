@@ -300,7 +300,7 @@ with Timer("retrieval") as t:
 
 **Modules:** `evaluation/ragas_runner.py`, `evaluation/hallucination_score.py`, `evaluation/metrics.py`
 
-**RAGAS metrics** are computed using the `RAGASRunner`, which wraps the RAGAS ≥ 0.2 `EvaluationDataset` API. The auxiliary LLM judge (`settings.ragas_judge_model`, default: `llama3`) is held constant across all four experimental conditions to ensure metric comparability — this is a key methodological control.
+**RAGAS metrics** are computed using the `RAGASRunner`, which wraps the RAGAS ≥ 0.2 `EvaluationDataset` API. The auxiliary LLM judge (`settings.ragas_judge_model`, default: `qwen2.5:7b`) is held constant across all four experimental conditions to ensure metric comparability — this is a key methodological control.
 
 The judge LLM is routed through local Ollama via `langchain_ollama.ChatOllama`. No external API calls are made.
 
@@ -613,7 +613,7 @@ class Timer:
 | `.evaluate(query, answer, contexts, ground_truth)` | method | Returns `dict` with three RAGAS metric scores |
 | `get_ragas_runner()` | function | Module-level singleton |
 
-**Judge model:** `settings.ragas_judge_model` (default `llama3`). Held constant across all four experimental conditions as a methodological control. RAGAS uses `langchain_ollama.ChatOllama` for LLM calls and `OllamaEmbeddings` for answer correctness embedding comparisons.
+**Judge model:** `settings.ragas_judge_model` (default `qwen2.5:7b`). Held constant across all four experimental conditions as a methodological control. RAGAS uses `langchain_ollama.ChatOllama` for LLM calls and `OllamaEmbeddings` for answer correctness embedding comparisons.
 
 ---
 

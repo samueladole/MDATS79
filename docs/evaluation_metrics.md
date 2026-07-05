@@ -160,15 +160,15 @@ RAGScope uses **RAGAS ≥ 0.2** via its `EvaluationDataset` API. Each query is w
 
 ### RAGAS Judge Model
 
-The auxiliary LLM used for all RAGAS metric computations is configured by `RAGAS_JUDGE_MODEL` (default: `llama3`).
+The auxiliary LLM used for all RAGAS metric computations is configured by `RAGAS_JUDGE_MODEL` (default: `qwen2.5:7b`).
 
 **Critical methodological control:** The judge model is held **constant across all four experimental conditions** (Conditions A, B, C, D). This ensures that differences in RAGAS scores between conditions reflect genuine differences in RAG pipeline performance, not differences in judge behaviour.
 
 ```
-Condition A: Llama3 + Dense   →  judge: llama3 (constant)
-Condition B: Llama3 + Hybrid  →  judge: llama3 (constant)
-Condition C: Qwen + Dense  →  judge: llama3 (constant)
-Condition D: Qwen + Hybrid →  judge: llama3 (constant)
+Condition A: Llama3 + Dense   →  judge: qwen2.5:7b (constant)
+Condition B: Llama3 + Hybrid  →  judge: qwen2.5:7b (constant)
+Condition C: Mistral + Dense  →  judge: qwen2.5:7b (constant)
+Condition D: Mistral + Hybrid →  judge: qwen2.5:7b (constant)
 ```
 
 **Implementation:** RAGAS is configured to use `langchain_ollama.ChatOllama` for judge calls and `langchain_ollama.OllamaEmbeddings` for answer correctness embedding comparisons. All judge calls route through the local Ollama service — no external API calls are made.

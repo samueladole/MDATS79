@@ -19,7 +19,7 @@ RRF constant k=60 follows the original Cormack et al. (2009) recommendation.
 
 This module implements Condition B and D of the 2×2 factorial experiment:
     * Condition B: Llama 3  + Hybrid retrieval
-    * Condition D: Qwen  + Hybrid retrieval
+    * Condition D: Mistral + Hybrid retrieval
 
 References
 ----------

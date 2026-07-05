@@ -17,7 +17,7 @@ st.set_page_config(page_title="Benchmark Results · RAGScope", layout="wide", pa
 st.title("📈 Benchmark Results")
 st.caption(
     "Results of the 200-query, 2×2 factorial experiment "
-    "(Llama3 vs Qwen × Dense vs Hybrid retrieval)."
+    "(Llama3 vs Mistral × Dense vs Hybrid retrieval)."
 )
 
 # ── Load results CSV ──────────────────────────────────────────────────────────
