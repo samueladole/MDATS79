@@ -26,6 +26,8 @@ ENV UV_COMPILE_BYTECODE=1 \
 # Install locked dependencies first (cache-friendly)
 COPY pyproject.toml uv.lock ./
 
+COPY LICENSE /app/LICENSE
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras --frozen --no-install-project --no-dev
 
@@ -35,6 +37,10 @@ COPY . .
 # Install project
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
+
+# ── optional notebooks (only if needed) ───────────
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra notebooks
 
 # Remove caches / pyc
 RUN find /app/.venv -type d -name "__pycache__" -exec rm -rf {} + \
