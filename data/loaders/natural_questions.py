@@ -99,7 +99,7 @@ def load_queries_and_passages(
         short_answer = ""
         annotations = example.get("annotations", {})
         for sa_list in annotations.get("short_answers", []):
-            if sa_list.get("text"):
+            if "text" in sa_list and len(sa_list.get("text", [])) > 0:
                 short_answer = clean(sa_list["text"][0])
                 break
 
@@ -170,7 +170,7 @@ def _extract_long_answer(example: dict) -> str:
     We reconstruct the passage text from the token strings.
     """
     annotations = example.get("annotations", {})
-    long_answer_candidates = annotations.get("long_answers", [{}])
+    long_answer_candidates = annotations.get("long_answer", [{}])
 
     doc_tokens = example.get("document", {}).get("tokens", {})
     token_texts = doc_tokens.get("token", [])
