@@ -30,7 +30,8 @@ from config.settings import settings
 from data.preprocessing.cleaner import clean, is_meaningful
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-DATASET_NAME = "natural_questions"
+DATASET_NAME = "google-research-datasets/natural_questions"
+DATASET_CONFIG = "dev"
 CACHE_DIR = Path("data/raw/natural_questions")
 QUERY_SAMPLE_SIZE = 40
 
@@ -80,6 +81,7 @@ def load_queries_and_passages(
 
     ds = load_dataset(
         DATASET_NAME,
+        DATASET_CONFIG,
         split="validation",
         cache_dir=str(CACHE_DIR)
     )

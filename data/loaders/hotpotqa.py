@@ -34,7 +34,7 @@ from config.settings import settings
 from data.preprocessing.cleaner import clean, is_meaningful
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-DATASET_NAME = "hotpot_qa"
+DATASET_NAME = "hotpotqa/hotpot_qa"
 DATASET_CONFIG = "fullwiki"
 CACHE_DIR = Path("data/raw/hotpotqa")
 

@@ -33,7 +33,7 @@ from config.settings import settings
 from data.preprocessing.cleaner import clean, is_meaningful
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-DATASET_NAME = "ms_marco"
+DATASET_NAME = "microsoft/ms_marco"
 DATASET_CONFIG = "v2.1"
 CACHE_DIR = Path("data/raw/msmarco")
 
