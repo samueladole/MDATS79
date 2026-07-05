@@ -86,8 +86,9 @@ from pipeline.embeddings import get_embedding_generator
 from pipeline.vectorstore import get_vector_store
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BM25_CORPUS_PATH = Path("data/bm25_corpus.jsonl")  # JSONL for streaming reads
-MANIFEST_PATH = Path("data/ingestion_manifest.json")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BM25_CORPUS_PATH = PROJECT_ROOT / "data" / "bm25_corpus.jsonl"  # JSONL for streaming reads
+MANIFEST_PATH = PROJECT_ROOT / "data" / "ingestion_manifest.json"
 
 # ── Defaults ───────────────────────────────────────────────────────────────────
 DEFAULT_EMBED_BATCH = 256  # chunks per embedding forward pass
