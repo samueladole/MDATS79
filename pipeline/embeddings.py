@@ -16,6 +16,7 @@ is loaded once per process and reused across all ingestion and query calls.
 
 from __future__ import annotations
 
+import torch
 import numpy as np
 from loguru import logger
 from sentence_transformers import SentenceTransformer
@@ -120,5 +121,5 @@ def get_embedding_generator() -> EmbeddingGenerator:
     """Return the module-level singleton, initialising it on first call."""
     global _generator
     if _generator is None:
-        _generator = EmbeddingGenerator()
+        _generator = EmbeddingGenerator(device=torch.device("mps") if torch.backends.mps.is_available() else None)
     return _generator
