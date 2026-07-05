@@ -147,6 +147,7 @@ class TelemetryLogger:
     def __init__(self, store_dir: Path | None = None) -> None:
         self.store_dir = store_dir or settings.telemetry_store_dir
         self.store_dir.mkdir(parents=True, exist_ok=True)
+        _logger.setLevel(settings.log_level)
 
     def log(self, record: dict) -> Path:
         """

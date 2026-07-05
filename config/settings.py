@@ -33,10 +33,9 @@ class Settings(BaseSettings):
 
     # ── Ollama ─────────────────────────────────────────────────────────────────
     ollama_base_url: str = Field(
-        default="http://host.docker.internal:12434",
+        default="http://host.docker.internal:11434",
         description="Base URL for the Ollama inference server.",
     )
-    ollama_port: int = Field(default=12434)
     ollama_timeout_seconds: int = Field(
         default=120,
         description="Seconds to wait for a single LLM generation response.",
@@ -57,7 +56,7 @@ class Settings(BaseSettings):
     )
     hybrid_dense_weight: float = Field(
         default=0.6,
-        description="Weight given to dense scores in hybrid retrieval (0–1).",
+        description="Weight given to dense scores in hybrid retrieval (0-1).",
     )
 
     # ── Embeddings ─────────────────────────────────────────────────────────────
@@ -77,7 +76,7 @@ class Settings(BaseSettings):
 
     # ── RAGAS ──────────────────────────────────────────────────────────────────
     ragas_judge_model: str = Field(
-        default="llama3",
+        default="qwen2.5:7b",
         description="LLM used as the RAGAS judge for metric computation.",
     )
     ragas_max_tokens: int = Field(default=2048)
