@@ -36,7 +36,8 @@ from data.preprocessing.cleaner import clean, is_meaningful
 # ── Constants ─────────────────────────────────────────────────────────────────
 DATASET_NAME = "hotpotqa/hotpot_qa"
 DATASET_CONFIG = "fullwiki"
-CACHE_DIR = Path("data/raw/hotpotqa")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CACHE_DIR = PROJECT_ROOT / "data" / "raw" / "hotpotqa"
 
 QUERY_SAMPLE_SIZE = 100
 BRIDGE_COUNT = 50

@@ -136,7 +136,9 @@ def main() -> None:
     logger.info("RAGScope — Dataset Downloader")
     logger.info("=" * 60)
 
-    Path("data/raw").mkdir(parents=True, exist_ok=True)
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    data_dir = PROJECT_ROOT / "data" / "raw"
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     jobs = {
         "MS MARCO": download_msmarco,

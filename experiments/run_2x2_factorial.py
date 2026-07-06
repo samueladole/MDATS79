@@ -43,7 +43,8 @@ from pipeline.rag import RAGPipeline
 
 app = typer.Typer(add_completion=False)
 
-RESULTS_DIR = Path("experiments/results")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RESULTS_DIR = PROJECT_ROOT / "experiments" / "results"
 
 # All 4 conditions in the 2×2 factorial design
 ALL_CONDITIONS: list[tuple[str, str]] = [

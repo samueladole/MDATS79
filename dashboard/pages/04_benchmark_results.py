@@ -21,7 +21,8 @@ st.caption(
 )
 
 # ── Load results CSV ──────────────────────────────────────────────────────────
-RESULTS_DIR = Path("experiments/results")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RESULTS_DIR = PROJECT_ROOT / "experiments" / "results"
 csv_files = sorted(RESULTS_DIR.glob("*.csv"), reverse=True) if RESULTS_DIR.exists() else []
 
 if not csv_files:
