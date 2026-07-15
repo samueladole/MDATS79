@@ -35,7 +35,7 @@ from data.preprocessing.cleaner import clean, is_meaningful
 # ── Constants ─────────────────────────────────────────────────────────────────
 DATASET_NAME = "microsoft/ms_marco"
 DATASET_CONFIG = "v2.1"
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CACHE_DIR = PROJECT_ROOT / "data" / "raw" / "msmarco"
 
 CORPUS_SAMPLE_SIZE = 50_000  # passages indexed into ChromaDB

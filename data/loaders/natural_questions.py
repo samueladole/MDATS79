@@ -32,7 +32,7 @@ from data.preprocessing.cleaner import clean, is_meaningful
 # ── Constants ─────────────────────────────────────────────────────────────────
 DATASET_NAME = "google-research-datasets/natural_questions"
 DATASET_CONFIG = "dev"
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CACHE_DIR = PROJECT_ROOT / "data" / "raw" / "natural_questions"
 QUERY_SAMPLE_SIZE = 40
 
