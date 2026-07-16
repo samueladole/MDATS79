@@ -13,7 +13,11 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.components.latency_chart import latency_time_series
-from dashboard.components.metric_cards import ragas_scorecard, telemetry_row
+from dashboard.components.metric_cards import (
+    ragas_scorecard,
+    similarity_meter_html,
+    telemetry_row,
+)
 
 st.set_page_config(page_title="Live Monitor · RAGScope", layout="wide", page_icon="📡")
 st.title("📡 Live Monitor")
@@ -138,10 +142,12 @@ if st.session_state.last_result:
     # ── Retrieved Chunks ──────────────────────────────────────────────────────
     st.subheader(f"Retrieved Chunks (top {len(result.retrieved_chunks)})")
     for i, chunk in enumerate(result.retrieved_chunks, 1):
+        st.markdown(
+            similarity_meter_html(chunk.score, label=f"Chunk {i} similarity"),
+            unsafe_allow_html=True,
+        )
         with st.expander(
-            f"Chunk {i} — score: {chunk.score:.3f} "
-            f"| dataset: {chunk.metadata.get('dataset', '?')} "
-            f"| {chunk.chunk_id}"
+            f"Chunk {i} — dataset: {chunk.metadata.get('dataset', '?')} | {chunk.chunk_id}"
         ):
             st.markdown(chunk.text)
 
