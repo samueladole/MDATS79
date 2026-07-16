@@ -119,10 +119,10 @@ def _build_report(df: pd.DataFrame, source_file: str) -> list[str]:
     ]
 
     pairs = [
-        ("llama3", "dense", "llama3", "hybrid", "LLM: Llama3 — Dense vs Hybrid"),
-        ("mistral", "dense", "mistral", "hybrid", "LLM: Mistral — Dense vs Hybrid"),
-        ("llama3", "dense", "mistral", "dense", "Retrieval: Dense — Llama3 vs Mistral"),
-        ("llama3", "hybrid", "mistral", "hybrid", "Retrieval: Hybrid — Llama3 vs Mistral"),
+        ("llama3", "dense", "mistral", "dense", "LLM effect (Dense)"),
+        ("llama3", "hybrid", "mistral", "hybrid", "LLM effect (Hybrid)"),
+        ("llama3", "dense", "llama3", "hybrid", "Retrieval effect (Llama3)"),
+        ("mistral", "dense", "mistral", "hybrid", "Retrieval effect (Mistral)"),
     ]
     for llm_a, ret_a, llm_b, ret_b, comparison in pairs:
         a_df = df[(df.get("llm_model", "") == llm_a) & (df.get("retrieval_strategy", "") == ret_a)]
