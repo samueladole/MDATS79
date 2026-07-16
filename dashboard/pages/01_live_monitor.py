@@ -7,11 +7,20 @@ real-time RAGAS scores, telemetry, and retrieved chunks.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
+import pandas as pd
 import streamlit as st
+
+from dashboard.components.latency_chart import latency_time_series
+from dashboard.components.metric_cards import ragas_scorecard, telemetry_row
 
 st.set_page_config(page_title="Live Monitor · RAGScope", layout="wide", page_icon="📡")
 st.title("📡 Live Monitor")
 st.caption("Submit a query and watch the full RAG pipeline execute in real time.")
+
+st.session_state.setdefault("session_history", [])
+st.session_state.setdefault("last_result", None)
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -26,6 +35,12 @@ with st.sidebar:
         height=180,
         placeholder="Used for answer_correctness computation.",
     )
+    if st.session_state.session_history:
+        st.divider()
+        if st.button("🗑 Clear Session History", width="stretch"):
+            st.session_state.session_history = []
+            st.session_state.last_result = None
+            st.rerun()
 
 # ── Query form ────────────────────────────────────────────────────────────────
 query_text = st.text_area(
@@ -37,10 +52,7 @@ query_text = st.text_area(
 run_btn = st.button("▶  Run Query", type="primary", width="stretch")
 
 if run_btn and query_text.strip():
-    from dashboard.components.latency_chart import latency_time_series
-    from dashboard.components.metric_cards import ragas_scorecard, telemetry_row
     from pipeline.rag import RAGPipeline
-    from telemetry.logger import get_telemetry_logger
 
     try:
         with st.spinner("Running RAG pipeline …"):
@@ -58,14 +70,46 @@ if run_btn and query_text.strip():
         st.error(f"Pipeline error: {exc}")
         st.stop()
 
+    st.session_state.last_result = {
+        "result": result,
+        "query_text": query_text,
+        "llm_choice": llm_choice,
+        "retrieval_choice": retrieval_choice,
+        "top_k": top_k,
+        "run_eval": run_eval,
+    }
+    st.session_state.session_history.append(
+        {
+            "timestamp_utc": datetime.now(UTC).isoformat(),
+            "retrieval_ms": result.retrieval_telemetry.get("retrieval_ms", 0),
+            "generation_ms": result.generation_response.generation_ms,
+            "e2e_ms": result.e2e_ms,
+        }
+    )
     st.success("Query complete.")
+elif run_btn:
+    st.warning("Please enter a query before running.")
+
+# ── Render the most recent result ─────────────────────────────────────────────
+# Reads from session_state rather than gating on run_btn, so the result stays
+# on screen across reruns triggered by other widgets (e.g. expanding a chunk
+# below) instead of disappearing the instant anything else is clicked.
+if st.session_state.last_result:
+    data = st.session_state.last_result
+    result = data["result"]
+
     st.divider()
+    st.caption(
+        f"Condition: **{data['llm_choice'].title()} + {data['retrieval_choice'].title()}** "
+        f"· top_k={data['top_k']} · RAGAS eval: {'on' if data['run_eval'] else 'off'} "
+        f"· Query: _{data['query_text'][:100]}_"
+    )
 
     # ── Answer ────────────────────────────────────────────────────────────────
     st.subheader("Generated Answer")
     st.markdown(
         f'<div style="background:#f8f9fa;padding:1rem;border-left:4px solid #522D80;'
-        f'border-radius:4px;">{result.answer}</div>',
+        f'border-radius:4px;color:#111;">{result.answer}</div>',
         unsafe_allow_html=True,
     )
     st.divider()
@@ -102,11 +146,20 @@ if run_btn and query_text.strip():
             st.markdown(chunk.text)
 
     st.divider()
+else:
+    st.info("Run a query above to see the generated answer, evaluation scores, and retrieved chunks.")
+    st.divider()
 
-    # ── Historical latency chart ───────────────────────────────────────────────
-    st.subheader("Session Latency History")
-    records = get_telemetry_logger().load_all(limit=50)
-    latency_time_series(records)
-
-elif run_btn:
-    st.warning("Please enter a query before running.")
+# ── Session latency history ───────────────────────────────────────────────────
+st.subheader("Pipeline Latency Over Time")
+st.caption(
+    "Latency for queries run in **this dashboard session** only — not the full "
+    "telemetry store, which also contains past benchmark experiment runs."
+)
+if st.session_state.session_history:
+    hist_df = pd.DataFrame(st.session_state.session_history)
+    st.caption(
+        f"{len(hist_df)} quer{'y' if len(hist_df) == 1 else 'ies'} this session · "
+        f"mean end-to-end latency {hist_df['e2e_ms'].mean():.0f} ms"
+    )
+latency_time_series(st.session_state.session_history)
