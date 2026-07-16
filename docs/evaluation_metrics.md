@@ -171,7 +171,9 @@ Condition C: Mistral + Dense  →  judge: qwen2.5:7b (constant)
 Condition D: Mistral + Hybrid →  judge: qwen2.5:7b (constant)
 ```
 
-**Implementation:** RAGAS is configured to use `langchain_ollama.ChatOllama` for judge calls and `langchain_ollama.OllamaEmbeddings` for answer correctness embedding comparisons. All judge calls route through the local Ollama service — no external API calls are made.
+**Implementation:** RAGAS is configured to use `langchain_ollama.ChatOllama` for judge calls, routed through the local Ollama service — no external API calls are made. This client is rebuilt fresh on every `evaluate()` call rather than cached: `ragas.evaluate()` runs each call inside its own `asyncio.run(...)` (a new event loop per call), and a `ChatOllama` instance's async HTTP connections stay bound to whichever loop first used them, so a cached instance shared across calls fails with `RuntimeError: Event loop is closed` from the second call onward.
+
+Embedding comparisons for `answer_correctness` reuse the pipeline's own `all-MiniLM-L6-v2` model (`pipeline/embeddings.py`) via a small `Embeddings` adapter, **not** `langchain_ollama.OllamaEmbeddings` against the judge model — `qwen2.5:7b` is a chat model, and Ollama's embeddings endpoint rejects a model that wasn't loaded in embedding-serving mode (`This server does not support embeddings. Start it with --embeddings`). Unlike the judge LLM, this embeddings adapter is synchronous and holds no event-loop-bound resources, so it's built once and reused across calls.
 
 ```python
 from evaluation.ragas_runner import RAGASRunner
@@ -198,7 +200,7 @@ The following limitations are acknowledged in the dissertation and should be con
 
 **Reference-free vs. reference-based:** Context relevance and faithfulness are reference-free — they do not require ground-truth answers. Answer correctness is reference-based and therefore only meaningful when a high-quality ground truth is available. The quality of ground-truth annotations varies across the three benchmark datasets.
 
-**Computational cost:** RAGAS metric computation adds approximately 3–10 seconds per query depending on judge model speed and context length, because each metric requires at least one additional LLM call. This latency is not included in the `generation_ms` telemetry field — it is evaluation overhead, not pipeline latency.
+**Computational cost:** RAGAS metric computation adds substantial latency per query — observed in the tens of seconds during development, depending on judge model speed and context length, because each metric requires at least one additional LLM call. This latency is measured separately as `evaluation_ms` (not folded into `generation_ms`, which is generation-only), but it **is** included in `e2e_ms` and often dominates it — evaluation is real pipeline latency from an operational standpoint, even though it's conceptually a distinct concern from generation. See [Latency Metrics](#latency-metrics) for the full breakdown.
 
 ---
 
@@ -285,12 +287,14 @@ All latency measurements use Python's `time.perf_counter()`, which provides sub-
 | Metric | Field name | Unit | Description |
 |---|---|---|---|
 | Embed query latency | `embed_query_ms` | ms | Time to encode the user query into a 384d vector |
-| Vector search latency | `vector_search_ms` | ms | ChromaDB HNSW approximate nearest-neighbour search |
-| BM25 search latency | `bm25_search_ms` | ms | BM25Okapi scoring over the in-memory corpus |
-| RRF fusion latency | `rrf_fusion_ms` | ms | Reciprocal Rank Fusion merge operation |
-| Total retrieval latency | `retrieval_ms` | ms | Sum of all retrieval substeps |
+| Vector search latency | `vector_search_ms` | ms | ChromaDB HNSW approximate nearest-neighbour search — **dense retrieval only**; 0 for hybrid |
+| Dense candidate search latency | `dense_search_ms` | ms | ChromaDB candidate search prior to fusion — **hybrid retrieval only**; 0 for dense |
+| BM25 search latency | `bm25_search_ms` | ms | BM25Okapi scoring over the in-memory corpus — **hybrid retrieval only**; 0 for dense |
+| RRF fusion latency | `rrf_fusion_ms` | ms | Reciprocal Rank Fusion merge operation — **hybrid retrieval only**; 0 for dense |
+| Total retrieval latency | `retrieval_ms` | ms | Sum of the applicable retrieval substeps above |
 | Generation latency | `generation_ms` | ms | Ollama `/api/generate` wall-clock time (includes prompt processing + token generation) |
-| End-to-end latency | `e2e_ms` | ms | Total pipeline latency from query receipt to telemetry write |
+| Evaluation latency | `evaluation_ms` | ms | Wall-clock time inside the RAGAS `evaluate()` call; 0 if evaluation was skipped |
+| End-to-end latency | `e2e_ms` | ms | Total pipeline latency — retrieval + generation + evaluation — taken from the `Timer` wrapping the whole of `RAGPipeline.query()` |
 
 **Important:** `generation_ms` is reported by measuring wall-clock time around the `httpx` POST call to Ollama's `/api/generate` endpoint. It includes:
 - Prompt tokenisation by the model
@@ -298,7 +302,7 @@ All latency measurements use Python's `time.perf_counter()`, which provides sub-
 - Autoregressive token generation
 - HTTP round-trip overhead
 
-It does **not** include RAGAS evaluation time, which is evaluation overhead rather than pipeline latency.
+It does **not** include RAGAS evaluation time — that is measured separately as `evaluation_ms`, which is **included in `e2e_ms`**. In practice, evaluation latency routinely dominates total latency: it requires one or more auxiliary judge-LLM calls (context relevance, faithfulness, and optionally answer correctness), each comparable in cost to the generation call itself. A query with ~5s of generation time observed during development took ~36s of evaluation time — evaluation was the majority of `e2e_ms`, not a rounding error. Earlier versions of this pipeline computed `e2e_ms` as `retrieval_ms + generation_ms` only, silently dropping evaluation time from the persisted telemetry record; this has been corrected so `e2e_ms` reflects true wall-clock latency.
 
 **Dense retrieval latency breakdown:**
 ```
@@ -308,6 +312,12 @@ retrieval_ms = embed_query_ms + vector_search_ms
 **Hybrid retrieval latency breakdown:**
 ```
 retrieval_ms = embed_query_ms + dense_search_ms + bm25_search_ms + rrf_fusion_ms
+```
+
+**Full end-to-end breakdown:**
+```
+e2e_ms = retrieval_ms + generation_ms + evaluation_ms + negligible overhead
+         (token counting, telemetry serialisation — typically <5ms)
 ```
 
 ### Token Metrics
@@ -604,16 +614,17 @@ Strategy: Hybrid retrieval
    starring Forest Whitaker who won Best Actor at the 2006 Academy Awards."
 
 ─── Telemetry ───────────────────────────────────────────────
-  embed_query_ms :   38.2 ms
-  bm25_search_ms :   12.1 ms
-  rrf_fusion_ms  :    2.3 ms
-  retrieval_ms   :   52.6 ms
+  embed_query_ms :    38.2 ms
+  bm25_search_ms :    12.1 ms
+  rrf_fusion_ms  :     2.3 ms
+  retrieval_ms   :    52.6 ms
   generation_ms  : 4,210.0 ms
-  e2e_ms         : 4,262.6 ms
-  prompt_tokens  :     923
-  completion_tokens:    47
-  total_tokens   :     970
-  estimated_cost :  $0.000000
+  evaluation_ms  :18,340.0 ms   ← 3 judge-LLM calls (context relevance, faithfulness, correctness)
+  e2e_ms         :22,602.6 ms   ← retrieval + generation + evaluation
+  prompt_tokens  :      923
+  completion_tokens:     47
+  total_tokens   :      970
+  estimated_cost :   $0.000000
 
 ─── RAGAS Evaluation ────────────────────────────────────────
   context_relevance   : 0.62   ← moderate; chunk [1] incorrect year is noise
