@@ -41,14 +41,20 @@ def build_record(
     query_type: str,
     llm_model: str,
     retrieval_strategy: str,
-    # Retrieval telemetry
+    # Retrieval telemetry — the full dict returned by DenseRetriever /
+    # HybridRetriever.retrieve(), so every per-stage timing it carries
+    # (embed_query_ms, vector_search_ms, or dense_search_ms / bm25_search_ms /
+    # rrf_fusion_ms for hybrid) is persisted, not just the two fields the
+    # record schema originally singled out.
     retrieved_chunks: list[RetrievedChunk],
-    retrieval_ms: float,
-    embed_query_ms: float,
+    retrieval_telemetry: dict,
     # Generation telemetry
     answer: str,
     generation_ms: float,
+    e2e_ms: float,
     token_usage: TokenUsage,
+    # Evaluation telemetry (0 if RAGAS was skipped for this query)
+    evaluation_ms: float = 0.0,
     # Evaluation scores (populated after RAGAS runs)
     context_relevance: float | None = None,
     answer_faithfulness: float | None = None,
@@ -73,7 +79,6 @@ def build_record(
         simplify downstream pandas ``pd.read_json`` / ``pd.DataFrame`` usage.
     """
     now = datetime.now(UTC)
-    e2e_ms = round(retrieval_ms + generation_ms, 2)
 
     return {
         # ── Identity ──────────────────────────────────────────────────────────
@@ -104,12 +109,17 @@ def build_record(
             }
             for c in retrieved_chunks
         ],
-        "embed_query_ms": round(embed_query_ms, 2),
-        "retrieval_ms": round(retrieval_ms, 2),
+        "embed_query_ms": round(retrieval_telemetry.get("embed_query_ms", 0.0), 2),
+        "vector_search_ms": round(retrieval_telemetry.get("vector_search_ms", 0.0), 2),
+        "dense_search_ms": round(retrieval_telemetry.get("dense_search_ms", 0.0), 2),
+        "bm25_search_ms": round(retrieval_telemetry.get("bm25_search_ms", 0.0), 2),
+        "rrf_fusion_ms": round(retrieval_telemetry.get("rrf_fusion_ms", 0.0), 2),
+        "retrieval_ms": round(retrieval_telemetry.get("retrieval_ms", 0.0), 2),
         # ── Generation ────────────────────────────────────────────────────────
         "answer": answer,
         "generation_ms": round(generation_ms, 2),
-        "e2e_ms": e2e_ms,
+        "evaluation_ms": round(evaluation_ms, 2),
+        "e2e_ms": round(e2e_ms, 2),
         "prompt_tokens": token_usage.prompt_tokens,
         "completion_tokens": token_usage.completion_tokens,
         "total_tokens": token_usage.total_tokens,
