@@ -24,16 +24,26 @@ CONDITION_COLORS = dict(zip(CONDITION_ORDER, ["#2a78d6", "#008300", "#e87ba4", "
 
 def latency_time_series(records: list[dict]) -> None:
     """
-    Render a time-series line chart of end-to-end latency per query.
-    Overlays retrieval and generation latency as stacked areas.
+    Render a time-series chart of end-to-end latency per query, overlaid
+    with the retrieval and generation stage breakdown for the same queries.
+
+    Callers are expected to pass a query-scoped set of records (e.g. the
+    current dashboard session's queries) — this function does not filter
+    or scope the input; it plots whatever it's given.
     """
     if not records:
-        st.info("No telemetry records to display.")
+        st.info("No queries yet this session.")
         return
 
     df = pd.DataFrame(records)
     if "timestamp_utc" not in df.columns:
         st.warning("Telemetry records missing timestamps.")
+        return
+
+    required_cols = ["retrieval_ms", "generation_ms", "e2e_ms"]
+    missing_cols = [c for c in required_cols if c not in df.columns]
+    if missing_cols:
+        st.warning(f"Telemetry records missing: {', '.join(missing_cols)}.")
         return
 
     df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"])
@@ -44,44 +54,50 @@ def latency_time_series(records: list[dict]) -> None:
     fig.add_trace(
         go.Scatter(
             x=df["timestamp_utc"],
-            y=df.get("retrieval_ms", []),
+            y=df["retrieval_ms"],
             name="Retrieval",
-            mode="lines",
+            mode="lines+markers",
             line=dict(color=TEAL, width=1.5),
+            marker=dict(size=6),
             fill="tozeroy",
             fillcolor="rgba(23,162,184,0.15)",
+            hovertemplate="Retrieval: %{y:.0f} ms<extra></extra>",
         )
     )
     fig.add_trace(
         go.Scatter(
             x=df["timestamp_utc"],
-            y=df.get("generation_ms", []),
+            y=df["generation_ms"],
             name="Generation",
-            mode="lines",
+            mode="lines+markers",
             line=dict(color=PURPLE, width=1.5),
+            marker=dict(size=6),
             fill="tozeroy",
             fillcolor="rgba(82,45,128,0.15)",
+            hovertemplate="Generation: %{y:.0f} ms<extra></extra>",
         )
     )
     fig.add_trace(
         go.Scatter(
             x=df["timestamp_utc"],
-            y=df.get("e2e_ms", []),
+            y=df["e2e_ms"],
             name="End-to-End",
-            mode="lines",
+            mode="lines+markers",
             line=dict(color=AMBER, width=2, dash="dot"),
+            marker=dict(size=6),
+            hovertemplate="End-to-End: %{y:.0f} ms<extra></extra>",
         )
     )
 
     fig.update_layout(
-        title="Pipeline Latency Over Time",
         xaxis_title="Time (UTC)",
         yaxis_title="Latency (ms)",
-        legend=dict(orientation="h", y=1.02),
+        legend=dict(orientation="h", y=1.15),
         height=350,
-        margin=dict(l=0, r=0, t=40, b=0),
+        margin=dict(l=0, r=0, t=30, b=0),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
+        hovermode="x unified",
     )
     st.plotly_chart(fig, width="stretch")
 
