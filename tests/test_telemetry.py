@@ -92,10 +92,10 @@ class TestTelemetryLogger:
             llm_model="llama3",
             retrieval_strategy="dense",
             retrieved_chunks=[chunk],
-            retrieval_ms=120.0,
-            embed_query_ms=30.0,
+            retrieval_telemetry={"retrieval_ms": 120.0, "embed_query_ms": 30.0},
             answer="NLP is Natural Language Processing.",
             generation_ms=800.0,
+            e2e_ms=920.0,
             token_usage=usage,
         )
         path = logger.log(record)
@@ -126,10 +126,10 @@ class TestTelemetryLogger:
                 llm_model="llama3",
                 retrieval_strategy="dense",
                 retrieved_chunks=[chunk],
-                retrieval_ms=10.0,
-                embed_query_ms=5.0,
+                retrieval_telemetry={"retrieval_ms": 10.0, "embed_query_ms": 5.0},
                 answer="Answer",
                 generation_ms=100.0,
+                e2e_ms=110.0,
                 token_usage=usage,
             )
             logger.log(record)
