@@ -65,6 +65,7 @@ st.divider()
 
 # ── Corpus composition ────────────────────────────────────────────────────────
 st.subheader("Corpus Composition")
+st.caption("How the indexed chunks split across the three source benchmark datasets.")
 
 dataset_counts = {ds_key: vector_store.count_where({"dataset": ds_key}) for ds_key in DATASET_LABELS}
 other_count = total_chunks - sum(dataset_counts.values())
@@ -101,6 +102,10 @@ st.divider()
 
 # ── Chunk browser ──────────────────────────────────────────────────────────────
 st.subheader("Chunk Browser")
+st.caption(
+    "A direct browse of stored chunks by metadata filter — rows are in storage order, "
+    "not ranked by similarity. Use Semantic Search Preview below to see similarity-ranked results."
+)
 
 available_labels = ["All"] + [DATASET_LABELS[k] for k, v in dataset_counts.items() if v > 0]
 reverse_label_map = {v: k for k, v in DATASET_LABELS.items()}

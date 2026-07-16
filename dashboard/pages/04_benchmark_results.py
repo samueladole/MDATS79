@@ -73,6 +73,7 @@ QUALITY_METRICS = ["context_relevance", "answer_faithfulness", "answer_correctne
 
 # ── Summary statistics ────────────────────────────────────────────────────────
 st.subheader("Summary Statistics by Condition")
+st.caption("Mean, standard deviation, and median for each metric, grouped by experimental condition.")
 
 agg = df.groupby("condition")[METRICS].agg(["mean", "std", "median"]).round(3)
 st.dataframe(agg, width="stretch")
@@ -103,6 +104,10 @@ st.divider()
 
 # ── Score distributions ───────────────────────────────────────────────────────
 st.subheader("Score Distributions")
+st.caption(
+    "Box shows the interquartile range and median for the selected metric; whiskers "
+    "extend to the min/max excluding outliers, dots are individual outlier queries."
+)
 metric_choice = st.selectbox(
     "Metric",
     options=METRICS,
@@ -223,6 +228,10 @@ st.divider()
 
 # ── Latency & token cost breakdown ────────────────────────────────────────────
 st.subheader("Latency & Token Cost Breakdown")
+st.caption(
+    "Left: mean end-to-end latency split into retrieval vs. generation time per condition. "
+    "Right: mean prompt vs. completion token counts per condition."
+)
 
 col_a, col_b = st.columns(2)
 
@@ -361,6 +370,11 @@ st.divider()
 # ── Per-dataset breakdown ─────────────────────────────────────────────────────
 if "dataset" in df.columns:
     st.subheader("Performance by Dataset")
+    st.caption(
+        "Mean quality scores per source benchmark dataset (MS MARCO / Natural Questions / "
+        "HotpotQA) × condition — useful for spotting whether a condition struggles on a "
+        "specific query type (e.g. HotpotQA's multi-hop reasoning)."
+    )
     dataset_agg = (
         df.groupby(["dataset", "condition"])[
             ["context_relevance", "answer_faithfulness", "hallucination_risk"]
