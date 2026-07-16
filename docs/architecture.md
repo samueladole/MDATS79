@@ -282,9 +282,15 @@ with Timer("retrieval") as t:
 | `dataset` | str | Source benchmark dataset |
 | `llm_model` | str | `llama3` or `mistral` |
 | `retrieval_strategy` | str | `dense` or `hybrid` |
-| `retrieval_ms` | float | Total retrieval wall-clock time |
+| `embed_query_ms` | float | Query embedding time |
+| `vector_search_ms` | float | ChromaDB ANN search time (dense retrieval only; 0 for hybrid) |
+| `dense_search_ms` | float | Dense candidate search time (hybrid retrieval only; 0 for dense) |
+| `bm25_search_ms` | float | BM25 scoring time (hybrid retrieval only; 0 for dense) |
+| `rrf_fusion_ms` | float | Reciprocal Rank Fusion merge time (hybrid retrieval only; 0 for dense) |
+| `retrieval_ms` | float | Total retrieval wall-clock time (sum of the applicable sub-stages above) |
 | `generation_ms` | float | LLM generation wall-clock time |
-| `e2e_ms` | float | End-to-end pipeline latency |
+| `evaluation_ms` | float | RAGAS evaluation wall-clock time (0 if evaluation was skipped) |
+| `e2e_ms` | float | End-to-end pipeline latency — retrieval + generation + evaluation, taken directly from the `Timer` wrapping the whole of `RAGPipeline.query()`, not recomputed from the other fields |
 | `prompt_tokens` | int | Tokens in the full prompt |
 | `completion_tokens` | int | Tokens in the generated response |
 | `estimated_cost_usd` | float | Cost estimate in USD |
@@ -294,6 +300,8 @@ with Timer("retrieval") as t:
 | `hallucination_risk` | float | Composite risk score [0, 1] |
 | `retrieved_chunks` | list | Top-k chunk IDs, texts (truncated), and scores |
 
+> **Note:** `e2e_ms` includes RAGAS evaluation time, which can dominate total latency (the judge LLM call(s) routinely take several seconds to tens of seconds — often longer than retrieval and generation combined). Records written before this was corrected only sum `retrieval_ms + generation_ms` and will understate `e2e_ms` for queries that ran evaluation; the dashboard's Query Explorer flags this for older records where it's detectable.
+
 ---
 
 ### Stage 4 — Evaluation
@@ -302,7 +310,9 @@ with Timer("retrieval") as t:
 
 **RAGAS metrics** are computed using the `RAGASRunner`, which wraps the RAGAS ≥ 0.2 `EvaluationDataset` API. The auxiliary LLM judge (`settings.ragas_judge_model`, default: `qwen2.5:7b`) is held constant across all four experimental conditions to ensure metric comparability — this is a key methodological control.
 
-The judge LLM is routed through local Ollama via `langchain_ollama.ChatOllama`. No external API calls are made.
+The judge LLM is routed through local Ollama via `langchain_ollama.ChatOllama`, rebuilt fresh on every `evaluate()` call rather than cached on the runner. `ChatOllama` opens its async HTTP client once at construction, but `ragas.evaluate()` runs each call inside its own `asyncio.run(...)` (a new event loop every time); a cached client's connections stay bound to whichever loop first used them, so a shared instance across calls fails with `RuntimeError: Event loop is closed` on the second and every subsequent call. Building a new `ChatOllama` per call keeps it bound to the loop that will actually use it.
+
+Embeddings for `AnswerCorrectness` (semantic similarity to the ground truth) reuse the pipeline's own `all-MiniLM-L6-v2` `EmbeddingGenerator` (`pipeline/embeddings.py`) via a small LangChain `Embeddings` adapter, rather than `langchain_ollama.OllamaEmbeddings` against the judge model — the judge is a chat model (`qwen2.5:7b`), and Ollama's embeddings endpoint rejects a model that wasn't loaded in embedding-serving mode. This adapter is synchronous and holds no event-loop-bound resources, so unlike the judge LLM it's safe to build once and reuse across calls. No external API calls are made anywhere in the evaluation path.
 
 **Statistical analysis** (`evaluation/metrics.py`) is implemented in pure Python (no numpy dependency) to keep the module testable without the full ML stack:
 
@@ -317,22 +327,28 @@ The judge LLM is routed through local Ollama via `langchain_ollama.ChatOllama`. 
 **Entry point:** `dashboard/app.py`  
 **URL:** `http://localhost:8501`
 
-The dashboard is a four-page Streamlit application providing real-time and retrospective views over the telemetry store.
+The dashboard is a five-page Streamlit application providing real-time and retrospective views over the telemetry store and the ChromaDB collection.
 
 | Page | File | Purpose |
 |---|---|---|
-| Live Monitor | `01_live_monitor.py` | Submit queries interactively; display scores and chunks in real time |
-| Comparison | `02_comparison.py` | RAGAS heatmaps and Cohen's d table across all four conditions |
-| Query Explorer | `03_query_explorer.py` | Per-query drill-down: chunks, scores, latency decomposition, raw JSON |
-| Benchmark Results | `04_benchmark_results.py` | Load benchmark CSVs; box plots, scatter, per-dataset breakdown |
+| Live Monitor | `01_live_monitor.py` | Submit queries interactively; results persist across reruns (e.g. expanding a chunk) instead of gating on button state; per-session (not global) latency history; per-query pipeline flow Sankey |
+| Comparison | `02_comparison.py` | RAGAS heatmaps and Cohen's d table across all four conditions; flags missing/sparse conditions instead of silently reporting a false zero effect size |
+| Query Explorer | `03_query_explorer.py` | Per-query drill-down: chunks, scores, latency decomposition, pipeline flow Sankey, raw JSON |
+| Benchmark Results | `04_benchmark_results.py` | Load benchmark CSVs; grouped bar of mean RAGAS scores, box plots, hallucination risk band distribution, Cohen's d effect-size chart, latency/token breakdown, Pearson correlation heatmap, per-dataset breakdown |
+| Knowledge Base | `05_knowledge_base.py` | Read-only ChromaDB browser: collection stats, corpus composition by dataset, paginated chunk browser, semantic search preview |
 
 Shared visualisation components live in `dashboard/components/`:
 
 | Component | Description |
 |---|---|
-| `metric_cards.py` | 4-column RAGAS scorecard; 5-column telemetry row; risk gauge |
-| `latency_chart.py` | Time-series, histogram, grouped box-plot (Plotly) |
+| `metric_cards.py` | Modern colour-graded RAGAS scorecard tiles (icon, value, meter bar, quality badge); `similarity_meter_html()` for chunk similarity bars; 6-column telemetry row (adds Evaluation Latency) |
+| `latency_chart.py` | Time-series, histogram, grouped box-plot, and `pipeline_flow_sankey()` — a theme-aware Sankey diagram of one query's full stage-by-stage latency breakdown (Plotly) |
 | `heatmap.py` | RAGAS score heatmap; token usage heatmap (Plotly) |
+
+**Colour conventions used throughout the dashboard:**
+- Experimental conditions (Llama3/Mistral × Dense/Hybrid) use a fixed categorical colour per condition, never reassigned by row order.
+- Continuous scores (chunk similarity, RAGAS scorecard tiles) use a red→amber→green gradient — green high / red low, inverted for Hallucination Risk where lower is better. Colour lives only on marks (bars, badges) and never on plain text, since a data colour used as text colour can be illegible depending on value and theme.
+- Hallucination risk bands (LOW/MEDIUM/HIGH) use the fixed banding from `evaluation/hallucination_score.py` everywhere they appear, rather than a second, differently-thresholded scheme.
 
 ---
 
@@ -461,11 +477,19 @@ pipeline/vectorstore.py                     │
 | `.add_chunks(chunks, embeddings)` | method | Batch upsert; idempotent by chunk_id |
 | `.query(query_embedding, top_k)` | method | Cosine ANN search; returns `list[RetrievedChunk]` |
 | `.count()` | method | Total chunks in the collection |
+| `.count_where(where)` | method | Count chunks matching a metadata filter, without transferring documents/embeddings |
+| `.get_chunks(where, limit, offset)` | method | Plain metadata-filtered browse (not similarity-ranked) — powers the Knowledge Base chunk browser; returned `RetrievedChunk.score` is always 0.0 |
+| `.embedding_dimension()` | method | Dimensionality of a stored embedding, read directly from the collection (`None` if empty) |
+| `.delete_chunks(chunk_ids)` | method | Delete chunks by ID |
 | `.reset()` | method | Delete and recreate collection (destructive) |
 | `RetrievedChunk` | dataclass | `chunk_id`, `text`, `score` (cosine sim [0,1]), `metadata` |
 | `get_vector_store()` | function | Module-level singleton |
 
 **Distance conversion:** ChromaDB returns cosine distance ∈ [0, 2]. The wrapper converts to similarity via `max(0, 1 − distance/2)` so scores are always in [0, 1].
+
+**Stale-collection recovery:** every method above is wrapped by a `_reconnect_on_stale_collection` decorator. `get_or_create_collection` caches a handle bound to the collection's UUID at connect time; if another process deletes and recreates the collection under the same name (e.g. `ingestion.py --reset`, or `VectorStore.reset()` from a different session) while this instance is alive, the server assigns a new UUID and the cached handle starts raising `NotFoundError` on every call even though a collection with that name exists again. The decorator catches this, re-fetches the collection by name, and retries once — transparent to the caller.
+
+> A previous `list_documents()` method (a full-collection scan via a dummy zero-vector similarity query, reading a `metadata["source"]` field that nothing in the ingestion pipeline ever sets) has been removed — it was dead code backing a non-functional "browse documents" UI that has since been replaced by the Knowledge Base page's real, metadata-filtered browser above.
 
 ---
 
@@ -561,10 +585,12 @@ Applying the correct template is essential — supplying a completion-style prom
 | `RAGPipeline` | class | End-to-end query orchestrator |
 | `RAGPipeline.__init__(llm_model, retrieval_strategy, ...)` | method | Initialises retriever, LLM client, RAGAS runner |
 | `RAGPipeline.query(query_text, ground_truth, ...)` | method | Full pipeline execution; returns `RAGResult` |
-| `RAGResult` | dataclass | Complete query result including all scores and telemetry |
-| `RAGResult.summary()` | method | Formatted terminal output string |
+| `RAGResult` | dataclass | Complete query result including all scores and telemetry, incl. `evaluation_ms` |
+| `RAGResult.summary()` | method | Formatted terminal output string (includes an Evaluation latency line) |
 
 **`RAGPipeline` constructor behaviour:** if `retrieval_strategy == "hybrid"`, it loads `data/bm25_corpus.jsonl` via `load_bm25_corpus()` and calls `HybridRetriever.build_bm25_index()` immediately. This means the BM25 index build time is incurred once per pipeline instantiation, not per query.
+
+**Timing scope:** `query()` wraps the entire method — retrieval, generation, token counting, *and* RAGAS evaluation — in a single `Timer("evaluation")`-nested-in-`Timer("e2e")` structure, and passes the resulting `e2e_timer.elapsed_ms` straight through to `build_record()` and `RAGResult.e2e_ms`. `evaluation_ms` is timed separately around the RAGAS call so it's visible on its own (e.g. in the dashboard's pipeline flow Sankey) rather than only implicit in the difference between `e2e_ms` and the other stages.
 
 ---
 
@@ -603,6 +629,8 @@ class Timer:
 | `.count()` | method | Number of JSON files in the store |
 | `get_telemetry_logger()` | function | Module-level singleton |
 
+**`build_record()` signature:** takes the *whole* `retrieval_telemetry` dict returned by `DenseRetriever`/`HybridRetriever.retrieve()` (not two cherry-picked fields), so every per-stage sub-timing it carries — `embed_query_ms`, and whichever of `vector_search_ms` or `dense_search_ms`/`bm25_search_ms`/`rrf_fusion_ms` applies — is persisted to the JSON record. It also takes `e2e_ms` and `evaluation_ms` directly from the caller's own timers rather than recomputing `e2e_ms` from `retrieval_ms + generation_ms` — the original implementation did this recomputation, which silently dropped RAGAS evaluation time from every persisted record (evaluation can be the dominant share of `e2e_ms`).
+
 ---
 
 ### `evaluation/ragas_runner.py`
@@ -613,7 +641,7 @@ class Timer:
 | `.evaluate(query, answer, contexts, ground_truth)` | method | Returns `dict` with three RAGAS metric scores |
 | `get_ragas_runner()` | function | Module-level singleton |
 
-**Judge model:** `settings.ragas_judge_model` (default `qwen2.5:7b`). Held constant across all four experimental conditions as a methodological control. RAGAS uses `langchain_ollama.ChatOllama` for LLM calls and `OllamaEmbeddings` for answer correctness embedding comparisons.
+**Judge model:** `settings.ragas_judge_model` (default `qwen2.5:7b`). Held constant across all four experimental conditions as a methodological control. RAGAS uses `langchain_ollama.ChatOllama` for LLM calls, rebuilt fresh per `evaluate()` call (see Stage 4 above for why — a cached client's async connections break across `ragas.evaluate()`'s per-call event loops). Embeddings for answer correctness use the pipeline's own `all-MiniLM-L6-v2` model via a small `Embeddings` adapter (`_SentenceTransformerEmbeddings`), not `OllamaEmbeddings` against the judge model — `qwen2.5:7b` is a chat model and Ollama's embeddings endpoint rejects it.
 
 ---
 
@@ -623,7 +651,7 @@ class Timer:
 |---|---|---|
 | `compute_hallucination_risk(faithfulness, context_relevance)` | function | Returns composite risk score or `None` if either input is `None` |
 | `risk_band(score)` | function | `"LOW"` / `"MEDIUM"` / `"HIGH"` / `"UNKNOWN"` |
-| `risk_colour(score)` | function | Hex colour for dashboard gauge (`#2ecc71` / `#f39c12` / `#e74c3c`) |
+| `risk_colour(score)` | function | Hex colour for the risk band (`#2ecc71` / `#f39c12` / `#e74c3c` / `#95a5a6`) |
 | `FAITHFULNESS_WEIGHT` | constant | `0.6` |
 | `CONTEXT_RELEVANCE_WEIGHT` | constant | `0.4` |
 | `LOW_THRESHOLD` | constant | `0.35` |
@@ -659,10 +687,11 @@ The Streamlit app uses multi-page routing via the `dashboard/pages/` directory. 
 | Page | Route | Key imports |
 |---|---|---|
 | Home | `/` | `config/settings`, `telemetry/logger` |
-| Live Monitor | `01_live_monitor` | `pipeline/rag.RAGPipeline`, all component modules |
+| Live Monitor | `01_live_monitor` | `pipeline/rag.RAGPipeline`, all component modules incl. `latency_chart.pipeline_flow_sankey` |
 | Comparison | `02_comparison` | `telemetry/logger`, `evaluation/metrics`, `dashboard/components/heatmap` |
-| Query Explorer | `03_query_explorer` | `telemetry/logger`, `evaluation/hallucination_score`, all component modules |
-| Benchmark Results | `04_benchmark_results` | `pandas`, `plotly.express` |
+| Query Explorer | `03_query_explorer` | `telemetry/logger`, `evaluation/hallucination_score`, all component modules incl. `latency_chart.pipeline_flow_sankey` |
+| Benchmark Results | `04_benchmark_results` | `pandas`, `plotly.express`, `evaluation/metrics` |
+| Knowledge Base | `05_knowledge_base` | `pipeline/vectorstore.get_vector_store`, `pipeline/embeddings.get_embedding_generator` |
 
 ---
 
@@ -691,7 +720,7 @@ Typer CLI application. Reads a benchmark CSV and writes a Markdown report with f
 
 **Single entry point per concern.** Every aspect of the system has one canonical entry point: `RAGPipeline.query()` for query execution, `ingest_corpus()` for data preparation, `TelemetryLogger.log()` for persistence. This makes the system easy to test and reason about.
 
-**Singletons for expensive resources.** The embedding model, vector store client, RAGAS runner, and telemetry logger are all lazily initialised singletons (`get_*()` functions). This prevents redundant model loading and database connections across the pipeline.
+**Singletons for expensive resources.** The embedding model, vector store client, RAGAS runner, and telemetry logger are all lazily initialised singletons (`get_*()` functions). This prevents redundant model loading and database connections across the pipeline. The one deliberate exception is `RAGASRunner`'s judge LLM: the `RAGASRunner` object itself is a singleton, but its `ChatOllama` client is rebuilt on every `evaluate()` call rather than cached, because RAGAS runs each call in its own asyncio event loop and a cached async client's connections don't survive across loops (see Stage 4 in the pipeline stages section).
 
 **Flat telemetry schema.** Every telemetry record uses a flat dict rather than nested objects, simplifying `pandas.read_json()` ingestion and downstream analysis without transformation steps.
 
@@ -730,7 +759,7 @@ All settings live in `.env` (see `.env.example`). Key values:
 | `RETRIEVAL_STRATEGY` | `hybrid` | `RAGPipeline` default |
 | `TOP_K` | `5` | Both retrievers |
 | `HYBRID_DENSE_WEIGHT` | `0.6` | `HybridRetriever` RRF |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | `EmbeddingGenerator` |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | `EmbeddingGenerator`; also backs `RAGASRunner`'s answer-correctness embeddings |
 | `CHROMA_HOST` | `chromadb` | `VectorStore` |
 | `CHROMA_COLLECTION` | `ragscope_corpus` | `VectorStore` |
 | `RAGAS_JUDGE_MODEL` | `llama3` | `RAGASRunner` |
