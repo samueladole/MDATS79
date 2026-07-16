@@ -14,7 +14,11 @@ st.set_page_config(page_title="Query Explorer · RAGScope", layout="wide", page_
 st.title("🔍 Query Explorer")
 st.caption("Select any logged query to inspect its full telemetry trace.")
 
-from dashboard.components.metric_cards import ragas_scorecard, telemetry_row
+from dashboard.components.metric_cards import (
+    ragas_scorecard,
+    similarity_meter_html,
+    telemetry_row,
+)
 from telemetry.logger import get_telemetry_logger
 
 records = get_telemetry_logger().load_all()
@@ -88,10 +92,11 @@ chunks = record.get("retrieved_chunks", [])
 st.subheader(f"Retrieved Chunks ({len(chunks)})")
 for i, chunk in enumerate(chunks, 1):
     score = chunk.get("score", 0.0)
-    with st.expander(
-        f"Chunk {i} — similarity: {score:.3f} | "
-        f"dataset: {chunk.get('dataset', '?')} | {chunk.get('chunk_id', '')}"
-    ):
+    st.markdown(
+        similarity_meter_html(score, label=f"Chunk {i} similarity"),
+        unsafe_allow_html=True,
+    )
+    with st.expander(f"Chunk {i} — dataset: {chunk.get('dataset', '?')} | {chunk.get('chunk_id', '')}"):
         st.markdown(chunk.get("text", ""))
 
 # ── Raw JSON ──────────────────────────────────────────────────────────────────
