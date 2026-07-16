@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 import pandas as pd
 import streamlit as st
 
-from dashboard.components.latency_chart import latency_time_series
+from dashboard.components.latency_chart import latency_time_series, pipeline_flow_sankey
 from dashboard.components.metric_cards import (
     ragas_scorecard,
     similarity_meter_html,
@@ -133,10 +133,33 @@ if st.session_state.last_result:
     telemetry_row(
         result.retrieval_telemetry.get("retrieval_ms", 0),
         result.generation_response.generation_ms,
+        result.evaluation_ms,
         result.e2e_ms,
         result.token_usage.total_tokens,
         result.token_usage.estimated_cost_usd,
     )
+    st.divider()
+
+    # ── Pipeline flow ─────────────────────────────────────────────────────────
+    st.subheader("Pipeline Flow")
+    st.caption(
+        "Every instrumented stage this query passed through — link width is that "
+        "stage's actual wall-clock duration. 'Response' absorbs any small residual "
+        "(token counting, telemetry write) not attributed to a named stage."
+    )
+    pipeline_flow_sankey(
+        result.retrieval_telemetry,
+        result.generation_response.generation_ms,
+        result.evaluation_ms,
+        result.e2e_ms,
+        ran_evaluation=data["run_eval"],
+    )
+    if result.retrieval_telemetry.get("strategy") == "hybrid":
+        st.caption(
+            "Note: BM25 search doesn't depend on the query embedding, but the current "
+            "implementation runs retrieval sub-stages sequentially rather than in "
+            "parallel — this diagram reflects actual measured execution order."
+        )
     st.divider()
 
     # ── Retrieved Chunks ──────────────────────────────────────────────────────
