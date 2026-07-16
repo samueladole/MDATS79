@@ -15,6 +15,12 @@ PURPLE = "#522D80"
 TEAL = "#17a2b8"
 AMBER = "#f39c12"
 
+# Fixed per-condition colours, matching the convention used on the Benchmark
+# Results and Knowledge Base pages — a condition is always this same colour,
+# never reassigned by row order or which subset of conditions is loaded.
+CONDITION_ORDER = ["Llama3 + Dense", "Llama3 + Hybrid", "Mistral + Dense", "Mistral + Hybrid"]
+CONDITION_COLORS = dict(zip(CONDITION_ORDER, ["#2a78d6", "#008300", "#e87ba4", "#eda100"]))
+
 
 def latency_time_series(records: list[dict]) -> None:
     """
@@ -121,34 +127,42 @@ def latency_box_by_condition(records: list[dict]) -> None:
     (llm_model × retrieval_strategy).
     """
     if not records:
+        st.info("No telemetry records to display.")
         return
 
     df = pd.DataFrame(records)
-    if "llm_model" not in df.columns:
+    if "llm_model" not in df.columns or "retrieval_strategy" not in df.columns:
+        st.warning("Telemetry records missing condition metadata (llm_model / retrieval_strategy).")
+        return
+    if "e2e_ms" not in df.columns:
+        st.warning("Telemetry records missing end-to-end latency (e2e_ms).")
         return
 
-    df["condition"] = df["llm_model"] + " + " + df["retrieval_strategy"]
-    conditions = df["condition"].unique()
-    colours = [PURPLE, TEAL, AMBER, "#e74c3c"]
+    df["condition"] = (df["llm_model"].astype(str) + " + " + df["retrieval_strategy"].astype(str)).str.title()
+    conditions_present = [c for c in CONDITION_ORDER if c in df["condition"].unique()]
 
     fig = go.Figure()
-    for i, cond in enumerate(conditions):
+    for cond in conditions_present:
         subset = df[df["condition"] == cond]["e2e_ms"].dropna()
+        if subset.empty:
+            continue
         fig.add_trace(
             go.Box(
                 y=subset,
-                name=cond,
-                marker_color=colours[i % len(colours)],
+                name=f"{cond} (n={len(subset)})",
+                marker_color=CONDITION_COLORS[cond],
                 boxmean=True,
+                boxpoints="outliers",
             )
         )
 
     fig.update_layout(
-        title="End-to-End Latency by Experimental Condition",
+        xaxis_title="Condition",
         yaxis_title="Latency (ms)",
         height=380,
-        margin=dict(l=0, r=0, t=40, b=0),
+        margin=dict(l=0, r=0, t=20, b=0),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
     )
     st.plotly_chart(fig, width="stretch")
