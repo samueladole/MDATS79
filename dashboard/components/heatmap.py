@@ -91,10 +91,12 @@ def ragas_heatmap(records: list[dict]) -> None:
 def token_cost_heatmap(records: list[dict]) -> None:
     """Render a heatmap of mean token usage and cost per condition."""
     if not records:
+        st.info("No benchmark results to visualise.")
         return
 
     df = pd.DataFrame(records)
     if "llm_model" not in df.columns:
+        st.warning("Records do not contain condition metadata.")
         return
 
     cost_metrics = ["prompt_tokens", "completion_tokens", "total_tokens"]
