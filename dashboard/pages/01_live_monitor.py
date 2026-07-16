@@ -112,8 +112,8 @@ if st.session_state.last_result:
     # ── Answer ────────────────────────────────────────────────────────────────
     st.subheader("Generated Answer")
     st.markdown(
-        f'<div style="background:#f8f9fa;padding:1rem;border-left:4px solid #522D80;'
-        f'border-radius:4px;color:#111;">{result.answer}</div>',
+        f'<div style="background:rgba(82,45,128,0.08);padding:1rem;'
+        f'border-left:4px solid #522D80;border-radius:4px;">{result.answer}</div>',
         unsafe_allow_html=True,
     )
     st.divider()
