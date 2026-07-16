@@ -164,8 +164,20 @@ def load_queries(
             continue
 
         answers = example.get("answers", [])
-        n_passages = len(example.get("passages", {}).get("passage_text", []))
-        query_type = "multi_passage" if n_passages > 1 else "single_answer"
+
+        # Classify by how many of the candidate passages are actually marked
+        # relevant (`is_selected`), not by the size of the candidate pool
+        # itself — MS MARCO always returns ~10 candidate passages per query
+        # regardless of how many contain the answer, so `len(passage_text)`
+        # is ~10 for nearly every example and carries no signal here.
+        is_selected = example.get("passages", {}).get("is_selected", [])
+        n_relevant = sum(is_selected)
+        if n_relevant == 0:
+            # No candidate passage is marked relevant — there's nothing in
+            # the pool to ground a RAG answer against, so this example is
+            # unusable for either query type.
+            continue
+        query_type = "single_answer" if n_relevant == 1 else "multi_passage"
 
         record = {
             "id": str(example["query_id"]),
