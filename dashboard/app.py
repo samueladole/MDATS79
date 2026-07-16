@@ -7,10 +7,11 @@ query-level drill-down inspection, and benchmark experiment visualisation.
 
 Pages
 -----
-  01_live_monitor.py     Live query execution with real-time metric display
-  02_comparison.py       Cross-condition heatmap comparison
-  03_query_explorer.py   Per-query telemetry and chunk inspection
+  01_live_monitor.py      Live query execution with real-time metric display
+  02_comparison.py        Cross-condition heatmap comparison
+  03_query_explorer.py    Per-query telemetry and chunk inspection
   04_benchmark_results.py Benchmark experiment results and analysis
+  05_knowledge_base.py    ChromaDB collection browser and semantic search preview
 
 Run
 ---
@@ -115,8 +116,7 @@ st.markdown(
     | 📊 Comparison | Compare RAGAS metrics across the 4 experimental conditions |
     | 🔍 Query Explorer | Inspect individual query telemetry, retrieved chunks, and scores |
     | 📈 Benchmark Results | Visualise the 200-query experiment results and statistics |
-    | 🛠️ Metrics Explorer | Dive into the details of each RAGAS metric |
-    | ⚙️ Settings | Configure the RAG pipeline parameters and defaults |
+    | 💾 Knowledge Base | Browse the ChromaDB collection and preview semantic search |
 
     ---
     **Research context:** This platform was developed as the primary artefact for an
