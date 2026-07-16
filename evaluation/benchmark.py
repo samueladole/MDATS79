@@ -116,6 +116,7 @@ def run_benchmark(
                 "hallucination_risk": result.hallucination_risk,
                 "retrieval_ms": result.retrieval_telemetry.get("retrieval_ms", 0),
                 "generation_ms": result.generation_response.generation_ms,
+                "evaluation_ms": result.evaluation_ms,
                 "e2e_ms": result.e2e_ms,
                 "prompt_tokens": result.token_usage.prompt_tokens,
                 "completion_tokens": result.token_usage.completion_tokens,
