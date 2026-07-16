@@ -36,12 +36,51 @@ df = pd.DataFrame(records)
 
 st.markdown(f"Showing **{len(records):,}** telemetry records.")
 
+# ── Condition completeness check ──────────────────────────────────────────────
+ALL_CONDITIONS = [
+    ("llama3", "dense", "Llama3 + Dense"),
+    ("llama3", "hybrid", "Llama3 + Hybrid"),
+    ("mistral", "dense", "Mistral + Dense"),
+    ("mistral", "hybrid", "Mistral + Hybrid"),
+]
+
+condition_counts: dict[str, int] = {}
+if "llm_model" in df.columns and "retrieval_strategy" in df.columns:
+    for llm, strategy, label in ALL_CONDITIONS:
+        condition_counts[label] = int(
+            ((df["llm_model"] == llm) & (df["retrieval_strategy"] == strategy)).sum()
+        )
+
+    counts_df = pd.DataFrame(
+        [{"Condition": label, "Records": n} for label, n in condition_counts.items()]
+    )
+    st.dataframe(counts_df, width="stretch", hide_index=True)
+
+    missing = [label for label, n in condition_counts.items() if n == 0]
+    sparse = [label for label, n in condition_counts.items() if 0 < n < 2]
+    if missing:
+        st.warning(
+            f"No records yet for: **{', '.join(missing)}**. Comparisons involving these "
+            "conditions are omitted below rather than shown as a false zero effect size."
+        )
+    if sparse:
+        st.warning(
+            f"Fewer than 2 records for: **{', '.join(sparse)}** — too few to compute "
+            "an effect size; these are also omitted below."
+        )
+
+st.divider()
+
 # ── RAGAS heatmap ─────────────────────────────────────────────────────────────
 st.subheader("RAGAS Score Heatmap")
 ragas_heatmap(records)
 
+st.divider()
+
 st.subheader("Token Usage Heatmap")
 token_cost_heatmap(records)
+
+st.divider()
 
 st.subheader("Latency Distribution by Condition")
 latency_box_by_condition(records)
@@ -79,7 +118,11 @@ if "llm_model" in df.columns and "retrieval_strategy" in df.columns:
     ]
 
     rows = []
+    skipped = []
     for a, b, label in pairs:
+        if len(conditions[a]) < 2 or len(conditions[b]) < 2:
+            skipped.append(label)
+            continue
         comp = compare_conditions(conditions[a], conditions[b], label_a=a, label_b=b)
         for metric, data in comp.items():
             d_data = data["cohens_d"]
@@ -100,5 +143,9 @@ if "llm_model" in df.columns and "retrieval_strategy" in df.columns:
             effect_df.style.background_gradient(subset=["Cohen's d"], cmap="RdYlGn"),
             width="stretch",
         )
+    if skipped:
+        st.caption(f"Omitted (fewer than 2 records on at least one side): {', '.join(skipped)}.")
+    if not rows and not skipped:
+        st.info("No comparisons available.")
 else:
     st.info("Condition metadata not present in telemetry records.")
