@@ -244,6 +244,9 @@ class RAGPipeline:
                 f"Retrieved {len(chunks)} chunks in {retrieval_tel['retrieval_ms']:.1f} ms."
             )
 
+            logger.info(f"Query: {query_text}")
+            logger.info(f"Ground truth: {ground_truth or 'N/A'}")
+
             # ── Step 2: Generate ──────────────────────────────────────────────
             context_texts = [c.text for c in chunks]
             gen_response: GenerationResponse = self._llm.generate(

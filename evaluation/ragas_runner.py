@@ -47,8 +47,10 @@ class RAGASRunner:
     """
     Computes RAGAS evaluation metrics for a single query.
 
-    The judge LLM is initialised once and reused across all calls
-    to avoid repeated model loading overhead.
+    The embeddings model is initialised once and reused across all calls
+    (it is synchronous and holds no event-loop-bound resources). The judge
+    LLM, however, is rebuilt fresh for every ``evaluate()`` call — see the
+    note on ``_build_llm`` for why it cannot be cached like the embeddings.
 
     Parameters
     ----------
@@ -65,7 +67,7 @@ class RAGASRunner:
         self.base_url = base_url or settings.ollama_base_url
 
         logger.info(f"Initialising RAGAS runner (judge model: '{self.judge_model}') …")
-        self._llm, self._embeddings = self._build_judge()
+        self._embeddings = self._build_embeddings()
         logger.info("RAGAS runner ready.")
 
     # ── Public API ─────────────────────────────────────────────────────────────
@@ -109,13 +111,16 @@ class RAGASRunner:
         }
 
         try:
+            # Fresh judge LLM per call — see _build_llm docstring.
+            llm = self._build_llm()
+
             # Build the metrics list conditionally
             metrics = [
-                ContextRelevance(llm=self._llm),
-                Faithfulness(llm=self._llm),
+                ContextRelevance(llm=llm),
+                Faithfulness(llm=llm),
             ]
             if ground_truth:
-                metrics.append(AnswerCorrectness(llm=self._llm, embeddings=self._embeddings))
+                metrics.append(AnswerCorrectness(llm=llm, embeddings=self._embeddings))
 
             sample = SingleTurnSample(
                 user_input=query,
@@ -127,7 +132,7 @@ class RAGASRunner:
             scores = evaluate(
                 dataset=dataset,
                 metrics=metrics,
-                llm=self._llm,
+                llm=llm,
                 embeddings=self._embeddings,
                 raise_exceptions=True,
             )
@@ -154,20 +159,25 @@ class RAGASRunner:
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
-    def _build_judge(self):
+    def _build_llm(self):
         """
-        Build the RAGAS-compatible LLM and embeddings objects.
+        Build a fresh RAGAS-compatible judge LLM backed by Ollama.
 
-        RAGAS ≥ 0.2 uses LangChain-style wrappers. The judge LLM is routed
-        through our local Ollama instance via ``langchain_ollama``. Embeddings
-        reuse the project's existing ``all-MiniLM-L6-v2`` SentenceTransformer
-        (``pipeline/embeddings.py``) rather than Ollama: ``self.judge_model``
-        is a chat model (e.g. ``qwen2.5:7b``) and Ollama's embeddings endpoint
-        rejects models that weren't loaded in embedding-serving mode.
+        ``ChatOllama`` opens its async client (``ollama.AsyncClient`` →
+        ``httpx.AsyncClient``) once at construction and caches it for the
+        object's lifetime. ``ragas.evaluate()`` runs each call inside its own
+        ``asyncio.run(...)`` — a brand-new event loop every time. A cached
+        client's connections stay bound to whichever loop first used them,
+        so reusing one ``ChatOllama`` instance across multiple ``evaluate()``
+        calls makes every call after the first fail with "Event loop is
+        closed" (silently — RAGAS's per-metric try/except swallows it and
+        reports a nan score instead of raising). Building a new instance per
+        call keeps its client bound to the loop that will actually use it.
+        This is cheap: Ollama already holds the model in memory, so this
+        only constructs a lightweight client wrapper, not a model reload.
         """
         from langchain_ollama import ChatOllama
         from ragas.llms import LangchainLLMWrapper
-        from ragas.embeddings import LangchainEmbeddingsWrapper
 
         native_llm = ChatOllama(
             model=self.judge_model,
@@ -175,9 +185,22 @@ class RAGASRunner:
             temperature=0.0,
             num_predict=settings.ragas_max_tokens,
         )
-        llm = LangchainLLMWrapper(native_llm)
-        embeddings = LangchainEmbeddingsWrapper(_SentenceTransformerEmbeddings())
-        return llm, embeddings
+        return LangchainLLMWrapper(native_llm)
+
+    def _build_embeddings(self):
+        """
+        Build the RAGAS-compatible embeddings object.
+
+        Reuses the project's existing ``all-MiniLM-L6-v2`` SentenceTransformer
+        (``pipeline/embeddings.py``) rather than Ollama: ``self.judge_model``
+        is a chat model (e.g. ``qwen2.5:7b``) and Ollama's embeddings endpoint
+        rejects models that weren't loaded in embedding-serving mode. This
+        wrapper is synchronous, so — unlike the judge LLM — it holds no
+        event-loop-bound resources and is safe to build once and reuse.
+        """
+        from ragas.embeddings import LangchainEmbeddingsWrapper
+
+        return LangchainEmbeddingsWrapper(_SentenceTransformerEmbeddings())
 
 
 def _safe_float(v) -> float | None:
