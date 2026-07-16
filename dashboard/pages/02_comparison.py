@@ -73,16 +73,25 @@ st.divider()
 
 # ── RAGAS heatmap ─────────────────────────────────────────────────────────────
 st.subheader("RAGAS Score Heatmap")
+st.caption(
+    "Mean score per condition × metric. Green = higher score; for Hallucination Risk, "
+    "a lower (greener) value is better since the metric itself is inverted."
+)
 ragas_heatmap(records)
 
 st.divider()
 
 st.subheader("Token Usage Heatmap")
+st.caption("Mean prompt / completion / total token counts per condition. Darker = more tokens.")
 token_cost_heatmap(records)
 
 st.divider()
 
 st.subheader("Latency Distribution by Condition")
+st.caption(
+    "End-to-end latency spread per condition — box shows the interquartile range and "
+    "median, whiskers extend to the min/max excluding outliers, dots are individual outliers."
+)
 latency_box_by_condition(records)
 
 st.divider()
