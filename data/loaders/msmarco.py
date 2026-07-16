@@ -151,7 +151,7 @@ def load_queries(
     ds = load_dataset(
         DATASET_NAME,
         DATASET_CONFIG,
-        split="validation",
+        split="train",
         cache_dir=str(CACHE_DIR)
     )
 
@@ -175,13 +175,13 @@ def load_queries(
             "dataset": "msmarco",
         }
 
+        if len(single) >= SINGLE_ANSWER_COUNT * 3 and len(multi) >= MULTI_PASSAGE_COUNT * 3:
+            logger.info(f"Collected enough candidate queries: {len(single)} single-answer, {len(multi)} multi-passage.")
+            break
         if query_type == "single_answer" and len(single) < SINGLE_ANSWER_COUNT * 3:
             single.append(record)
         elif query_type == "multi_passage" and len(multi) < MULTI_PASSAGE_COUNT * 3:
             multi.append(record)
-
-        if len(single) >= SINGLE_ANSWER_COUNT * 3 and len(multi) >= MULTI_PASSAGE_COUNT * 3:
-            break
 
     rng = random.Random(seed)
     sampled_single = rng.sample(single, min(SINGLE_ANSWER_COUNT, len(single)))
