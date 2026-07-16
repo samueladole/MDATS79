@@ -178,17 +178,19 @@ def ragas_scorecard(
 def telemetry_row(
     retrieval_ms: float,
     generation_ms: float,
+    evaluation_ms: float,
     e2e_ms: float,
     total_tokens: int,
     estimated_cost: float,
 ) -> None:
-    """Render a 5-column telemetry row."""
-    c1, c2, c3, c4, c5 = st.columns(5)
+    """Render a 6-column telemetry row."""
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Retrieval Latency", f"{retrieval_ms:.0f} ms")
     c2.metric("Generation Latency", f"{generation_ms:.0f} ms")
-    c3.metric("End-to-End Latency", f"{e2e_ms:.0f} ms")
-    c4.metric("Total Tokens", f"{total_tokens:,}")
-    c5.metric("Estimated Cost", f"${estimated_cost:.6f}")
+    c3.metric("Evaluation Latency", f"{evaluation_ms:.0f} ms")
+    c4.metric("End-to-End Latency", f"{e2e_ms:.0f} ms")
+    c5.metric("Total Tokens", f"{total_tokens:,}")
+    c6.metric("Estimated Cost", f"${estimated_cost:.6f}")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
