@@ -85,7 +85,8 @@ class RAGResult:
     answer_faithfulness : RAGAS answer faithfulness score [0, 1].
     answer_correctness  : RAGAS answer correctness score [0, 1] (requires ground truth).
     hallucination_risk  : Composite hallucination risk score [0, 1].
-    e2e_ms              : Total end-to-end wall-clock time (ms).
+    evaluation_ms       : Wall-clock time spent in RAGAS evaluation (ms); 0 if skipped.
+    e2e_ms              : Total end-to-end wall-clock time (ms) — includes evaluation.
     telemetry_path      : Path to the persisted telemetry JSON file.
     """
 
@@ -99,6 +100,7 @@ class RAGResult:
     answer_faithfulness: float | None = None
     answer_correctness: float | None = None
     hallucination_risk: float | None = None
+    evaluation_ms: float = 0.0
     e2e_ms: float = 0.0
     telemetry_path: str = ""
     metadata: dict = field(default_factory=dict)
@@ -121,6 +123,7 @@ class RAGResult:
             " ── Telemetry ──────────────────────────────────────",
             f"  Retrieval latency  : {self.retrieval_telemetry.get('retrieval_ms', 0):.1f} ms",
             f"  Generation latency : {self.generation_response.generation_ms:.1f} ms",
+            f"  Evaluation latency : {self.evaluation_ms:.1f} ms",
             f"  End-to-end latency : {self.e2e_ms:.1f} ms",
             f"  Prompt tokens      : {self.token_usage.prompt_tokens}",
             f"  Completion tokens  : {self.token_usage.completion_tokens}",
@@ -263,24 +266,30 @@ class RAGPipeline:
 
             # ── Step 4: Evaluate ──────────────────────────────────────────────
             ctx_rel = faith = correctness = risk = None
-            if self._ragas and chunks:
-                scores = self._ragas.evaluate(
-                    query=query_text,
-                    answer=gen_response.text,
-                    contexts=[c.text for c in chunks],
-                    ground_truth=ground_truth,
-                )
-                ctx_rel = scores.get("context_relevance")
-                faith = scores.get("answer_faithfulness")
-                correctness = scores.get("answer_correctness")
-                risk = compute_hallucination_risk(
-                    faithfulness=faith,
-                    context_relevance=ctx_rel,
-                )
+            with Timer("evaluation") as eval_timer:
+                if self._ragas and chunks:
+                    scores = self._ragas.evaluate(
+                        query=query_text,
+                        answer=gen_response.text,
+                        contexts=[c.text for c in chunks],
+                        ground_truth=ground_truth,
+                    )
+                    ctx_rel = scores.get("context_relevance")
+                    faith = scores.get("answer_faithfulness")
+                    correctness = scores.get("answer_correctness")
+                    risk = compute_hallucination_risk(
+                        faithfulness=faith,
+                        context_relevance=ctx_rel,
+                    )
+            evaluation_ms = eval_timer.elapsed_ms if self._ragas else 0.0
 
         e2e_ms = e2e_timer.elapsed_ms
 
         # ── Step 5: Build + persist telemetry record ──────────────────────────
+        # e2e_ms is passed through from the timer that wraps the whole method
+        # (retrieval + generation + evaluation) rather than recomputed from
+        # retrieval_ms + generation_ms alone — RAGAS evaluation can dominate
+        # total latency, and omitting it here would silently understate e2e_ms.
         record = build_record(
             query_id=query_id,
             query=query_text,
@@ -289,10 +298,11 @@ class RAGPipeline:
             llm_model=self.llm_model,
             retrieval_strategy=self.retrieval_strategy,
             retrieved_chunks=chunks,
-            retrieval_ms=retrieval_tel["retrieval_ms"],
-            embed_query_ms=retrieval_tel.get("embed_query_ms", 0.0),
+            retrieval_telemetry=retrieval_tel,
             answer=gen_response.text,
             generation_ms=gen_response.generation_ms,
+            evaluation_ms=evaluation_ms,
+            e2e_ms=e2e_ms,
             token_usage=token_usage,
             context_relevance=ctx_rel,
             answer_faithfulness=faith,
@@ -314,6 +324,7 @@ class RAGPipeline:
             answer_faithfulness=faith,
             answer_correctness=correctness,
             hallucination_risk=risk,
+            evaluation_ms=evaluation_ms,
             e2e_ms=e2e_ms,
             telemetry_path=str(tel_path),
             metadata={"query_id": query_id, "query_type": query_type},
