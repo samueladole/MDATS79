@@ -13,10 +13,12 @@ of the Python process lifecycle.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
+from chromadb.errors import NotFoundError
 from loguru import logger
 
 from config.settings import settings
@@ -42,6 +44,37 @@ class RetrievedChunk:
     text: str
     score: float
     metadata: dict
+
+
+def _reconnect_on_stale_collection(method):
+    """
+    Reconnect and retry once if the cached collection handle has gone stale.
+
+    ``get_or_create_collection`` caches a handle bound to the collection's
+    UUID at connection time. If another process deletes and recreates the
+    collection under that same name in the meantime — e.g. ``ingestion.py
+    --reset``, or ``VectorStore.reset()`` called from a different session —
+    the server assigns a new UUID, and the cached handle starts raising
+    ``NotFoundError`` on every call even though a collection with the same
+    name exists again. Re-fetching by name picks up the current UUID.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except NotFoundError:
+            logger.warning(
+                f"ChromaDB collection '{self.collection_name}' handle is stale "
+                "(deleted and recreated elsewhere) — reconnecting."
+            )
+            self._collection = self._client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"hnsw:space": "cosine"},
+            )
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 # ── VectorStore ───────────────────────────────────────────────────────────────
@@ -87,6 +120,7 @@ class VectorStore:
 
     # ── Ingestion ──────────────────────────────────────────────────────────────
 
+    @_reconnect_on_stale_collection
     def add_chunks(
         self,
         chunks: list[Chunk],
@@ -140,6 +174,7 @@ class VectorStore:
 
     # ── Retrieval ──────────────────────────────────────────────────────────────
 
+    @_reconnect_on_stale_collection
     def query(
         self,
         query_embedding: list[float],
@@ -191,38 +226,61 @@ class VectorStore:
 
         return chunks
     
-    def list_documents(self) -> list[dict]:
-        """
-        List all unique documents in the collection.
-
-        Returns
-        -------
-        list[dict]
-            Each dict contains 'doc_id', 'title', and 'source' keys.
-        """
-        # Query all chunks and extract unique document metadata
-        results = self._collection.query(
-            query_embeddings=[[0] * 384],  # Dummy embedding for full scan
-            n_results=self.count(),
-            include=["metadatas"],
-        )
-
-        unique_docs = {}
-        for metadata in results["metadatas"][0]:
-            if metadata:
-                doc_id = metadata.get("doc_id")
-                title = metadata.get("title", "Untitled")
-                source = metadata.get("source", "Unknown")
-                if doc_id not in unique_docs:
-                    unique_docs[doc_id] = {"doc_id": doc_id, "title": title, "source": source}
-
-        return list(unique_docs.values())
-
     # ── Inspection ─────────────────────────────────────────────────────────────
 
+    @_reconnect_on_stale_collection
     def count(self) -> int:
         """Return the total number of chunks stored in the collection."""
         return self._collection.count()
+
+    @_reconnect_on_stale_collection
+    def count_where(self, where: dict) -> int:
+        """
+        Count chunks matching a metadata filter, without transferring
+        documents or embeddings over the wire.
+
+        Parameters
+        ----------
+        where : ChromaDB metadata filter dict, e.g. ``{"dataset": "msmarco"}``.
+        """
+        result = self._collection.get(where=where, include=[])
+        return len(result["ids"])
+
+    @_reconnect_on_stale_collection
+    def get_chunks(
+        self,
+        where: dict | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> list[RetrievedChunk]:
+        """
+        Fetch chunks directly by metadata filter and offset — a plain browse,
+        not a similarity search. Order is whatever the store returns them in
+        (not similarity-ranked), so ``score`` is fixed at 0.0 on every result.
+
+        Parameters
+        ----------
+        where  : Optional ChromaDB metadata filter dict.
+        limit  : Maximum number of chunks to return.
+        offset : Number of matching chunks to skip (for pagination).
+        """
+        kwargs: dict = {"limit": limit, "offset": offset, "include": ["documents", "metadatas"]}
+        if where:
+            kwargs["where"] = where
+        result = self._collection.get(**kwargs)
+        return [
+            RetrievedChunk(chunk_id=cid, text=text, score=0.0, metadata=meta or {})
+            for cid, text, meta in zip(result["ids"], result["documents"], result["metadatas"])
+        ]
+
+    @_reconnect_on_stale_collection
+    def embedding_dimension(self) -> int | None:
+        """Return the dimensionality of stored embeddings, or None if the collection is empty."""
+        probe = self._collection.get(limit=1, include=["embeddings"])
+        embeddings = probe.get("embeddings")
+        if embeddings is None or len(embeddings) == 0:
+            return None
+        return len(embeddings[0])
 
     def collection_info(self) -> dict:
         """Return a summary dict for the dashboard and telemetry."""
@@ -235,6 +293,7 @@ class VectorStore:
 
     # ── Maintenance ─────────────────────────────────────────────────────────────
 
+    @_reconnect_on_stale_collection
     def delete_chunks(self, chunk_ids: list[str]) -> int:
         """
         Delete chunks by their unique identifiers.
