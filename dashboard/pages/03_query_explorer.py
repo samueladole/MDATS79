@@ -14,6 +14,7 @@ st.set_page_config(page_title="Query Explorer · RAGScope", layout="wide", page_
 st.title("🔍 Query Explorer")
 st.caption("Select any logged query to inspect its full telemetry trace.")
 
+from dashboard.components.latency_chart import pipeline_flow_sankey
 from dashboard.components.metric_cards import (
     ragas_scorecard,
     similarity_meter_html,
@@ -81,10 +82,40 @@ st.subheader("Telemetry")
 telemetry_row(
     record.get("retrieval_ms", 0),
     record.get("generation_ms", 0),
+    record.get("evaluation_ms", 0),
     record.get("e2e_ms", 0),
     record.get("total_tokens", 0),
     record.get("estimated_cost_usd", 0.0),
 )
+st.divider()
+
+# ── Pipeline flow ─────────────────────────────────────────────────────────────
+st.subheader("Pipeline Flow")
+st.caption(
+    "Every instrumented stage this query passed through — link width is that "
+    "stage's actual wall-clock duration. 'Response' absorbs any small residual "
+    "(token counting, telemetry write) not attributed to a named stage."
+)
+retrieval_telemetry = {
+    "strategy": record.get("retrieval_strategy", "dense"),
+    "embed_query_ms": record.get("embed_query_ms", 0.0),
+    "vector_search_ms": record.get("vector_search_ms", 0.0),
+    "dense_search_ms": record.get("dense_search_ms", 0.0),
+    "bm25_search_ms": record.get("bm25_search_ms", 0.0),
+    "rrf_fusion_ms": record.get("rrf_fusion_ms", 0.0),
+}
+pipeline_flow_sankey(
+    retrieval_telemetry,
+    record.get("generation_ms", 0.0),
+    record.get("evaluation_ms", 0.0),
+    record.get("e2e_ms", 0.0),
+    ran_evaluation=record.get("context_relevance") is not None,
+)
+if record.get("evaluation_ms", 0.0) == 0.0 and record.get("context_relevance") is not None:
+    st.caption(
+        "⚠️ This record predates per-stage evaluation timing — RAGAS ran (scores are "
+        "present) but its duration wasn't captured separately, so 'Response' absorbs it."
+    )
 st.divider()
 
 # ── Retrieved Chunks ──────────────────────────────────────────────────────────
