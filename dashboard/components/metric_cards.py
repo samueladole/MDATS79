@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from evaluation.hallucination_score import risk_band, risk_colour
+from evaluation.hallucination_score import risk_band
 
 # Same red/amber/green triplet as risk_colour(), so a score reads consistently
 # whether it's shown as a banded risk colour or this continuous gradient.
@@ -17,6 +17,19 @@ _RED = (231, 76, 60)
 _AMBER = (243, 156, 18)
 _GREEN = (46, 204, 113)
 _GREY = "#95a5a6"
+
+
+def _gradient_rgb(value: float, invert: bool = False) -> tuple[int, int, int]:
+    """Interpolate the red -> amber -> green ramp; returns an (r, g, b) tuple."""
+    v = max(0.0, min(1.0, value))
+    if invert:
+        v = 1.0 - v
+    stops = [(0.0, _RED), (0.5, _AMBER), (1.0, _GREEN)]
+    for (p0, c0), (p1, c1) in zip(stops, stops[1:]):
+        if p0 <= v <= p1:
+            t = (v - p0) / (p1 - p0)
+            return tuple(round(c0[i] + (c1[i] - c0[i]) * t) for i in range(3))
+    return (149, 165, 166)
 
 
 def score_gradient_color(value: float | None, invert: bool = False) -> str:
@@ -32,32 +45,38 @@ def score_gradient_color(value: float | None, invert: bool = False) -> str:
     """
     if value is None:
         return _GREY
-    v = max(0.0, min(1.0, value))
-    if invert:
-        v = 1.0 - v
-    stops = [(0.0, _RED), (0.5, _AMBER), (1.0, _GREEN)]
-    for (p0, c0), (p1, c1) in zip(stops, stops[1:]):
-        if p0 <= v <= p1:
-            t = (v - p0) / (p1 - p0)
-            r, g, b = (round(c0[i] + (c1[i] - c0[i]) * t) for i in range(3))
-            return f"rgb({r},{g},{b})"
-    return _GREY
+    r, g, b = _gradient_rgb(value, invert)
+    return f"rgb({r},{g},{b})"
+
+
+def _readable_ink(rgb: tuple[int, int, int]) -> str:
+    """Pick black or white text so it stays legible on top of an ``rgb`` fill."""
+    r, g, b = rgb
+    luminance = 0.299 * r + 0.587 * g + 0.114 * b
+    return "#1a1a1a" if luminance > 140 else "#ffffff"
 
 
 def similarity_meter_html(score: float, label: str = "Similarity") -> str:
     """
     Return an HTML snippet: a slim colour-graded meter bar for a [0, 1]
-    score — green high, red low, with the numeric score alongside so the
-    reading never depends on colour alone.
+    score — green high, red low. Colour lives only on the bar fill and a
+    small identity dot; the score text itself stays in the normal text
+    colour so it stays legible regardless of theme or score value.
     """
     color = score_gradient_color(score)
     pct = max(0.0, min(1.0, score)) * 100
     return (
         '<div style="margin:2px 0 6px 0;">'
-        '<div style="display:flex;justify-content:space-between;font-size:0.75rem;'
-        f'color:#666;margin-bottom:2px;"><span>{label}</span>'
-        f'<span style="font-weight:600;color:{color};">{score:.3f}</span></div>'
-        '<div style="background:#e9ecef;border-radius:6px;height:8px;width:100%;overflow:hidden;">'
+        '<div style="display:flex;align-items:center;justify-content:space-between;'
+        'font-size:0.75rem;opacity:0.75;margin-bottom:2px;">'
+        f"<span>{label}</span>"
+        '<span style="display:inline-flex;align-items:center;gap:0.4rem;font-weight:600;">'
+        f'<span style="width:8px;height:8px;border-radius:50%;background:{color};'
+        'display:inline-block;flex-shrink:0;"></span>'
+        f"<span>{score:.3f}</span>"
+        "</span></div>"
+        '<div style="background:rgba(127,127,127,0.2);border-radius:6px;height:8px;'
+        'width:100%;overflow:hidden;">'
         f'<div style="background:{color};height:100%;width:{pct:.1f}%;border-radius:6px;"></div>'
         "</div></div>"
     )
@@ -70,7 +89,7 @@ def _score_card_html(
     help_text: str,
     invert: bool = False,
 ) -> str:
-    """Build one modern scorecard tile: icon, label, big value, meter, quality tag."""
+    """Build one modern scorecard tile: icon, label, big value, meter, quality badge."""
     color = score_gradient_color(value, invert=invert)
     display_value = f"{value:.3f}" if value is not None else "N/A"
     pct = (1.0 - value if invert else value) * 100 if value is not None else 0.0
@@ -78,6 +97,11 @@ def _score_card_html(
     # (risk_band, used by the heatmaps and risk-band charts elsewhere) — reuse
     # it here instead of introducing a second, differently-thresholded scheme.
     quality = risk_band(value) if invert else (_quality_delta(value) or "No data")
+    # The quality label sits on a solid colour fill (a badge), not bare
+    # coloured text — pick black/white ink so it always clears contrast,
+    # rather than colouring the text itself (illegible for lighter hues).
+    badge_bg = color if value is not None else _GREY
+    ink = _readable_ink(_gradient_rgb(value, invert=invert)) if value is not None else "#ffffff"
     return f"""
     <div title="{help_text}" style="background:rgba(127,127,127,0.06);
                 border:1px solid rgba(127,127,127,0.18);border-radius:12px;
@@ -89,10 +113,12 @@ def _score_card_html(
       </div>
       <div style="font-size:1.65rem;font-weight:700;margin-bottom:0.5rem;">{display_value}</div>
       <div style="background:rgba(127,127,127,0.2);border-radius:6px;height:7px;
-                  width:100%;overflow:hidden;margin-bottom:0.4rem;">
+                  width:100%;overflow:hidden;margin-bottom:0.5rem;">
         <div style="background:{color};height:100%;width:{pct:.1f}%;border-radius:6px;"></div>
       </div>
-      <div style="font-size:0.72rem;font-weight:700;color:{color};">{quality}</div>
+      <span style="display:inline-block;font-size:0.68rem;font-weight:700;
+                   padding:0.15rem 0.55rem;border-radius:999px;
+                   background:{badge_bg};color:{ink};">{quality}</span>
     </div>
     """
 
@@ -165,26 +191,7 @@ def telemetry_row(
     c5.metric("Estimated Cost", f"${estimated_cost:.6f}")
 
 
-def risk_gauge(score: float | None) -> None:
-    """Render a simple horizontal risk gauge using Streamlit progress."""
-    band = risk_band(score)
-    color = risk_colour(score)
-    value = score if score is not None else 0.0
-
-    label_html = (
-        f'<span style="color:{color}; font-weight:700; font-size:1.1rem;">'
-        f"{band} ({value:.3f})"
-        f"</span>"
-    )
-    st.markdown(f"**Hallucination Risk:** {label_html}", unsafe_allow_html=True)
-    st.progress(value, text="")
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _fmt_score(v: float | None) -> str:
-    return f"{v:.3f}" if v is not None else "N/A"
 
 
 def _quality_delta(v: float | None) -> str | None:
