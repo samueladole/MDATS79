@@ -20,9 +20,27 @@ version differences so the rest of the codebase remains stable.
 
 from __future__ import annotations
 
+from langchain_core.embeddings import Embeddings
 from loguru import logger
 
 from config.settings import settings
+
+
+class _SentenceTransformerEmbeddings(Embeddings):
+    """Adapts the project's ``EmbeddingGenerator`` (all-MiniLM-L6-v2) to the
+    LangChain ``Embeddings`` interface so it can back RAGAS's answer
+    correctness metric without requiring a separate Ollama embedding model."""
+
+    def __init__(self) -> None:
+        from pipeline.embeddings import get_embedding_generator
+
+        self._generator = get_embedding_generator()
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return self._generator.embed_batch(texts)
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._generator.embed_query(text)
 
 
 class RAGASRunner:
@@ -138,12 +156,16 @@ class RAGASRunner:
 
     def _build_judge(self):
         """
-        Build the RAGAS-compatible LLM and embeddings objects backed by Ollama.
+        Build the RAGAS-compatible LLM and embeddings objects.
 
-        RAGAS ≥ 0.2 uses LangChain-style wrappers. We use the ``langchain_ollama``
-        integration to route all judge calls through our local Ollama instance.
+        RAGAS ≥ 0.2 uses LangChain-style wrappers. The judge LLM is routed
+        through our local Ollama instance via ``langchain_ollama``. Embeddings
+        reuse the project's existing ``all-MiniLM-L6-v2`` SentenceTransformer
+        (``pipeline/embeddings.py``) rather than Ollama: ``self.judge_model``
+        is a chat model (e.g. ``qwen2.5:7b``) and Ollama's embeddings endpoint
+        rejects models that weren't loaded in embedding-serving mode.
         """
-        from langchain_ollama import ChatOllama, OllamaEmbeddings
+        from langchain_ollama import ChatOllama
         from ragas.llms import LangchainLLMWrapper
         from ragas.embeddings import LangchainEmbeddingsWrapper
 
@@ -153,12 +175,8 @@ class RAGASRunner:
             temperature=0.0,
             num_predict=settings.ragas_max_tokens,
         )
-        native_embeddings = OllamaEmbeddings(
-            model=self.judge_model,
-            base_url=self.base_url,
-        )
         llm = LangchainLLMWrapper(native_llm)
-        embeddings = LangchainEmbeddingsWrapper(native_embeddings)
+        embeddings = LangchainEmbeddingsWrapper(_SentenceTransformerEmbeddings())
         return llm, embeddings
 
 
