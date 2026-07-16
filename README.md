@@ -157,9 +157,11 @@ RAGScope fills the integration gap: it combines the evaluative richness of RAGAS
 - 2 × 2 factorial experiment runner with automated result logging
 
 ### 📊 Interactive Dashboard
-- Live metric time series for active query sessions
+- Live metric time series for active query sessions, with results persisted across page interaction
 - Comparative performance heatmaps across retrieval × LLM conditions
-- Retrieved document chunk viewer with per-chunk similarity scores
+- Retrieved document chunk viewer with colour-graded per-chunk similarity scores
+- Sankey diagram of the full pipeline process flow — every instrumented stage (embedding, retrieval sub-stages, generation, RAGAS evaluation) sized by actual wall-clock duration for a single query
+- Read-only ChromaDB knowledge-base browser with corpus composition breakdown and a semantic search preview
 - Export of session data to CSV for downstream analysis
 
 ### 🗂️ Benchmark Pipeline
@@ -216,7 +218,8 @@ Three publicly available benchmark datasets are used for evaluation. All are ava
 | Telemetry | Custom JSON logger | Query-level instrumentation store |
 | Dashboard | [Streamlit](https://streamlit.io) | Interactive real-time visualisation |
 | Data Processing | `pandas`, `numpy` | Benchmark loading and analysis |
-| Visualisation | `plotly`, `altair` | Dashboard charts and heatmaps |
+| Visualisation | `plotly`, `altair` | Dashboard charts, heatmaps, and Sankey process-flow diagrams |
+| Statistics | `statsmodels` | OLS trendlines on dashboard scatter plots |
 
 ---
 
@@ -282,10 +285,11 @@ ragscope/
 ├── dashboard/                     # Streamlit observability dashboard
 │   ├── app.py                     # Main Streamlit application entry point
 │   ├── pages/
-│   │   ├── 01_live_monitor.py     # Real-time query stream view
+│   │   ├── 01_live_monitor.py     # Real-time query stream view + pipeline flow Sankey
 │   │   ├── 02_comparison.py       # Cross-condition comparative analysis
-│   │   ├── 03_query_explorer.py   # Per-query drill-down view
-│   │   └── 04_benchmark_results.py # Benchmark experiment results
+│   │   ├── 03_query_explorer.py   # Per-query drill-down view + pipeline flow Sankey
+│   │   ├── 04_benchmark_results.py # Benchmark experiment results
+│   │   └── 05_knowledge_base.py   # Read-only ChromaDB browser + semantic search preview
 │   └── components/
 │       ├── metric_cards.py        # Metric display components
 │       ├── latency_chart.py       # Latency visualisation
@@ -531,7 +535,8 @@ uv run python pipeline/rag.py \
  ── Telemetry ──────────────────────────────────────
   Retrieval latency:    0.34s
   Generation latency:   3.21s
-  Total latency:        3.55s
+  Evaluation latency:   4.87s
+  Total latency:        8.42s
   Prompt tokens:        847
   Completion tokens:    312
   Estimated cost:       $0.000 (local inference)
@@ -556,12 +561,13 @@ open http://localhost:8501
 uv run streamlit run dashboard/app.py
 ```
 
-The dashboard provides four views at `http://localhost:8501`:
+The dashboard provides five views at `http://localhost:8501`:
 
-- **Live Monitor** — real-time stream of query metrics as queries are submitted
+- **Live Monitor** — submit a query interactively and watch the full pipeline execute: generated answer, RAGAS scores, colour-graded chunk similarity, and a Sankey diagram of every instrumented stage's wall-clock duration
 - **Comparison** — side-by-side heatmaps of RAGAS scores across LLM × retrieval conditions
-- **Query Explorer** — click any logged query to inspect retrieved chunks, similarity scores, faithfulness breakdowns, and latency decomposition
+- **Query Explorer** — click any logged query to inspect retrieved chunks, similarity scores, faithfulness breakdowns, latency decomposition, and the same per-query pipeline flow Sankey
 - **Benchmark Results** — full visualisation of the 200-query benchmark experiment results
+- **Knowledge Base** — read-only browser of the ChromaDB collection: corpus composition by dataset, a paginated chunk browser, and a semantic search preview
 
 ### Running the Benchmark Evaluation
 
@@ -704,7 +710,8 @@ Telemetry metrics collected alongside evaluation:
 |---|---|---|
 | **Retrieval Latency** | ms | Time from query submission to final retrieved chunk |
 | **Generation Latency** | ms | Time from context injection to final token |
-| **End-to-End Latency** | ms | Total pipeline wall-clock time |
+| **Evaluation Latency** | ms | Time spent computing RAGAS metrics (0 if evaluation is disabled) — often the *dominant* term, since it requires one or more auxiliary judge-LLM calls |
+| **End-to-End Latency** | ms | Total pipeline wall-clock time — retrieval + generation + evaluation |
 | **Prompt Tokens** | count | Tokens in the full prompt (query + retrieved context) |
 | **Completion Tokens** | count | Tokens in the generated response |
 | **Estimated Cost** | USD | Projected cost based on configurable token rate table |
