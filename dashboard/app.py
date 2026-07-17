@@ -24,11 +24,12 @@ from __future__ import annotations
 import streamlit as st
 
 from config.settings import settings
+from dashboard.components.theme import ICONS, apply_theme
 
 # ── Page configuration ────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="RAGScope — RAG Observability",
-    page_icon="🔭",
+    page_icon=":material/monitoring:",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
@@ -39,41 +40,15 @@ st.set_page_config(
     },
 )
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
-st.markdown(
-"""
-<style>
-    /* Sidebar brand header */
-    .sidebar-brand {
-        font-size: 1.4rem;
-        font-weight: 700;
-        color: #522D80;
-        letter-spacing: -0.02em;
-        padding-bottom: 0.2rem;
-    }
-    .sidebar-sub {
-        font-size: 0.75rem;
-        color: #666;
-        margin-bottom: 1rem;
-    }
-    /* Metric card improvements */
-    [data-testid="stMetricValue"] {
-        font-size: 1.6rem !important;
-        font-weight: 700;
-    }
-    /* Risk colour bands */
-    .risk-low    { color: #2ecc71; font-weight: 700; }
-    .risk-medium { color: #f39c12; font-weight: 700; }
-    .risk-high   { color: #e74c3c; font-weight: 700; }
-</style>
-""",
-    unsafe_allow_html=True,
-)
+apply_theme()
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown('<div class="sidebar-brand">🔭 RAGScope</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="sidebar-brand">{ICONS["monitoring"]} RAGScope</div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(
         '<div class="sidebar-sub">Real-Time RAG Observability · Leeds Beckett University</div>',
         unsafe_allow_html=True,
@@ -104,7 +79,7 @@ with st.sidebar:
 
 
 # ── Home page ─────────────────────────────────────────────────────────────────
-st.title("🔭 RAGScope")
+st.title(":material/monitoring: RAGScope")
 st.subheader("Real-Time Observability and Evaluation Platform for RAG Systems")
 st.markdown(
     """
@@ -112,11 +87,11 @@ st.markdown(
 
     | Page | Description |
     |---|---|
-    | 📡 Live Monitor | Submit queries and observe real-time RAGAS scores and telemetry |
-    | 📊 Comparison | Compare RAGAS metrics across the 4 experimental conditions |
-    | 🔍 Query Explorer | Inspect individual query telemetry, retrieved chunks, and scores |
-    | 📈 Benchmark Results | Visualise the 200-query experiment results and statistics |
-    | 💾 Knowledge Base | Browse the ChromaDB collection and preview semantic search |
+    | :material/monitor_heart: Live Monitor | Submit queries and observe real-time RAGAS scores and telemetry |
+    | :material/compare_arrows: Comparison | Compare RAGAS metrics across the 4 experimental conditions |
+    | :material/manage_search: Query Explorer | Inspect individual query telemetry, retrieved chunks, and scores |
+    | :material/analytics: Benchmark Results | Visualise the 200-query experiment results and statistics |
+    | :material/database: Knowledge Base | Browse the ChromaDB collection and preview semantic search |
 
     ---
     **Research context:** This platform was developed as the primary artefact for an

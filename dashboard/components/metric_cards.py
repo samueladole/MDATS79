@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from dashboard.components.theme import icon_html
 from evaluation.hallucination_score import risk_band
 
 # Same red/amber/green triplet as risk_colour(), so a score reads consistently
@@ -83,7 +84,7 @@ def similarity_meter_html(score: float, label: str = "Similarity") -> str:
 
 
 def _score_card_html(
-    icon: str,
+    icon_name: str,
     label: str,
     value: float | None,
     help_text: str,
@@ -102,18 +103,21 @@ def _score_card_html(
     # rather than colouring the text itself (illegible for lighter hues).
     badge_bg = color if value is not None else _GREY
     ink = _readable_ink(_gradient_rgb(value, invert=invert)) if value is not None else "#ffffff"
+    icon = icon_html(icon_name, color=color if value is not None else _GREY)
     return f"""
     <div title="{help_text}" style="background:rgba(127,127,127,0.06);
-                border:1px solid rgba(127,127,127,0.18);border-radius:12px;
-                padding:0.9rem 1rem;height:100%;">
-      <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.35rem;">
-        <span style="font-size:1.05rem;">{icon}</span>
+                border:1px solid rgba(127,127,127,0.18);border-radius:14px;
+                padding:1rem 1.1rem;height:100%;
+                box-shadow:0 1px 3px rgba(0,0,0,0.06);
+                transition:box-shadow 0.15s ease;">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem;">
+        {icon}
         <span style="font-size:0.72rem;font-weight:700;text-transform:uppercase;
                      letter-spacing:0.03em;opacity:0.65;">{label}</span>
       </div>
-      <div style="font-size:1.65rem;font-weight:700;margin-bottom:0.5rem;">{display_value}</div>
+      <div style="font-size:1.75rem;font-weight:700;margin-bottom:0.55rem;">{display_value}</div>
       <div style="background:rgba(127,127,127,0.2);border-radius:6px;height:7px;
-                  width:100%;overflow:hidden;margin-bottom:0.5rem;">
+                  width:100%;overflow:hidden;margin-bottom:0.55rem;">
         <div style="background:{color};height:100%;width:{pct:.1f}%;border-radius:6px;"></div>
       </div>
       <span style="display:inline-block;font-size:0.68rem;font-weight:700;
@@ -135,7 +139,7 @@ def ragas_scorecard(
     with col1:
         st.markdown(
             _score_card_html(
-                "🎯",
+                "target",
                 "Context Relevance",
                 context_relevance,
                 "Proportion of retrieved context relevant to the query (RAGAS).",
@@ -145,7 +149,7 @@ def ragas_scorecard(
     with col2:
         st.markdown(
             _score_card_html(
-                "🔗",
+                "link",
                 "Answer Faithfulness",
                 answer_faithfulness,
                 "Degree to which the answer is grounded in the retrieved context (RAGAS).",
@@ -155,7 +159,7 @@ def ragas_scorecard(
     with col3:
         st.markdown(
             _score_card_html(
-                "✅",
+                "check_circle",
                 "Answer Correctness",
                 answer_correctness,
                 "Semantic match with the ground-truth answer (RAGAS). Requires ground truth.",
@@ -165,7 +169,7 @@ def ragas_scorecard(
     with col4:
         st.markdown(
             _score_card_html(
-                "⚠️",
+                "warning",
                 "Hallucination Risk",
                 hallucination_risk,
                 "Composite risk score: 1 − (0.6×faithfulness + 0.4×context_relevance).",
