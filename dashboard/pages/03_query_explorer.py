@@ -10,8 +10,11 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Query Explorer · RAGScope", layout="wide", page_icon="🔍")
-st.title("🔍 Query Explorer")
+from dashboard.components.theme import apply_theme
+
+st.set_page_config(page_title="Query Explorer · RAGScope", layout="wide", page_icon=":material/manage_search:")
+apply_theme()
+st.title(":material/manage_search: Query Explorer")
 st.caption("Select any logged query to inspect its full telemetry trace.")
 
 from dashboard.components.latency_chart import pipeline_flow_sankey
@@ -113,7 +116,7 @@ pipeline_flow_sankey(
 )
 if record.get("evaluation_ms", 0.0) == 0.0 and record.get("context_relevance") is not None:
     st.caption(
-        "⚠️ This record predates per-stage evaluation timing — RAGAS ran (scores are "
+        ":material/warning: This record predates per-stage evaluation timing — RAGAS ran (scores are "
         "present) but its duration wasn't captured separately, so 'Response' absorbs it."
     )
 st.divider()
@@ -131,6 +134,6 @@ for i, chunk in enumerate(chunks, 1):
         st.markdown(chunk.get("text", ""))
 
 # ── Raw JSON ──────────────────────────────────────────────────────────────────
-with st.expander("🗂 Raw Telemetry Record (JSON)"):
+with st.expander("Raw Telemetry Record (JSON)", icon=":material/data_object:"):
     display = {k: v for k, v in record.items() if k != "retrieved_chunks"}
     st.json(display)

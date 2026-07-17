@@ -18,9 +18,11 @@ from dashboard.components.metric_cards import (
     similarity_meter_html,
     telemetry_row,
 )
+from dashboard.components.theme import apply_theme
 
-st.set_page_config(page_title="Live Monitor · RAGScope", layout="wide", page_icon="📡")
-st.title("📡 Live Monitor")
+st.set_page_config(page_title="Live Monitor · RAGScope", layout="wide", page_icon=":material/monitor_heart:")
+apply_theme()
+st.title(":material/monitor_heart: Live Monitor")
 st.caption("Submit a query and watch the full RAG pipeline execute in real time.")
 
 st.session_state.setdefault("session_history", [])
@@ -41,7 +43,7 @@ with st.sidebar:
     )
     if st.session_state.session_history:
         st.divider()
-        if st.button("🗑 Clear Session History", width="stretch"):
+        if st.button("Clear Session History", icon=":material/delete_sweep:", width="stretch"):
             st.session_state.session_history = []
             st.session_state.last_result = None
             st.rerun()
@@ -53,7 +55,7 @@ query_text = st.text_area(
     placeholder="e.g. What are the main causes of hallucination in large language models?",
 )
 
-run_btn = st.button("▶  Run Query", type="primary", width="stretch")
+run_btn = st.button("Run Query", icon=":material/play_arrow:", type="primary", width="stretch")
 
 if run_btn and query_text.strip():
     from pipeline.rag import RAGPipeline

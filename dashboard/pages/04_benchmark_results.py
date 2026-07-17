@@ -14,11 +14,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from dashboard.components.theme import apply_theme
 from evaluation.hallucination_score import risk_band
 from evaluation.metrics import cohens_d, pearson_r
 
-st.set_page_config(page_title="Benchmark Results · RAGScope", layout="wide", page_icon="📈")
-st.title("📈 Benchmark Results")
+st.set_page_config(page_title="Benchmark Results · RAGScope", layout="wide", page_icon=":material/analytics:")
+apply_theme()
+st.title(":material/analytics: Benchmark Results")
 st.caption(
     "Results of the 200-query, 2×2 factorial experiment "
     "(Llama3 vs Mistral × Dense vs Hybrid retrieval)."
@@ -220,7 +222,7 @@ if effect_rows:
     fig_d.update_layout(height=460, **TRANSPARENT_LAYOUT)
     st.plotly_chart(fig_d, width="stretch")
 
-    with st.expander("📐 Effect size detail table"):
+    with st.expander("Effect size detail table", icon=":material/straighten:"):
         st.dataframe(effect_df.round(4), width="stretch")
 else:
     st.info("Effect-size comparisons need at least two conditions with ≥2 samples each in the loaded results.")
@@ -387,11 +389,12 @@ if "dataset" in df.columns:
     st.divider()
 
 # ── Raw data table ────────────────────────────────────────────────────────────
-with st.expander("📋 Full Results Table"):
+with st.expander("Full Results Table", icon=":material/table_chart:"):
     st.dataframe(df, width="stretch")
     csv = df.to_csv(index=False)
     st.download_button(
-        "⬇ Download CSV",
+        "Download CSV",
+        icon=":material/download:",
         data=csv,
         file_name=selected_file,
         mime="text/csv",

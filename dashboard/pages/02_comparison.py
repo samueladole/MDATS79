@@ -10,8 +10,11 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Comparison · RAGScope", layout="wide", page_icon="📊")
-st.title("📊 Condition Comparison")
+from dashboard.components.theme import apply_theme
+
+st.set_page_config(page_title="Comparison · RAGScope", layout="wide", page_icon=":material/compare_arrows:")
+apply_theme()
+st.title(":material/compare_arrows: Condition Comparison")
 st.caption(
     "Comparing RAGAS evaluation scores and telemetry across the "
     "2×2 factorial experimental conditions."

@@ -13,10 +13,12 @@ import plotly.express as px
 import streamlit as st
 
 from config.settings import settings
+from dashboard.components.theme import apply_theme
 from pipeline.vectorstore import get_vector_store
 
-st.set_page_config(page_title="Knowledge Base · RAGScope", layout="wide", page_icon="💾")
-st.title("💾 Knowledge Base")
+st.set_page_config(page_title="Knowledge Base · RAGScope", layout="wide", page_icon=":material/database:")
+apply_theme()
+st.title(":material/database: Knowledge Base")
 st.caption("Read-only view of the ChromaDB collection backing the RAG pipeline.")
 
 DATASET_LABELS = {
