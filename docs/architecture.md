@@ -97,23 +97,22 @@ The system integrates five concerns into a single cohesive platform:
 
 ## Service Layer (Docker)
 
-The platform is composed of four Docker services orchestrated via Docker Compose:
+The platform is composed of two production Docker services orchestrated via `docker-compose.yml`, plus one development-only service defined in `docker-compose.override.yml`:
 
 | Service | Image | Port | Responsibility |
 |---|---|:---:|---|
 | `chromadb` | `chromadb/chroma:latest` | 8000 | Persistent vector store (embedding storage and ANN search) |
-| `ollama` | `docker/ollama/Dockerfile` | 11434 | Local LLM inference server (Llama 3, Mistral 7B) |
-| `ollama-init` | Same as `ollama` | — | One-shot model puller; exits after models are downloaded |
 | `ragscope` | `docker/app/Dockerfile` | 8501 | Main application (pipeline + evaluation + dashboard) |
+| `jupyter` *(dev only)* | `docker/app/Dockerfile` | 8888 | Notebook server for exploratory analysis; only started via the override file |
 
-Services communicate over an internal bridge network (`ragscope_net`). The `ragscope` service depends on both `chromadb` and `ollama` reaching a healthy state before starting, enforced by Docker Compose `condition: service_healthy` dependency declarations.
+Ollama is deliberately **not** a Docker service. It runs on the host machine — the operator pulls the required models there once (`ollama pull llama3`, `ollama pull mistral`) before starting the stack — and the `ragscope` (and `jupyter`) containers reach it at `http://host.docker.internal:11434` via the `extra_hosts: host.docker.internal:host-gateway` entry in the compose file. This keeps LLM inference on host compute without an extra virtualisation layer, at the cost of the host needing Ollama installed and running independently of `docker compose up`.
+
+Services communicate over an internal bridge network (`ragscope_net`). The `ragscope` service depends on `chromadb` reaching a healthy state before starting, enforced by a Docker Compose `condition: service_healthy` dependency declaration. It does **not** wait on an Ollama container (there isn't one) — instead, `docker/scripts/entrypoint.sh` polls the host's Ollama HTTP API directly and fails fast with a diagnostic message if no model is available there.
 
 **Startup order:**
 
 ```
-chromadb (healthy) ──┐
-                      ├──▶ ollama-init (pulls models) ──▶ ragscope (starts dashboard)
-ollama   (healthy) ──┘
+chromadb (healthy) ──▶ ragscope entrypoint polls host Ollama for a pulled model ──▶ ragscope (starts dashboard)
 ```
 
 ---
@@ -174,7 +173,7 @@ All runtime configuration is centralised in a single Pydantic `Settings` class l
 ```python
 from config.settings import settings
 
-print(settings.ollama_base_url)    # http://ollama:11434
+print(settings.ollama_base_url)    # http://host.docker.internal:11434
 print(settings.top_k)              # 5
 print(settings.retrieval_strategy) # "hybrid"
 ```
@@ -754,7 +753,7 @@ All settings live in `.env` (see `.env.example`). Key values:
 
 | Variable | Default | Used by |
 |---|---|---|
-| `OLLAMA_BASE_URL` | `http://ollama:11434` | All LLM clients, RAGAS runner |
+| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | All LLM clients, RAGAS runner |
 | `DEFAULT_LLM` | `llama3` | `RAGPipeline` default |
 | `RETRIEVAL_STRATEGY` | `hybrid` | `RAGPipeline` default |
 | `TOP_K` | `5` | Both retrievers |
@@ -762,7 +761,7 @@ All settings live in `.env` (see `.env.example`). Key values:
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | `EmbeddingGenerator`; also backs `RAGASRunner`'s answer-correctness embeddings |
 | `CHROMA_HOST` | `chromadb` | `VectorStore` |
 | `CHROMA_COLLECTION` | `ragscope_corpus` | `VectorStore` |
-| `RAGAS_JUDGE_MODEL` | `llama3` | `RAGASRunner` |
+| `RAGAS_JUDGE_MODEL` | `qwen2.5:7b` | `RAGASRunner` |
 | `TELEMETRY_STORE_DIR` | `./telemetry/store` | `TelemetryLogger` |
 | `EXPERIMENT_RANDOM_SEED` | `42` | Dataset loaders, sampling |
 
