@@ -10,10 +10,6 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from dashboard.components.theme import apply_theme
-
-st.set_page_config(page_title="Query Explorer · RAGScope", layout="wide", page_icon=":material/manage_search:")
-apply_theme()
 st.title(":material/manage_search: Query Explorer")
 st.caption("Select any logged query to inspect its full telemetry trace.")
 

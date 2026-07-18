@@ -14,12 +14,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from dashboard.components.theme import apply_theme
 from evaluation.hallucination_score import risk_band
 from evaluation.metrics import cohens_d, pearson_r
 
-st.set_page_config(page_title="Benchmark Results · RAGScope", layout="wide", page_icon=":material/analytics:")
-apply_theme()
 st.title(":material/analytics: Benchmark Results")
 st.caption(
     "Results of the 200-query, 2×2 factorial experiment "

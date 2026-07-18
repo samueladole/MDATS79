@@ -79,23 +79,37 @@ with st.sidebar:
 
 
 # ── Home page ─────────────────────────────────────────────────────────────────
-st.title(":material/monitoring: RAGScope")
-st.subheader("Real-Time Observability and Evaluation Platform for RAG Systems")
-st.markdown(
-    """
-    Navigate using the **sidebar pages** to access:
+def render_home() -> None:
+    st.title(":material/monitoring: RAGScope")
+    st.subheader("Real-Time Observability and Evaluation Platform for RAG Systems")
+    st.markdown(
+        """
+        Navigate using the **sidebar pages** to access:
 
-    | Page | Description |
-    |---|---|
-    | :material/monitor_heart: Live Monitor | Submit queries and observe real-time RAGAS scores and telemetry |
-    | :material/compare_arrows: Comparison | Compare RAGAS metrics across the 4 experimental conditions |
-    | :material/manage_search: Query Explorer | Inspect individual query telemetry, retrieved chunks, and scores |
-    | :material/analytics: Benchmark Results | Visualise the 200-query experiment results and statistics |
-    | :material/database: Knowledge Base | Browse the ChromaDB collection and preview semantic search |
+        | Page | Description |
+        |---|---|
+        | :material/monitor_heart: Live Monitor | Submit queries and observe real-time RAGAS scores and telemetry |
+        | :material/compare_arrows: Comparison | Compare RAGAS metrics across the 4 experimental conditions |
+        | :material/manage_search: Query Explorer | Inspect individual query telemetry, retrieved chunks, and scores |
+        | :material/analytics: Benchmark Results | Visualise the 200-query experiment results and statistics |
+        | :material/database: Knowledge Base | Browse the ChromaDB collection and preview semantic search |
 
-    ---
-    **Research context:** This platform was developed as the primary artefact for an
-    MSc Data Science dissertation at Leeds Beckett University (2026), following the
-    Design Science Research Methodology (Peffers et al., 2007).
-    """
-)
+        ---
+        **Research context:** This platform was developed as the primary artefact for an
+        MSc Data Science dissertation at Leeds Beckett University (2026), following the
+        Design Science Research Methodology (Peffers et al., 2007).
+        """
+    )
+
+
+# ── Navigation (icons shown in the sidebar page list) ──────────────────────────
+pages = [
+    st.Page(render_home, title="Home", icon=":material/home:", default=True, url_path="home"),
+    st.Page("pages/01_live_monitor.py", title="Live Monitor", icon=":material/monitor_heart:"),
+    st.Page("pages/02_comparison.py", title="Condition Comparison", icon=":material/compare_arrows:"),
+    st.Page("pages/03_query_explorer.py", title="Query Explorer", icon=":material/manage_search:"),
+    st.Page("pages/04_benchmark_results.py", title="Benchmark Results", icon=":material/analytics:"),
+    st.Page("pages/05_knowledge_base.py", title="Knowledge Base", icon=":material/database:"),
+]
+pg = st.navigation(pages)
+pg.run()

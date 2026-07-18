@@ -18,10 +18,6 @@ from dashboard.components.metric_cards import (
     similarity_meter_html,
     telemetry_row,
 )
-from dashboard.components.theme import apply_theme
-
-st.set_page_config(page_title="Live Monitor · RAGScope", layout="wide", page_icon=":material/monitor_heart:")
-apply_theme()
 st.title(":material/monitor_heart: Live Monitor")
 st.caption("Submit a query and watch the full RAG pipeline execute in real time.")
 
