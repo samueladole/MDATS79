@@ -49,9 +49,11 @@ All datasets are:
 | Dataset | Query Type | Corpus Source | Queries | Passages in Retrieval Corpus | Licence |
 |---|---|---|:---:|:---:|---|
 | MS MARCO | Passage ranking | Web documents (Bing) | 60 | 50,000 sampled | MIT |
-| Natural Questions | Single-hop QA | Wikipedia | 40 | ~40 supporting passages | CC BY-SA 3.0 |
-| HotpotQA (fullwiki) | Multi-hop QA | Wikipedia (full corpus) | 100 | ~500–800 supporting passages | CC BY-SA 4.0 |
-| **Total** | **Mixed** | | **200** | **~51,000** | |
+| Natural Questions | Single-hop QA | Wikipedia | 40 | 40 supporting passages | CC BY-SA 3.0 |
+| HotpotQA (fullwiki) | Multi-hop QA | Wikipedia (full corpus) | 100 | 7,776 supporting passages | CC BY-SA 4.0 |
+| **Total** | **Mixed** | | **200** | **57,816** | |
+
+Passage counts above are exact, taken from `data/ingestion_manifest.json` for the research ingestion run (not estimates). HotpotQA contributes far more passages relative to its 100 queries than the other two datasets because the loader indexes every document listed in each example's fullwiki `context` field — the full set of candidate documents the retriever must search, not only the small number of documents named in `supporting_facts` — consistent with `fullwiki` being an open-domain retrieval setting rather than one with a pre-filtered shortlist.
 
 The benchmark is **stratified** by query type to ensure the experimental results are not dominated by a single difficulty level. The 60/40/100 split was chosen to weight multi-hop queries more heavily because they represent the most demanding condition for RAG faithfulness and the most diagnostic scenario for the observability platform.
 
@@ -70,7 +72,7 @@ The benchmark is **stratified** by query type to ensure the experimental results
 | Training queries | ~1,000,000 |
 | Development queries | 6,980 (with human-annotated relevance labels) |
 | Licence | MIT |
-| HuggingFace Hub | `ms_marco` / `v2.1` |
+| HuggingFace Hub | `microsoft/ms_marco` / `v2.1` |
 | Paper | Bajaj et al. (2016), arXiv:1611.09268 |
 | Download | https://microsoft.github.io/msmarco/ |
 
@@ -84,7 +86,7 @@ MS MARCO is the most widely used dataset for passage retrieval research and prov
 - Established baselines exist in the literature for direct comparison
 - Open MIT licence permits unrestricted academic re-use
 
-**Query types in the development set:**
+**Query types (classified by relevance annotation):**
 - **Single-answer queries** — one passage in the corpus contains the answer; 30 sampled for the benchmark
 - **Multi-passage queries** — multiple passages contain relevant information; 30 sampled for the benchmark
 
@@ -123,7 +125,7 @@ queries = load_queries(sample_size=60, seed=42)
 
 ### Usage in this Research
 
-A stratified random sample of 50,000 passages is drawn from the training split and indexed into ChromaDB as the primary retrieval corpus. The sample is stratified by passage source domain to maintain diversity. The 60 evaluation queries are drawn from the development set (which has human-annotated relevance labels), split equally between single-answer (30) and multi-passage (30) types.
+A stratified random sample of 50,000 passages is drawn from the training split and indexed into ChromaDB as the primary retrieval corpus. The sample is stratified by passage source domain to maintain diversity. The 60 evaluation queries are also drawn from the training split — both `load_corpus()` and `load_queries()` read the same `train` split of `microsoft/ms_marco` — using the per-passage `is_selected` relevance annotations carried on every split (including train) to classify each query as single-answer or multi-passage, split equally between single-answer (30) and multi-passage (30) types.
 
 ---
 
@@ -138,7 +140,7 @@ A stratified random sample of 50,000 passages is drawn from the training split a
 | Training set | 307,373 examples |
 | Development set | 7,842 examples |
 | Licence | CC BY-SA 3.0 |
-| HuggingFace Hub | `natural_questions` |
+| HuggingFace Hub | `google-research-datasets/natural_questions` |
 | Paper | Kwiatkowski et al. (2019), TACL 7:452–466 |
 | Download | https://ai.google.com/research/NaturalQuestions |
 
@@ -216,7 +218,7 @@ queries, passages = load_queries_and_passages(sample_size=40, seed=42)
 | Source | Crowd-sourced; Wikipedia articles |
 | Development set | 7,405 examples |
 | Licence | CC BY-SA 4.0 |
-| HuggingFace Hub | `hotpot_qa` / `fullwiki` |
+| HuggingFace Hub | `hotpotqa/hotpot_qa` / `fullwiki` |
 | Paper | Yang et al. (2018), EMNLP, pp. 2369–2380 |
 | Download | https://hotpotqa.github.io/ |
 
@@ -379,16 +381,16 @@ The `--reset` flag wipes the ChromaDB collection first, ensuring a clean reprodu
 
 ## Retrieval Corpus Composition
 
-After ingestion, the ChromaDB collection contains approximately:
+After ingestion, the ChromaDB collection contains the following (exact counts from `data/ingestion_manifest.json` for the research ingestion run):
 
-| Source | Passages | Avg Chunks/Passage | Estimated Chunks |
+| Source | Passages | Chunks | Avg Chunks/Passage |
 |---|:---:|:---:|:---:|
-| MS MARCO (sampled) | 50,000 | ~2.5 | ~125,000 |
-| Natural Questions | ~40 | ~3.0 | ~120 |
-| HotpotQA supporting passages | ~600 | ~2.5 | ~1,500 |
-| **Total** | **~50,640** | | **~126,620** |
+| MS MARCO (sampled) | 50,000 | 50,000 | 1.00 |
+| Natural Questions | 40 | 47 | 1.18 |
+| HotpotQA supporting passages | 7,776 | 7,802 | 1.00 |
+| **Total** | **57,816** | **57,849** | **1.00** |
 
-> **Note:** Actual chunk counts depend on passage lengths and overlap configuration. The ingestion manifest at `data/ingestion_manifest.json` reports exact counts for the specific run.
+> **Note:** Passages average almost exactly one chunk each — most passages in all three source datasets fall well under the 512-token chunk size, so the chunker rarely needs to split them; the count only rises where an individual passage happens to exceed ~512 tokens (as with a handful of the longer Natural Questions long-answer passages). Chunk counts depend on passage lengths and the chunk-size/overlap configuration, so a differently configured or re-sampled ingestion run will not reproduce these exact figures — re-run `pipeline/ingestion.py` and consult the regenerated `data/ingestion_manifest.json` for that run's actual counts.
 
 The BM25 index (`data/bm25_corpus.jsonl`) mirrors the ChromaDB collection exactly — one JSONL entry per chunk — ensuring consistent coverage between dense and hybrid retrieval.
 
@@ -447,7 +449,7 @@ All three licences explicitly permit re-use in academic research. No modificatio
 
 ### Privacy
 
-MS MARCO queries are derived from real Bing user searches that have been anonymised by Microsoft Research prior to public release. This project uses the passages and development-set queries only as a retrieval benchmark. No attempt is made to re-identify users, and the queries are treated strictly as evaluation artefacts.
+MS MARCO queries are derived from real Bing user searches that have been anonymised by Microsoft Research prior to public release. This project uses the passages and training-split queries only as a retrieval benchmark. No attempt is made to re-identify users, and the queries are treated strictly as evaluation artefacts.
 
 Natural Questions queries are derived from real Google Search logs, similarly anonymised. HotpotQA questions are crowd-sourced by Amazon Mechanical Turk workers and contain no personally identifiable information.
 
@@ -494,7 +496,7 @@ Dataset downloads are cached by HuggingFace Datasets in `data/raw/` and will not
 | Function | Returns | Description |
 |---|---|---|
 | `load_corpus(sample_size, seed)` | `list[dict]` | Random sample of passages for the retrieval corpus |
-| `load_queries(sample_size, seed)` | `list[dict]` | Stratified sample of development-set queries |
+| `load_queries(sample_size, seed)` | `list[dict]` | Stratified sample of queries from the training split |
 | `stream_corpus()` | `Iterator[dict]` | Memory-efficient streaming alternative to `load_corpus` |
 
 ### `data/loaders/natural_questions.py`
