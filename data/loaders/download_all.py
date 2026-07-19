@@ -36,20 +36,24 @@ logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level} | {messag
 
 
 def download_msmarco() -> None:
-    """Download MS MARCO v2.1 (train + validation splits)."""
-    logger.info("Downloading MS MARCO v2.1 (train + validation splits) …")
+    """Download MS MARCO v2.1 (train split — the only split the loaders read)."""
+    logger.info("Downloading MS MARCO v2.1 (train split) …")
 
-    for split in ("train", "validation"):
-        load_dataset("ms_marco", "v2.1", split=split, cache_dir="data/raw/msmarco")
+    load_dataset("microsoft/ms_marco", "v2.1", split="train", cache_dir="data/raw/msmarco")
 
     logger.info("MS MARCO downloaded. ✓")
 
 
 def download_natural_questions() -> None:
-    """Download Natural Questions (validation split)."""
+    """Download Natural Questions (dev config, validation split)."""
     logger.info("Downloading Natural Questions (validation split) …")
 
-    load_dataset("natural_questions", split="validation", cache_dir="data/raw/natural_questions")
+    load_dataset(
+        "google-research-datasets/natural_questions",
+        "dev",
+        split="validation",
+        cache_dir="data/raw/natural_questions",
+    )
 
     logger.info("Natural Questions downloaded. ✓")
 
@@ -58,7 +62,7 @@ def download_hotpotqa() -> None:
     """Download HotpotQA fullwiki (validation split)."""
     logger.info("Downloading HotpotQA fullwiki (validation split) …")
 
-    load_dataset("hotpot_qa", "fullwiki", split="validation", cache_dir="data/raw/hotpotqa")
+    load_dataset("hotpotqa/hotpot_qa", "fullwiki", split="validation", cache_dir="data/raw/hotpotqa")
 
     logger.info("HotpotQA downloaded. ✓")
 
