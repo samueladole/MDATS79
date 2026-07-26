@@ -48,16 +48,12 @@ dependencies = [
     # ── Dashboard ─────────────────────────────────────────────────────────────
     "streamlit>=1.35.0", # Observability dashboard
     "plotly>=5.22.0", # Interactive charts
-    "altair>=5.3.0", # Declarative visualisation
     # ── Data processing ───────────────────────────────────────────────────────
     "pandas>=2.2.0",
     "numpy>=1.26.0",
-    "datasets>=2.20.0", # HuggingFace Datasets (NQ, HotpotQA)
-    "ir-datasets>=0.5.5", # MS MARCO loader
+    "datasets>=2.20.0", # HuggingFace Datasets (MS MARCO, NQ, HotpotQA)
     # ── NLP utilities ─────────────────────────────────────────────────────────
     "tiktoken>=0.7.0", # Token counting
-    "nltk>=3.8.1",
-    "scipy>=1.13.0", # Statistical analysis (Cohen's d)
     # ── HTTP / async ──────────────────────────────────────────────────────────
     "httpx>=0.27.0",
     "tenacity>=8.3.0", # Retry logic for LLM calls
@@ -65,7 +61,6 @@ dependencies = [
     "python-dotenv>=1.0.1", # .env file loading
     "pydantic>=2.7.0", # Data validation & settings
     "pydantic-settings>=2.3.0",
-    "rich>=13.7.0", # Terminal output formatting
     "typer>=0.12.0", # CLI argument parsing
     "loguru>=0.7.2", # Structured logging # Fast JSON serialisation (telemetry)
     "orjson>=3.10.0",
@@ -80,14 +75,6 @@ notebooks = [
     "matplotlib>=3.9.0",
     "seaborn>=0.13.0",
 ]
-
-# ── CLI entry points ──────────────────────────────────────────────────────────
-[project.scripts]
-ragscope-ingest    = "pipeline.ingestion:main"
-ragscope-query     = "pipeline.rag:main"
-ragscope-benchmark = "experiments.run_2x2_factorial:main"
-ragscope-analyse   = "experiments.analyse_results:main"
-ragscope-dashboard = "dashboard.app:main"
 
 # ── Build system ──────────────────────────────────────────────────────────────
 [build-system]
