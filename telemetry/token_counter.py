@@ -61,22 +61,6 @@ class TokenCounter:
     def __init__(self, encoding_name: str = _ENCODING_NAME) -> None:
         self._enc = tiktoken.get_encoding(encoding_name)
 
-    def count_tokens(self, text: str) -> int:
-        """Return the number of tokens in ``text``."""
-        return len(self._enc.encode(text))
-
-    def count_prompt(self, query: str, context_chunks: list[str]) -> int:
-        """
-        Count tokens for the full RAG prompt (query + all context passages).
-
-        Parameters
-        ----------
-        query          : The raw user query string.
-        context_chunks : List of retrieved passage texts.
-        """
-        full_text = query + " ".join(context_chunks)
-        return self.count_tokens(full_text)
-
     def build_usage(
         self,
         prompt_tokens: int,
