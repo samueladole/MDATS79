@@ -88,7 +88,8 @@ The system integrates five concerns into a single cohesive platform:
 │                                     │                                      │
 │  ┌──────────────────────────────────▼───────────────────────────────────┐  │
 │  │              Streamlit Observability Dashboard                        │  │
-│  │  Live Monitor │ Comparison │ Query Explorer │ Benchmark Results       │  │
+│  │  Live Monitor │ Comparison │ Query Explorer │ Benchmark Results │     │  │
+│  │  Knowledge Base                                                       │  │
 │  └──────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -104,6 +105,8 @@ The platform is composed of two production Docker services orchestrated via `doc
 | `chromadb` | `chromadb/chroma:latest` | 8000 | Persistent vector store (embedding storage and ANN search) |
 | `ragscope` | `docker/app/Dockerfile` | 8501 | Main application (pipeline + evaluation + dashboard) |
 | `jupyter` *(dev only)* | `docker/app/Dockerfile` | 8888 | Notebook server for exploratory analysis; only started via the override file |
+
+The production `ragscope`/`chromadb` build no longer bundles `jupyterlab`, `matplotlib`, `seaborn`, or `ipywidgets` — those packages exist solely to support the dev-only `jupyter` service, so baking them into the shared production image inflated its size and build time for a capability the deployed research artefact never uses. The `jupyter` service instead installs its `notebooks` extra (`pip install jupyterlab ipywidgets matplotlib seaborn`) as the first step of its container command, before launching `jupyter lab` — see `docker-compose.override.yml`.
 
 Ollama is deliberately **not** a Docker service. It runs on the host machine — the operator pulls the required models there once (`ollama pull llama3`, `ollama pull mistral`) before starting the stack — and the `ragscope` (and `jupyter`) containers reach it at `http://host.docker.internal:11434` via the `extra_hosts: host.docker.internal:host-gateway` entry in the compose file. This keeps LLM inference on host compute without an extra virtualisation layer, at the cost of the host needing Ollama installed and running independently of `docker compose up`.
 
@@ -154,7 +157,8 @@ config/settings.py
             │   ├── dashboard/pages/01_live_monitor.py
             │   ├── dashboard/pages/02_comparison.py
             │   ├── dashboard/pages/03_query_explorer.py
-            │   └── dashboard/pages/04_benchmark_results.py
+            │   ├── dashboard/pages/04_benchmark_results.py
+            │   └── dashboard/pages/05_knowledge_base.py
             │
             └── experiments/run_2x2_factorial.py
                     └── experiments/analyse_results.py
@@ -479,7 +483,6 @@ pipeline/vectorstore.py                     │
 | `.count_where(where)` | method | Count chunks matching a metadata filter, without transferring documents/embeddings |
 | `.get_chunks(where, limit, offset)` | method | Plain metadata-filtered browse (not similarity-ranked) — powers the Knowledge Base chunk browser; returned `RetrievedChunk.score` is always 0.0 |
 | `.embedding_dimension()` | method | Dimensionality of a stored embedding, read directly from the collection (`None` if empty) |
-| `.delete_chunks(chunk_ids)` | method | Delete chunks by ID |
 | `.reset()` | method | Delete and recreate collection (destructive) |
 | `RetrievedChunk` | dataclass | `chunk_id`, `text`, `score` (cosine sim [0,1]), `metadata` |
 | `get_vector_store()` | function | Module-level singleton |
@@ -529,7 +532,6 @@ rrf_score(chunk) = dense_weight × 1/(60 + dense_rank)
 |---|---|---|
 | `BaseLLMClient` | ABC | Abstract base for all LLM clients |
 | `.generate(query, context_chunks)` | method | POST to Ollama `/api/generate`; returns `GenerationResponse` |
-| `.is_available()` | method | Check model is loaded in Ollama |
 | `GenerationResponse` | dataclass | `text`, `model`, `prompt_tokens`, `completion_tokens`, `generation_ms`, `raw` |
 | `GenerationResponse.estimated_cost` | property | USD cost from configurable token rates |
 
@@ -609,11 +611,11 @@ class Timer:
 | Symbol | Type | Description |
 |---|---|---|
 | `TokenCounter` | class | tiktoken-based counter (cl100k_base encoding) |
-| `.count_tokens(text)` | method | Token count for any string |
-| `.count_prompt(query, contexts)` | method | Token count for full RAG prompt |
 | `.build_usage(prompt_tokens, completion_tokens)` | method | Creates `TokenUsage` with cost estimate |
 | `.from_generation_response(response)` | method | Builds `TokenUsage` from Ollama's reported token counts |
 | `TokenUsage` | dataclass | `prompt_tokens`, `completion_tokens`, `total_tokens`, `estimated_cost_usd` |
+
+> The live pipeline only ever counts tokens via `.from_generation_response()` — Ollama reports both prompt and completion token counts directly in its response, so nothing in `RAGPipeline.query()` re-tokenises text itself. `TokenCounter` previously also exposed `.count_tokens()`/`.count_prompt()` for re-tokenising raw text directly; those were removed as dead code (no caller in the live pipeline) — they existed only to support the one-off tiktoken cross-validation described in Chapter 3 §3.6.5, which can be re-run ad hoc against `tiktoken` directly if needed again.
 
 ---
 
