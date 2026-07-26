@@ -293,24 +293,6 @@ class VectorStore:
 
     # ── Maintenance ─────────────────────────────────────────────────────────────
 
-    @_reconnect_on_stale_collection
-    def delete_chunks(self, chunk_ids: list[str]) -> int:
-        """
-        Delete chunks by their unique identifiers.
-
-        Parameters
-        ----------
-        chunk_ids : List of chunk IDs to delete.
-
-        Returns
-        -------
-        int
-            Number of chunks deleted.
-        """
-        self._collection.delete(ids=chunk_ids)
-        logger.info(f"Deleted {len(chunk_ids):,} chunks from collection '{self.collection_name}'.")
-        return len(chunk_ids)
-
     def reset(self) -> None:
         """
         Delete and recreate the collection.
