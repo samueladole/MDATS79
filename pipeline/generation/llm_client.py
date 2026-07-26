@@ -160,23 +160,6 @@ class BaseLLMClient(ABC):
             raw=raw,
         )
 
-    def is_available(self) -> bool:
-        """Return True if the model is loaded in Ollama."""
-        try:
-            resp = self._client.get(f"{self._base_url}/api/tags", timeout=5)
-            models = [m["name"] for m in resp.json().get("models", [])]
-            return self.model_name in models
-        except Exception:
-            return False
-
-    def list_available_models(self) -> list[str]:
-        """Return a list of available model names in Ollama."""
-        try:
-            resp = self._client.get(f"{self._base_url}/api/tags", timeout=5)
-            return [m["name"].split(":")[0] for m in resp.json().get("models", [])]
-        except Exception:
-            return []
-
     # ── Private helpers ────────────────────────────────────────────────────────
 
     def _build_prompt(self, query: str, context_chunks: list[str]) -> str:
@@ -221,10 +204,6 @@ class BaseLLMClient(ABC):
         )
         response.raise_for_status()
         return response.json()
-    
-    def close(self) -> None:
-        """Close the underlying HTTP client."""
-        self._client.close()
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(model='{self.model_name}')"
