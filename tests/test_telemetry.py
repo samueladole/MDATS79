@@ -92,8 +92,11 @@ class TestTelemetryLogger:
         assert len(loaded) == 1
         assert loaded[0]["query"] == "What is NLP?"
         assert loaded[0]["retrieval_strategy"] == "dense"
-        assert loaded[0]["token_usage"]["prompt_tokens"] == 100
-        assert loaded[0]["token_usage"]["completion_tokens"] == 50
+        # build_record() uses a flat schema (documented in telemetry/logger.py:
+        # "intentionally flat to simplify pandas ingestion") — token fields are
+        # top-level, not nested under a "token_usage" key.
+        assert loaded[0]["prompt_tokens"] == 100
+        assert loaded[0]["completion_tokens"] == 50
 
     def test_count(self, tmp_path):
         from pipeline.vectorstore import RetrievedChunk

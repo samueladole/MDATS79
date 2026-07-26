@@ -52,8 +52,14 @@ class TestCohensD:
         assert result.magnitude == "negligible"
 
     def test_large_effect(self):
-        a = [0.9, 0.9, 0.9, 0.9, 0.9]
-        b = [0.1, 0.1, 0.1, 0.1, 0.1]
+        # Needs real within-group variance: with zero variance in both groups
+        # pooled_std is 0, and cohens_d() deliberately falls back to d=0.0
+        # rather than dividing by zero — so a same-value-repeated fixture
+        # (e.g. all 0.9s vs all 0.1s) can never assert "large" here regardless
+        # of the gap between groups. Use tightly clustered but non-identical
+        # values instead, so the effect size is actually computable.
+        a = [0.88, 0.91, 0.87, 0.93, 0.90]
+        b = [0.12, 0.09, 0.14, 0.07, 0.11]
         result = cohens_d(a, b)
         assert result.magnitude == "large"
         assert result.d > 0
