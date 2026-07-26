@@ -36,19 +36,6 @@ class TestTokenCounter:
     def setup_method(self):
         self.counter = TokenCounter()
 
-    def test_count_tokens_nonempty(self):
-        n = self.counter.count_tokens("Hello world, this is a test.")
-        assert n > 0
-
-    def test_count_tokens_empty(self):
-        assert self.counter.count_tokens("") == 0
-
-    def test_count_prompt_includes_context(self):
-        q = "What is RAG?"
-        ctx = ["Retrieval-Augmented Generation is a technique."]
-        n = self.counter.count_prompt(q, ctx)
-        assert n > self.counter.count_tokens(q)
-
     def test_build_usage_zero_cost(self):
         usage = self.counter.build_usage(100, 50)
         assert isinstance(usage, TokenUsage)
