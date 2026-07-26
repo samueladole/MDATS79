@@ -128,41 +128,6 @@ def latency_time_series(records: list[dict]) -> None:
     st.plotly_chart(fig, width="stretch")
 
 
-def latency_histogram(records: list[dict], metric: str = "e2e_ms") -> None:
-    """Render a histogram of a latency metric."""
-    if not records:
-        return
-
-    values = [r[metric] for r in records if r.get(metric) is not None]
-    if not values:
-        return
-
-    label_map = {
-        "e2e_ms": "End-to-End Latency (ms)",
-        "retrieval_ms": "Retrieval Latency (ms)",
-        "generation_ms": "Generation Latency (ms)",
-    }
-
-    fig = go.Figure(
-        go.Histogram(
-            x=values,
-            nbinsx=30,
-            marker_color=PURPLE,
-            opacity=0.8,
-        )
-    )
-    fig.update_layout(
-        title=f"Distribution — {label_map.get(metric, metric)}",
-        xaxis_title=label_map.get(metric, metric),
-        yaxis_title="Count",
-        height=300,
-        margin=dict(l=0, r=0, t=40, b=0),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig, width="stretch")
-
-
 def latency_box_by_condition(records: list[dict]) -> None:
     """
     Render a grouped box plot of e2e latency split by condition
