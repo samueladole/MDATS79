@@ -58,7 +58,11 @@
 
 RAG systems are powerful but opaque. When a response is wrong, it is rarely obvious *where* the pipeline failed: was it a poor query embedding, a retrieval miss, an irrelevant chunk surfaced to the top, or the language model hallucinating despite a good context? RAGScope instruments every stage of the pipeline to answer exactly that question, in real time.
 
-> **Research Question:** *What combination of evaluation metrics most effectively captures hallucination likelihood and retrieval faithfulness in RAG systems operating under real-time operational constraints?*
+This research is structured around three questions:
+
+- **RQ1 — Metric Calibration:** To what extent can a composite score based on RAGAS-compatible evaluation metrics be calibrated against ground-truth correctness to capture hallucination likelihood and retrieval faithfulness in RAG systems operating under real-time operational constraints?
+- **RQ2 — Fault Localisation:** To what extent does a platform that integrates real-time telemetry with RAGAS-compatible evaluation metrics localise the source of a RAG system failure at the retrieval or generation stage, using per-stage metric signals captured at query-level granularity?
+- **RQ3 — Configuration Trade-offs:** What performance trade-offs exist between dense and hybrid retrieval strategies, and between different open-source LLM configurations, when measured jointly across hallucination risk, retrieval faithfulness, response latency, and token cost?
 
 ---
 
@@ -84,56 +88,32 @@ RAGScope fills the integration gap: it combines the evaluative richness of RAGAS
 
 ## System Architecture
 
+The platform is organised into six stages, each mapped to a specific research question or SMART objective — see `docs/ragscope_system_architecture.svg` for the full diagram (and `docs/architecture.md` for the detailed prose description of every module).
+
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        RAGScope Platform                            │
-│                                                                     │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐   │
-│  │   Document   │    │  Embedding   │    │    Vector Database   │   │
-│  │  Ingestion   │───▶│  Generation  │───▶│      (ChromaDB)     │   │
-│  │  & Chunking  │    │(all-MiniLM)  │    │                      │   │
-│  └──────────────┘    └──────────────┘    └──────────┬───────────┘   │
-│                                                     │               │
-│  ┌──────────────────────────────────────────────────▼──────────┐    │
-│  │                      Query Pipeline                         │    │
-│  │                                                             │    │
-│  │   User Query ──▶ [Dense | Hybrid (BM25 + RRF)] Retrieval   │    │
-│  │                         │                                   │    │
-│  │                    Context Injection                        │    │
-│  │                         │                                   │    │
-│  │          ┌──────────────▼──────────────┐                    │    │
-│  │          │   LLM Generation (Ollama)   │                    │    │
-│  │          │  • Llama 3 (8B)             │                    │    │
-│  │          │  • Mistral 7B               │                    │    │
-│  │          └──────────────┬──────────────┘                    │    │
-│  └─────────────────────────┼───────────────────────────────────┘    │
-│                            │                                        │
-│  ┌─────────────────────────▼───────────────────────────────────┐    │
-│  │               Telemetry & Evaluation Layer                  │    │
-│  │                                                             │    │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │    │
-│  │  │   Latency   │  │    Token    │  │   RAGAS Metrics   │    │    │
-│  │  │  Profiling  │  │  & Cost Log │  │  (Faithfulness,   │    │    │
-│  │  │             │  │             │  │   Relevance,      │    │    │
-│  │  │ • E2E       │  │ • Prompt    │  │   Correctness,    │    │    │
-│  │  │ • Retrieval │  │ • Completion│  │   Hallucination   │    │    │
-│  │  │ • Generation│  │ • Est. cost │  │   Risk Score)     │    │    │
-│  │  └──────┬──────┘  └──────┬──────┘  └────────┬──────────┘    │    │
-│  │         └────────────────┼──────────────────┘               │    │
-│  │                          │                                  │    │
-│  │              ┌───────────▼───────────┐                      │    │
-│  │              │  Telemetry JSON Store │                      │    │
-│  │              └───────────────────────┘                      │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-│                            │                                        │
-│  ┌─────────────────────────▼───────────────────────────────────┐    │
-│  │           Streamlit Observability Dashboard                 │    │
-│  │                                                             │    │
-│  │  • Real-time metric streams    • Query-level drill-down     │    │
-│  │  • Latency & cost histograms   • Retrieval chunk viewer     │    │
-│  │  • Comparative heatmaps        • Hallucination risk gauge   │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
+ 1. Data          2. RAG Query Pipeline        3. Evaluation
+ ────────    ▶    ─────────────────────   ▶    ─────────────
+ 3 corpora        Dense/Hybrid retrieval        RAGAS Runner (judge: qwen2.5:7b)
+ → preprocess     → LLM generation              → Hallucination Risk score
+ → index          (Llama 3 8B / Mistral 7B)     (RQ1)
+ (RQ3)            (RQ3)
+
+                                                        │
+                                                        ▼
+
+ 6. Experiments   ◀────────────────────────────  4. Telemetry
+ ────────────                                    ─────────────
+ 4 conditions ×                                  Per-stage latency + tokens
+ 200 queries → CSV                               → flat JSON record (RQ2)
+ → Cohen's d, Pearson r                                │
+ (RQ3 / Objective 6)                                   ▼
+
+                                                  5. Dashboard
+                                                  ─────────────
+                                                  Live Monitor · Comparison ·
+                                                  Query Explorer · Benchmark
+                                                  Results · Knowledge Base
+                                                  (Objective 5)
 ```
 
 ---
@@ -209,16 +189,16 @@ Three publicly available benchmark datasets are used for evaluation. All are ava
 | Language | Python 3.12 | Core pipeline and evaluation |
 | Package Manager | [uv](https://docs.astral.sh/uv) | Dependency management, venv, lockfile (`uv.lock`) |
 | Containerisation | [Docker](https://docker.com) + [Compose](https://docs.docker.com/compose/) | Reproducible, isolated service orchestration |
-| LLM Inference | [Ollama](https://ollama.com) | Local Llama 3 & Mistral 7B serving (runs as a Compose service) |
+| LLM Inference | [Ollama](https://ollama.com) | Local Llama 3 & Mistral 7B serving — runs on the **host** machine, not as a Compose service (containers reach it via `host.docker.internal`) |
 | Embeddings | `sentence-transformers` (`all-MiniLM-L6-v2`) | Dense vector generation |
 | Vector DB | [ChromaDB](https://trychroma.com) | Embedding storage & similarity search (runs as a Compose service) |
 | Sparse Retrieval | `rank_bm25` | BM25 scoring for hybrid retrieval |
 | Hybrid Fusion | Custom RRF implementation | Reciprocal Rank Fusion |
-| Evaluation | [RAGAS](https://docs.ragas.io) | Context relevance, faithfulness, correctness |
+| Evaluation | [RAGAS](https://docs.ragas.io) | Context relevance, faithfulness, correctness (judge: Qwen2.5 7B) |
 | Telemetry | Custom JSON logger | Query-level instrumentation store |
 | Dashboard | [Streamlit](https://streamlit.io) | Interactive real-time visualisation |
 | Data Processing | `pandas`, `numpy` | Benchmark loading and analysis |
-| Visualisation | `plotly`, `altair` | Dashboard charts, heatmaps, and Sankey process-flow diagrams |
+| Visualisation | `plotly` | Dashboard charts, heatmaps, and Sankey process-flow diagrams |
 | Statistics | `statsmodels` | OLS trendlines on dashboard scatter plots |
 
 ---
@@ -236,16 +216,14 @@ ragscope/
 ├── .gitignore
 ├── LICENSE
 │
-├── docker-compose.yml             # Orchestrates all services (app, ollama, chromadb)
-├── docker-compose.override.yml    # Local dev overrides (hot-reload, volume mounts)
+├── docker-compose.yml             # Orchestrates production services: app, chromadb (Ollama runs on the host, not a Compose service)
+├── docker-compose.override.yml    # Local dev overrides (hot-reload, volume mounts) + dev-only jupyter service
 │
 ├── docker/                        # Per-service Dockerfiles
 │   ├── app/
-│   │   └── Dockerfile             # RAGScope app image (Python 3.12, uv-installed deps)
-│   ├── ollama/
-│   │   └── Dockerfile             # Ollama + model pre-pull layer
+│   │   └── Dockerfile             # RAGScope app image (Python 3.12, uv-installed deps); also reused by the dev jupyter service
 │   └── scripts/
-│       ├── entrypoint.sh          # Container startup: health-check Ollama
+│       ├── entrypoint.sh          # Container startup: waits for host Ollama + ChromaDB to be reachable
 │
 ├── data/                          # Dataset loading and preprocessing
 │   ├── loaders/
@@ -291,6 +269,7 @@ ragscope/
 │   │   ├── 04_benchmark_results.py # Benchmark experiment results
 │   │   └── 05_knowledge_base.py   # Read-only ChromaDB browser + semantic search preview
 │   └── components/
+│       ├── theme.py               # Shared icons (Material Symbols / inline SVG) + CSS theme
 │       ├── metric_cards.py        # Metric display components
 │       ├── latency_chart.py       # Latency visualisation
 │       └── heatmap.py             # RAGAS score heatmaps
@@ -312,9 +291,13 @@ ragscope/
 │   └── test_telemetry.py
 │
 └── docs/                          # Extended documentation
-    ├── architecture.md
-    ├── datasets.md
-    └── evaluation_metrics.md
+    ├── architecture.md                              # Full module-by-module architecture reference
+    ├── datasets.md                                   # Dataset selection, sampling, and provenance
+    ├── evaluation_metrics.md                         # RAGAS + hallucination risk metric definitions
+    ├── ragscope_system_architecture.svg               # System architecture diagram (6 stages)
+    ├── architecture_simplification_analysis.md        # Supervisor-feedback-driven simplification audit
+    ├── architecture_simplification_plan.md            # Diagram redesign proposal
+    └── architecture_simplification_changelog.md       # Record of what was actually changed
 ```
 
 ---
@@ -328,8 +311,9 @@ ragscope/
 | [Docker](https://docs.docker.com/get-docker/) | ≥ 26.0 | Required for the recommended Docker path |
 | [Docker Compose](https://docs.docker.com/compose/) | ≥ 2.27 | Bundled with Docker Desktop |
 | [uv](https://docs.astral.sh/uv/getting-started/installation/) | ≥ 0.4 | Required for the local development path |
+| [Ollama](https://ollama.com) | Latest | **Required for both paths** — Ollama always runs on the host, never inside a container. Install it and pull the models before starting either path (see below). |
 | RAM | ≥ 16 GB | 32 GB recommended for running both models |
-| Disk | ≥ 25 GB free | Models (~9 GB) + corpus + embeddings + images |
+| Disk | ≥ 25 GB free | Models (~14 GB for all three) + corpus + embeddings + images |
 
 > **macOS / Linux — install uv in one line:**
 > ```bash
@@ -344,7 +328,7 @@ ragscope/
 
 ### Option A — Docker (Recommended)
 
-Docker Compose orchestrates four services automatically: the RAGScope app, Ollama (LLM inference), ChromaDB (vector store), and a one-shot model-pull initialiser. No manual setup of Python, Ollama, or ChromaDB is required.
+Docker Compose orchestrates two services automatically: the RAGScope app and ChromaDB (vector store). No manual setup of Python or ChromaDB is required — but **Ollama is not containerised**: it always runs on the host machine (reached via `host.docker.internal`), so it must be installed and have its models pulled *before* starting the stack, for both this path and Option B.
 
 **1. Clone the repository**
 
@@ -353,28 +337,41 @@ git clone https://github.com/samueladole/ragscope.git
 cd ragscope
 ```
 
-**2. Configure environment variables**
+**2. Install Ollama and pull the required models (on the host)**
+
+```bash
+# Install from https://ollama.com, then:
+ollama serve &                # Start the Ollama daemon in the background, if not already running
+
+ollama pull llama3             # ~4.7 GB
+ollama pull mistral            # ~4.4 GB
+ollama pull qwen2.5:7b         # ~4.7 GB (RAGAS judge model)
+```
+
+The container entrypoint polls this host Ollama instance on startup and fails fast with a diagnostic message if no model is available — it does **not** pull models itself.
+
+**3. Configure environment variables**
 
 ```bash
 cp .env.example .env
 # Edit .env if you need to change defaults (see Configuration below)
 ```
 
-**3. Build and start all services**
+**4. Build and start the services**
 
 ```bash
 docker compose up --build
 ```
 
-The dashboard will be available at **http://localhost:8501** once all services are healthy.
+The dashboard will be available at **http://localhost:8501** once both services are healthy.
 
 ```
-[+] Running 4/4
+[+] Running 2/2
  ✔ chromadb     Started   → http://localhost:8000
  ✔ ragscope     Started   → http://localhost:8501
 ```
 
-**4. Ingest the benchmark datasets**
+**5. Ingest the benchmark datasets**
 
 Run this once to download and embed the MS MARCO, NQ, and HotpotQA passages into ChromaDB:
 
@@ -387,7 +384,7 @@ docker compose exec ragscope uv run python pipeline/ingestion.py \
 
 > This embeds ~50,000 passages using `all-MiniLM-L6-v2`. Expect 20–40 minutes on CPU. Progress is displayed in the terminal.
 
-**5. Stop all services**
+**6. Stop all services**
 
 ```bash
 docker compose down          # Stops containers, preserves volumes
@@ -465,7 +462,7 @@ cp .env.example .env
 
 ```env
 # ── LLM ────────────────────────────────────────────────────────────────────
-OLLAMA_BASE_URL=http://localhost:11434   # Local: http://localhost:11434
+OLLAMA_BASE_URL=http://host.docker.internal:11434   # Docker: host.docker.internal | Local (no Docker): localhost
 DEFAULT_LLM=llama3                       # llama3 | mistral
 
 # ── Retrieval ───────────────────────────────────────────────────────────────
@@ -491,7 +488,7 @@ COST_PER_1K_COMPLETION_TOKENS=0.00
 TELEMETRY_STORE_DIR=./telemetry/store
 ```
 
-> **Docker vs. local hostnames:** When running via Docker Compose, services reach each other by service name (e.g. `ollama`, `chromadb`). When running locally, change these to `localhost`. The `.env.example` is configured for Docker by default.
+> **Docker vs. local hostnames:** `CHROMA_HOST` differs by path — the real Compose service name (`chromadb`) inside Docker, `localhost` when running locally. `OLLAMA_BASE_URL` differs the other way: `host.docker.internal` inside Docker (Ollama is never a Compose service — it's always on the host), `localhost` when running locally, since there's no container boundary to cross.
 
 ---
 
@@ -506,18 +503,20 @@ Run a single query through the full pipeline (retrieval + generation + telemetry
 ```bash
 # Docker
 docker compose exec ragscope uv run python pipeline/rag.py \
-  --query "What are the main causes of hallucination in large language models?" \
+  "What are the main causes of hallucination in large language models?" \
   --llm llama3 \
   --retrieval hybrid \
   --top-k 5
 
 # Local
 uv run python pipeline/rag.py \
-  --query "What are the main causes of hallucination in large language models?" \
+  "What are the main causes of hallucination in large language models?" \
   --llm llama3 \
   --retrieval hybrid \
   --top-k 5
 ```
+
+> The query is a positional argument, not a `--query` flag — `pipeline/rag.py` is a Typer CLI with `query` declared as `typer.Argument`.
 
 **Sample output:**
 
@@ -547,7 +546,7 @@ uv run python pipeline/rag.py \
   Answer Correctness:   0.69
   Hallucination Risk:   LOW  (0.26)
 ────────────────────────────────────────────────────
- Telemetry logged → telemetry/store/20260801_143021.json
+ Telemetry logged → telemetry/store/a3f9c2e1-...-9b7d.json
 ────────────────────────────────────────────────────
 ```
 
@@ -625,12 +624,11 @@ The `docker-compose.yml` defines two services:
 | `ragscope` | `./docker/app/Dockerfile` | 8501 | Main application (pipeline + dashboard) |
 | `chromadb` | `chromadb/chroma:latest` | 8000 | Persistent vector store |
 
-The `docker-compose.override.yml` defines three services:
+The `docker-compose.override.yml` (dev mode) adds hot-reload volume mounts to `ragscope` and adds one new service:
+
 | Service | Image | Port | Role |
 |---|---|:---:|---|
-| `ragscope` | `./docker/app/Dockerfile` | 8501 | Main application (pipeline + dashboard) |
-| `chromadb` | `chromadb/chroma:latest` | 8000 | Persistent vector store |
-| `jupyter (dev only)`  | `./docker/app/Dockerfile` | 8888 | Interactive notebook environment for exploratory analysis |
+| `jupyter` *(dev only)* | `./docker/app/Dockerfile` (same image) | 8888 | Interactive notebook environment for exploratory analysis. Installs `jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets` itself at container start (`pip install ...`) rather than having them baked into the shared production image. |
 
 ### Common Commands
 
@@ -645,7 +643,7 @@ docker compose logs -f ragscope
 docker compose exec ragscope bash
 
 # Run a one-off uv command inside the container
-docker compose exec ragscope uv run python -c "import ragscope; print('ok')"
+docker compose exec ragscope uv run python -c "from config.settings import settings; print(settings.ollama_base_url)"
 
 # Run the test suite inside Docker
 docker compose exec ragscope uv run pytest tests/ -v
@@ -669,27 +667,28 @@ The override also enables Streamlit's `--server.runOnSave` flag, so the dashboar
 
 ### Dockerfile Summary
 
-The application `Dockerfile` uses a multi-stage build to keep the final image lean:
+`docker/app/Dockerfile` (used by both the `ragscope` and dev-only `jupyter` services) is a two-stage build:
 
 ```dockerfile
-# Stage 1 — dependency layer (cached unless pyproject.toml / uv.lock changes)
-FROM python:3.12-slim AS builder
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-WORKDIR /app
+# Stage 1 — builder: uv-managed dependency install (cached unless pyproject.toml / uv.lock change)
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
+RUN apt-get install -y build-essential gcc g++ zlib1g-dev   # native deps for some packages
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --no-install-project --no-dev           # deps only, no notebooks extra
+COPY . .
+RUN uv sync --frozen --no-dev                                 # then install the project itself
 
-# Stage 2 — application layer
-FROM python:3.12-slim AS app
-COPY --from=builder /app/.venv /app/.venv
-COPY . /app
-WORKDIR /app
+# Stage 2 — runtime: slim Python image, no uv/build tools carried over
+FROM python:3.12-slim-bookworm AS app
+COPY --from=builder /app /app
+COPY docker/scripts/entrypoint.sh /entrypoint.sh
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8501
-ENTRYPOINT ["docker/scripts/entrypoint.sh"]
+HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+ENTRYPOINT ["/entrypoint.sh"]   # waits for chromadb + host Ollama, then starts Streamlit
 ```
 
-> The `--frozen` flag ensures Docker builds are fully reproducible: the exact versions pinned in `uv.lock` are installed, and the build will fail if the lockfile is out of sync with `pyproject.toml`.
+> The `--frozen` flag ensures Docker builds are fully reproducible: the exact versions pinned in `uv.lock` are installed, and the build will fail if the lockfile is out of sync with `pyproject.toml`. The production image deliberately does **not** install the `notebooks` extra (`jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets`) — only the dev-only `jupyter` service needs them, and it installs them itself at container start.
 
 ---
 
@@ -730,7 +729,7 @@ The core experiment follows a **2 × 2 fully factorial design**:
 - **200 queries** per condition (60 MS MARCO + 40 NQ + 100 HotpotQA)
 - **800 total query-result records** with full telemetry and RAGAS annotation
 - **Statistical analysis:** Descriptive statistics, Cohen's d effect sizes, Pearson correlations
-- **Auxiliary LLM for RAGAS:** Llama 3 (held constant across all conditions)
+- **Auxiliary LLM for RAGAS:** Qwen2.5 (7B) — deliberately a third model, distinct from both generator LLMs under evaluation, and held constant across all four conditions
 
 ---
 
@@ -760,11 +759,11 @@ The following limitations are acknowledged and discussed in full in the disserta
 
 | Output | Status | Location |
 |---|---|---|
-| MSc Research Proposal | ✅ Complete | `docs/proposal/` |
-| Literature Review | 🔄 In progress | `docs/literature_review.md` |
-| System Architecture | ✅ Complete | `docs/architecture.md` |
+| MSc Research Proposal | ✅ Complete | Submitted separately — not tracked in this repository |
+| Literature Review | 🔄 In progress | Submitted separately — not tracked in this repository |
+| System Architecture | ✅ Complete | `docs/architecture.md`, `docs/ragscope_system_architecture.svg` |
 | Platform Implementation | ✅ Complete | `pipeline/`, `evaluation/`, `dashboard/` |
-| Benchmark Experiment | ⏳ Scheduled Aug 2026 | `experiments/results/` |
+| Benchmark Experiment | 🔄 In progress | `experiments/results/` |
 | Dissertation | ⏳ Submission Sep 2026 | — |
 
 ---
@@ -793,7 +792,7 @@ If you use RAGScope in your own research, please cite:
 - Lewis et al. (2020) — Retrieval-augmented generation for knowledge-intensive NLP
 - Peffers et al. (2007) — Design Science Research Methodology
 
-Full bibliography available in the dissertation and `docs/references.md`.
+Full bibliography available in the dissertation.
 
 ---
 
