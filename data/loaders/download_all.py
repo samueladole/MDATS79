@@ -140,7 +140,7 @@ def main() -> None:
     logger.info("RAGScope — Dataset Downloader")
     logger.info("=" * 60)
 
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
     data_dir = PROJECT_ROOT / "data" / "raw"
     data_dir.mkdir(parents=True, exist_ok=True)
 
