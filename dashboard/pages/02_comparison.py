@@ -19,8 +19,23 @@ st.caption(
 # ── Load telemetry ────────────────────────────────────────────────────────────
 from dashboard.components.heatmap import ragas_heatmap, token_cost_heatmap
 from dashboard.components.latency_chart import latency_box_by_condition
+from dashboard.components.metric_cards import score_gradient_color
 from evaluation.metrics import compare_conditions
 from telemetry.logger import get_telemetry_logger
+
+# pandas' Styler.background_gradient() needs matplotlib at runtime purely to
+# compute the colormap, and the production image deliberately doesn't ship it
+# (see docs/architecture_simplification_analysis.md §2) — so this table is
+# coloured with the same hand-rolled red→amber→green interpolation used
+# everywhere else in the dashboard instead, via a plain Styler.apply().
+def _cohens_d_background(s: pd.Series) -> list[str]:
+    lo, hi = s.min(), s.max()
+    span = hi - lo
+    return [
+        f"background-color: {score_gradient_color(0.5 if span == 0 else (v - lo) / span)}"
+        for v in s
+    ]
+
 
 records = get_telemetry_logger().load_all()
 
@@ -148,7 +163,7 @@ if "llm_model" in df.columns and "retrieval_strategy" in df.columns:
     if rows:
         effect_df = pd.DataFrame(rows)
         st.dataframe(
-            effect_df.style.background_gradient(subset=["Cohen's d"], cmap="RdYlGn"),
+            effect_df.style.apply(_cohens_d_background, subset=["Cohen's d"]),
             width="stretch",
         )
     if skipped:
