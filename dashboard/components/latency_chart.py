@@ -24,17 +24,45 @@ CONDITION_COLORS = dict(zip(CONDITION_ORDER, ["#2a78d6", "#008300", "#e87ba4", "
 # Fixed per-stage colours for the pipeline flow Sankey — a stage is always
 # this same colour regardless of retrieval strategy, so e.g. "LLM Generation"
 # reads the same whether the query used dense or hybrid retrieval.
+#
+# Colours are grouped by pipeline *phase* rather than assigned per-stage, so
+# retrieval and generation are visually unmistakable at a glance: every
+# retrieval sub-stage (embedding, search, fusion) is a shade of blue, LLM
+# generation is amber, RAGAS evaluation is red — three clearly different
+# hues, not a per-stage rainbow. Retrieval's own shades (light → dark) still
+# let its individual sub-stages be told apart without breaking the grouping.
 _NEUTRAL = "rgba(127,127,127,0.55)"
+_RETRIEVAL_EMBED = "#7fb3e8"   # lightest blue — query embedding
+_RETRIEVAL_SEARCH = "#2a78d6"  # mid blue — vector / dense search
+_RETRIEVAL_SPARSE = "#1f5fae"  # darker blue — BM25 sparse search
+_RETRIEVAL_FUSION = "#123a70"  # darkest blue — RRF fusion
+_GENERATION = "#eda100"        # amber — clearly distinct from the blue family
+_EVALUATION = "#e34948"        # red/coral
+
 STAGE_COLORS = {
     "Query": _NEUTRAL,
-    "Embed Query": "#2a78d6",
-    "Vector Search": "#008300",
-    "Dense Search": "#008300",
-    "BM25 Search": "#eb6834",
-    "RRF Fusion": "#4a3aa7",
-    "LLM Generation": "#eda100",
-    "RAGAS Evaluation": "#e34948",
+    "Embed Query": _RETRIEVAL_EMBED,
+    "Vector Search": _RETRIEVAL_SEARCH,
+    "Dense Search": _RETRIEVAL_SEARCH,
+    "BM25 Search": _RETRIEVAL_SPARSE,
+    "RRF Fusion": _RETRIEVAL_FUSION,
+    "LLM Generation": _GENERATION,
+    "RAGAS Evaluation": _EVALUATION,
     "Response": _NEUTRAL,
+}
+
+# Which phase each stage belongs to — drives the small phase caption on each
+# Sankey node and the legend below the chart. Query/Response sit outside any
+# phase (they're the pipeline's start/overhead-catch-all, not work RAGScope
+# attributes to retrieval, generation, or evaluation).
+STAGE_PHASE = {
+    "Embed Query": "RETRIEVAL",
+    "Vector Search": "RETRIEVAL",
+    "Dense Search": "RETRIEVAL",
+    "BM25 Search": "RETRIEVAL",
+    "RRF Fusion": "RETRIEVAL",
+    "LLM Generation": "GENERATION",
+    "RAGAS Evaluation": "EVALUATION",
 }
 
 
@@ -247,11 +275,22 @@ def pipeline_flow_sankey(
     # background the default label colour goes illegible against a dark
     # Streamlit theme. Pin it explicitly based on the detected theme instead.
     label_color = "#f5f5f2" if dark else "#1a1a1a"
+    phase_label_color = "rgba(245,245,242,0.65)" if dark else "rgba(26,26,26,0.6)"
     node_line_color = "rgba(255,255,255,0.30)" if dark else "rgba(0,0,0,0.20)"
 
-    labels = [
-        f"<b>{name}</b><br>{value:,.0f} ms · {value / total * 100:.1f}%" for name, value in stages
-    ]
+    # Each node's label carries its phase (RETRIEVAL / GENERATION / EVALUATION)
+    # as a small caption line above the stage name — on top of the phase
+    # colour-coding below, so which phase a stage belongs to is legible even
+    # without colour (e.g. on hover, or for colour-blind readers).
+    labels = []
+    for name, value in stages:
+        phase = STAGE_PHASE.get(name)
+        phase_line = (
+            f"<span style='font-size:9px;letter-spacing:0.05em;color:{phase_label_color}'>{phase}</span><br>"
+            if phase
+            else ""
+        )
+        labels.append(f"{phase_line}<b>{name}</b><br>{value:,.0f} ms · {value / total * 100:.1f}%")
     node_colors = [STAGE_COLORS.get(name, "#95a5a6") for name, _ in stages]
 
     n = len(stages)
@@ -290,3 +329,22 @@ def pipeline_flow_sankey(
         paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig, width="stretch")
+
+    # A colour-swatch legend under the chart makes the retrieval/generation/
+    # evaluation grouping explicit even before a viewer reads any node label.
+    def _swatch(color: str, text: str) -> str:
+        return (
+            f'<span style="display:inline-flex;align-items:center;gap:0.35rem;margin-right:1.1rem;">'
+            f'<span style="width:10px;height:10px;border-radius:50%;background:{color};'
+            f'display:inline-block;flex-shrink:0;"></span>'
+            f'<span style="font-size:0.8rem;opacity:0.8;">{text}</span></span>'
+        )
+
+    st.markdown(
+        '<div style="margin-top:-0.5rem;">'
+        + _swatch(_RETRIEVAL_SEARCH, "Retrieval (embed → search → fusion)")
+        + _swatch(_GENERATION, "Generation (LLM)")
+        + _swatch(_EVALUATION, "Evaluation (RAGAS)")
+        + "</div>",
+        unsafe_allow_html=True,
+    )
