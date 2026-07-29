@@ -13,6 +13,7 @@ import plotly.express as px
 import streamlit as st
 
 from config.settings import settings
+from dashboard.components.vector_space import vector_space_scatter
 from pipeline.vectorstore import get_vector_store
 
 st.title(":material/database: Knowledge Base")
@@ -97,6 +98,39 @@ with col_chart:
     st.plotly_chart(fig, width="stretch")
 with col_table:
     st.dataframe(comp_df, width="stretch", hide_index=True)
+st.divider()
+
+# ── 3D embedding space ───────────────────────────────────────────────────────
+st.subheader("3D Embedding Space")
+st.caption(
+    "A PCA projection of sampled embeddings down to 3 dimensions — a coarse view of "
+    "how the indexed corpus clusters in vector space, coloured by source dataset."
+)
+
+sample_per_dataset = st.slider(
+    "Points to sample per dataset (capped by how many exist)",
+    min_value=50,
+    max_value=1000,
+    value=300,
+    step=50,
+)
+
+if st.button("Compute projection", icon=":material/scatter_plot:"):
+    with st.spinner("Sampling embeddings and computing the PCA projection…"):
+        sampled_chunks = []
+        for ds_key, ds_count in dataset_counts.items():
+            if ds_count == 0:
+                continue
+            sampled_chunks += vector_store.sample_embeddings(
+                where={"dataset": ds_key}, sample_size=sample_per_dataset
+            )
+        st.session_state["vector_space_sample"] = sampled_chunks
+
+sampled_chunks = st.session_state.get("vector_space_sample")
+if sampled_chunks:
+    vector_space_scatter(sampled_chunks, DATASET_LABELS, DATASET_COLORS)
+else:
+    st.info("Click **Compute projection** to sample embeddings and render the 3D view.")
 st.divider()
 
 # ── Chunk browser ──────────────────────────────────────────────────────────────
