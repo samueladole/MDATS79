@@ -194,7 +194,7 @@ def latency_box_by_condition(records: list[dict]) -> None:
     fig.update_layout(
         xaxis_title="Condition",
         yaxis_title="Latency (ms)",
-        height=380,
+        height=680,
         margin=dict(l=0, r=0, t=20, b=0),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",

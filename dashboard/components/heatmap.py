@@ -66,7 +66,7 @@ def ragas_heatmap(records: list[dict]) -> None:
             z=z,
             x=col_labels,
             y=row_labels,
-            colorscale="RdYlGn",
+            colorscale="RdYlGn_r",
             zmin=0,
             zmax=1,
             text=[[f"{v:.3f}" if v else "—" for v in row] for row in rows],
@@ -79,7 +79,7 @@ def ragas_heatmap(records: list[dict]) -> None:
 
     fig.update_layout(
         title="Mean RAGAS Scores by Experimental Condition",
-        height=320,
+        height=520,
         margin=dict(l=0, r=0, t=50, b=0),
         xaxis=dict(side="top"),
         plot_bgcolor="rgba(0,0,0,0)",
@@ -130,7 +130,7 @@ def token_cost_heatmap(records: list[dict]) -> None:
 
     fig.update_layout(
         title="Mean Token Usage by Experimental Condition",
-        height=320,
+        height=620,
         margin=dict(l=0, r=0, t=50, b=0),
         xaxis=dict(side="top"),
         plot_bgcolor="rgba(0,0,0,0)",
