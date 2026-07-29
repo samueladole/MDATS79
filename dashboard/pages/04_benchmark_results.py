@@ -288,7 +288,7 @@ if "answer_faithfulness" in df.columns and "e2e_ms" in df.columns:
         labels={"e2e_ms": "End-to-End Latency (ms)", "answer_faithfulness": "Answer Faithfulness"},
         title="Latency vs. Faithfulness (all conditions)",
     )
-    fig2.update_layout(height=380, **TRANSPARENT_LAYOUT)
+    fig2.update_layout(height=680, **TRANSPARENT_LAYOUT)
     st.plotly_chart(fig2, width="stretch")
 st.divider()
 
@@ -356,7 +356,7 @@ if len(corr_metrics) >= 2:
     )
     fig_corr.update_layout(
         title="Pearson Correlation — All Metrics",
-        height=max(420, 40 * len(labels)),
+        height=max(820, 40 * len(labels)),
         margin=dict(l=0, r=0, t=50, b=100),
         xaxis=dict(side="top", tickangle=-45),
         **TRANSPARENT_LAYOUT,
