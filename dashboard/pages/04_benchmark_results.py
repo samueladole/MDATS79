@@ -382,7 +382,36 @@ if "dataset" in df.columns:
         .round(3)
         .reset_index()
     )
-    st.dataframe(dataset_agg, width="stretch")
+    datasets_present = list(dataset_agg["dataset"].unique())
+
+    dataset_metric_choice = st.selectbox(
+        "Metric to chart",
+        options=["context_relevance", "answer_faithfulness", "hallucination_risk"],
+        format_func=lambda x: x.replace("_", " ").title(),
+        key="dataset_metric_choice",
+    )
+
+    col_chart, col_table = st.columns([1, 1])
+    with col_chart:
+        fig_dataset = px.bar(
+            dataset_agg,
+            x="dataset",
+            y=dataset_metric_choice,
+            color="condition",
+            barmode="group",
+            category_orders={"condition": conditions_present, "dataset": datasets_present},
+            color_discrete_map=CONDITION_COLORS,
+            labels={
+                "dataset": "Dataset",
+                dataset_metric_choice: dataset_metric_choice.replace("_", " ").title(),
+                "condition": "Condition",
+            },
+            title=f"{dataset_metric_choice.replace('_', ' ').title()} by Dataset × Condition",
+        )
+        fig_dataset.update_layout(height=420, yaxis_range=[0, 1.05], **TRANSPARENT_LAYOUT)
+        st.plotly_chart(fig_dataset, width="stretch")
+    with col_table:
+        st.dataframe(dataset_agg, width="stretch", hide_index=True)
     st.divider()
 
 # ── Raw data table ────────────────────────────────────────────────────────────
