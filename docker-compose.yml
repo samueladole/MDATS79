@@ -66,6 +66,9 @@ services:
     build:
       context: .
       dockerfile: docker/app/Dockerfile
+      target: app   # explicit — Docker builds the LAST stage in the file by
+                    # default when no target is given, and docker/app/Dockerfile
+                    # now has a `jupyter` stage after `app` for the dev service.
       # Pass build-time args if needed (e.g. for private package registries)
       args:
         BUILDKIT_INLINE_CACHE: "1"

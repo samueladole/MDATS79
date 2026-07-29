@@ -48,7 +48,8 @@ services:
     build:
       context: .
       dockerfile: docker/app/Dockerfile
-    image: ragscope:latest
+      target: jupyter   # dedicated stage with the notebooks extra baked in at build time
+    image: ragscope-jupyter:latest   # distinct tag — different content from ragscope:latest
     container_name: ragscope_jupyter
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -64,17 +65,20 @@ services:
     environment:
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       CHROMA_HOST: chromadb
-    # The shared ragscope:latest image no longer bakes in jupyterlab/matplotlib/
-    # seaborn/ipywidgets (dropped from the production build to keep the app
-    # image lean — see docs/architecture_simplification_analysis.md §2). This
-    # dev-only service installs them into the venv at container start instead.
+    # jupyterlab/matplotlib/seaborn/ipywidgets are already installed in this
+    # image (built from the `jupyter` Dockerfile target) — nothing to install
+    # at container start, so `docker compose up` doesn't re-download them
+    # every time.
     command:
-      - bash
-      - -c
-      - >-
-        pip install --no-cache-dir jupyterlab>=4.2.0 ipywidgets>=8.1.0 matplotlib>=3.9.0 seaborn>=0.13.0 &&
-        jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root
-        --NotebookApp.token='' --NotebookApp.password='' --notebook-dir=/app/notebooks
+      - jupyter
+      - lab
+      - --ip=0.0.0.0
+      - --port=8888
+      - --no-browser
+      - --allow-root
+      - --NotebookApp.token=
+      - --NotebookApp.password=
+      - --notebook-dir=/app/notebooks
     depends_on:
       chromadb:
         condition: service_healthy
