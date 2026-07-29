@@ -353,6 +353,7 @@ Shared visualisation components live in `dashboard/components/`:
 - Experimental conditions (Llama3/Mistral × Dense/Hybrid) use a fixed categorical colour per condition, never reassigned by row order.
 - Continuous scores (chunk similarity, RAGAS scorecard tiles) use a red→amber→green gradient — green high / red low, inverted for Hallucination Risk where lower is better. Colour lives only on marks (bars, badges) and never on plain text, since a data colour used as text colour can be illegible depending on value and theme.
 - Hallucination risk bands (LOW/MEDIUM/HIGH) use the fixed banding from `evaluation/hallucination_score.py` everywhere they appear, rather than a second, differently-thresholded scheme.
+- The pipeline flow Sankey colours nodes by *phase*, not per-stage: every retrieval sub-stage (embedding, dense/BM25 search, RRF fusion) is a shade of blue, LLM generation is amber, RAGAS evaluation is red — so retrieval and generation are unmistakable at a glance rather than an arbitrary per-stage rainbow. Each node's label also carries a small RETRIEVAL/GENERATION/EVALUATION caption, and a colour-swatch legend renders below the chart.
 
 ---
 
