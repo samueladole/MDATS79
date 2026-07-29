@@ -76,9 +76,9 @@ comp_rows = [
 if other_count > 0:
     comp_rows.append({"dataset": "Other / Unlabelled", "chunks": other_count})
 comp_df = pd.DataFrame(comp_rows)
-comp_df["share_pct"] = (comp_df["chunks"] / total_chunks * 100).round(1)
+comp_df["share_percentage"] = (comp_df["chunks"] / total_chunks * 100).round(1)
 
-col_chart, col_table = st.columns([2, 1])
+col_chart, col_table = st.columns([1, 1])
 with col_chart:
     fig = px.bar(
         comp_df,
@@ -91,19 +91,20 @@ with col_chart:
     )
     fig.update_layout(
         height=360,
-        showlegend=False,
+        showlegend=True,
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig, width="stretch")
 with col_table:
+    st.write(f"**Chunk counts and share per dataset**")
     st.dataframe(comp_df, width="stretch", hide_index=True)
 st.divider()
 
 # ── 3D embedding space ───────────────────────────────────────────────────────
 st.subheader("3D Embedding Space")
 st.caption(
-    "A PCA projection of sampled embeddings down to 3 dimensions — a coarse view of "
+    "A PCA projection of sampled embeddings down to 3 dimensions a coarse view of "
     "how the indexed corpus clusters in vector space, coloured by source dataset."
 )
 
@@ -136,7 +137,7 @@ st.divider()
 # ── Chunk browser ──────────────────────────────────────────────────────────────
 st.subheader("Chunk Browser")
 st.caption(
-    "A direct browse of stored chunks by metadata filter — rows are in storage order, "
+    "A direct browse of stored chunks by metadata filter rows are in storage order, "
     "not ranked by similarity. Use Semantic Search Preview below to see similarity-ranked results."
 )
 
@@ -177,7 +178,7 @@ st.divider()
 # ── Semantic search preview ───────────────────────────────────────────────────
 st.subheader("Semantic Search Preview")
 st.caption(
-    "Embed a query and retrieve the nearest chunks — a quick way to spot-check "
+    "Embed a query and retrieve the nearest chunks a quick way to spot-check "
     "what the pipeline would actually retrieve for a given question."
 )
 
