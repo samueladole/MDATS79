@@ -141,7 +141,7 @@ if st.session_state.last_result:
     # ── Pipeline flow ─────────────────────────────────────────────────────────
     st.subheader("Pipeline Flow")
     st.caption(
-        "Every instrumented stage this query passed through — link width is that "
+        "Every instrumented stage this query passed through link width is that "
         "stage's actual wall-clock duration. 'Response' absorbs any small residual "
         "(token counting, telemetry write) not attributed to a named stage."
     )
