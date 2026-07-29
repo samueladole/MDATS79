@@ -628,7 +628,7 @@ The `docker-compose.override.yml` (dev mode) adds hot-reload volume mounts to `r
 
 | Service | Image | Port | Role |
 |---|---|:---:|---|
-| `jupyter` *(dev only)* | `./docker/app/Dockerfile` (same image) | 8888 | Interactive notebook environment for exploratory analysis. Installs `jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets` itself at container start (`pip install ...`) rather than having them baked into the shared production image. |
+| `jupyter` *(dev only)* | `./docker/app/Dockerfile`, target `jupyter` (separate image, not `ragscope:latest`) | 8888 | Interactive notebook environment for exploratory analysis. `jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets` are baked into this image at **build** time via a dedicated Dockerfile stage — not installed at container start — so `docker compose up` never re-downloads them. |
 
 ### Common Commands
 
@@ -688,7 +688,7 @@ HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 ENTRYPOINT ["/entrypoint.sh"]   # waits for chromadb + host Ollama, then starts Streamlit
 ```
 
-> The `--frozen` flag ensures Docker builds are fully reproducible: the exact versions pinned in `uv.lock` are installed, and the build will fail if the lockfile is out of sync with `pyproject.toml`. The production image deliberately does **not** install the `notebooks` extra (`jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets`) — only the dev-only `jupyter` service needs them, and it installs them itself at container start.
+> The `--frozen` flag ensures Docker builds are fully reproducible: the exact versions pinned in `uv.lock` are installed, and the build will fail if the lockfile is out of sync with `pyproject.toml`. The production image deliberately does **not** install the `notebooks` extra (`jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets`) — a separate `builder-notebooks` → `jupyter` stage pair (not shown above) builds those into a distinct image for the dev-only `jupyter` service instead, baked in at build time rather than installed at container start. Both `docker-compose.yml` and `docker-compose.override.yml` pin an explicit `target:` for their respective services, since Docker builds the last stage in a Dockerfile by default when none is given.
 
 ---
 
