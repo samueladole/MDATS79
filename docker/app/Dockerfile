@@ -4,6 +4,15 @@
 #
 # Runtime runs as ROOT intentionally to avoid Docker volume permission issues
 # with mounted telemetry / experiment directories.
+#
+# Build targets
+# -------------
+#   app      Production image (default) — no notebook dependencies.
+#   jupyter  Dev-only image for docker-compose.override.yml's `jupyter`
+#            service. Bakes in jupyterlab/matplotlib/seaborn/ipywidgets at
+#            BUILD time via a dedicated stage, so `docker compose up` never
+#            re-downloads them at container start — only `docker compose
+#            build jupyter` does, and only when pyproject.toml/uv.lock change.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ── Stage 1: Builder ──────────────────────────────────────────────────────────
@@ -43,7 +52,21 @@ RUN find /app/.venv -type d -name "__pycache__" -exec rm -rf {} + \
  && find /app/.venv -type f -name "*.pyc" -delete
 
 
-# ── Stage 2: Runtime ──────────────────────────────────────────────────────────
+# ── Stage 1b: Builder + notebooks extra (only built for the `jupyter` target) ──
+# A separate stage rather than a runtime `pip install` so the notebook
+# dependency set is resolved once at build time, same as every other
+# dependency — cached by Docker like any other layer, and never re-downloaded
+# just from starting the container.
+FROM builder AS builder-notebooks
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra notebooks
+
+RUN find /app/.venv -type d -name "__pycache__" -exec rm -rf {} + \
+ && find /app/.venv -type f -name "*.pyc" -delete
+
+
+# ── Stage 2: Runtime (production) ─────────────────────────────────────────────
 FROM python:3.12-slim-bookworm AS app
 
 # Install runtime tools
@@ -84,4 +107,35 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
 # Intentionally run as root
+ENTRYPOINT ["/entrypoint.sh"]
+
+
+# ── Stage 3: Runtime (dev jupyter target) ─────────────────────────────────────
+# Same shape as the `app` stage above, but copies the venv built with the
+# notebooks extra (builder-notebooks) instead of the lean production venv.
+FROM python:3.12-slim-bookworm AS jupyter
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        curl \
+        bash \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder-notebooks /app /app
+
+COPY docker/scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+EXPOSE 8888
+
+# docker-compose.override.yml's jupyter service supplies the actual
+# `jupyter lab ...` command; the entrypoint waits for chromadb + host Ollama
+# before exec'ing it, same as the app stage.
 ENTRYPOINT ["/entrypoint.sh"]
