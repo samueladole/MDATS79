@@ -14,7 +14,8 @@ of the Python process lifecycle.
 from __future__ import annotations
 
 import functools
-from dataclasses import dataclass
+import random
+from dataclasses import dataclass, field
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -38,12 +39,17 @@ class RetrievedChunk:
     text       : Chunk text content.
     score      : Cosine similarity score in [0, 1]. Higher = more similar.
     metadata   : Arbitrary metadata stored alongside the chunk.
+    embedding  : The stored dense vector, if fetched (``None`` otherwise —
+                 most methods don't request it, since it's the most
+                 expensive field to transfer and is only needed for
+                 visualisation, not retrieval or browsing).
     """
 
     chunk_id: str
     text: str
     score: float
     metadata: dict
+    embedding: list[float] | None = field(default=None, repr=False)
 
 
 def _reconnect_on_stale_collection(method):
@@ -271,6 +277,63 @@ class VectorStore:
         return [
             RetrievedChunk(chunk_id=cid, text=text, score=0.0, metadata=meta or {})
             for cid, text, meta in zip(result["ids"], result["documents"], result["metadatas"])
+        ]
+
+    @_reconnect_on_stale_collection
+    def sample_embeddings(
+        self,
+        where: dict | None = None,
+        sample_size: int = 300,
+        seed: int | None = None,
+    ) -> list[RetrievedChunk]:
+        """
+        Return a random sample of chunks with their embeddings attached —
+        for visualisation (e.g. a 3D projection of the vector space), not
+        retrieval or browsing.
+
+        ChromaDB's ``.get()`` only supports contiguous ``limit``/``offset``
+        windows in storage order, not random sampling, and storage order is
+        not shuffled across datasets — a naive "first N" fetch would be
+        dominated by whichever dataset happened to be ingested first. This
+        method instead fetches matching IDs only (cheap: no documents,
+        metadata, or embeddings transferred), samples from those in Python,
+        and only then fetches the full records for the sampled IDs.
+
+        Parameters
+        ----------
+        where       : Optional ChromaDB metadata filter dict, e.g.
+                      ``{"dataset": "msmarco"}``. ``None`` samples the whole
+                      collection.
+        sample_size : Maximum number of chunks to sample.
+        seed        : Random seed for reproducible sampling. Defaults to
+                      ``settings.experiment_random_seed``.
+
+        Returns
+        -------
+        list[RetrievedChunk]
+            Each with ``.embedding`` populated. Order is randomised, not
+            similarity-ranked, so ``score`` is fixed at 0.0.
+        """
+        id_probe = self._collection.get(where=where or None, include=[])
+        all_ids = id_probe["ids"]
+        if not all_ids:
+            return []
+
+        rng = random.Random(seed if seed is not None else settings.experiment_random_seed)
+        sampled_ids = rng.sample(all_ids, min(sample_size, len(all_ids)))
+
+        result = self._collection.get(ids=sampled_ids, include=["documents", "metadatas", "embeddings"])
+        return [
+            RetrievedChunk(
+                chunk_id=cid,
+                text=text,
+                score=0.0,
+                metadata=meta or {},
+                embedding=list(emb) if emb is not None else None,
+            )
+            for cid, text, meta, emb in zip(
+                result["ids"], result["documents"], result["metadatas"], result["embeddings"]
+            )
         ]
 
     @_reconnect_on_stale_collection
