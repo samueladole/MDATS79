@@ -79,6 +79,10 @@ class Settings(BaseSettings):
         default="qwen2.5:7b",
         description="LLM used as the RAGAS judge for metric computation.",
     )
+    ragas_judge_temperature: float = Field(
+        default=0.8,
+        description="Temperature for the RAGAS judge LLM (0-1).",
+    )
     ragas_max_tokens: int = Field(default=2048)
 
     # ── Cost estimation ────────────────────────────────────────────────────────

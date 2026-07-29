@@ -119,6 +119,8 @@ class RAGASRunner:
                 ContextRelevance(llm=llm),
                 Faithfulness(llm=llm),
             ]
+
+            # Add answer correctness metric only if ground truth is provided
             if ground_truth:
                 metrics.append(AnswerCorrectness(llm=llm, embeddings=self._embeddings))
 
@@ -126,7 +128,7 @@ class RAGASRunner:
                 user_input=query,
                 response=answer,
                 retrieved_contexts=contexts,
-                reference=ground_truth or "",
+                reference=ground_truth or None,
             )
             dataset = EvaluationDataset(samples=[sample])
             scores = evaluate(
@@ -182,7 +184,7 @@ class RAGASRunner:
         native_llm = ChatOllama(
             model=self.judge_model,
             base_url=self.base_url,
-            temperature=0.0,
+            temperature=settings.ragas_judge_temperature,
             num_predict=settings.ragas_max_tokens,
         )
         return LangchainLLMWrapper(native_llm)
