@@ -41,12 +41,14 @@ Also removed the entire `[project.scripts]` section — five console-script entr
 
 ---
 
-## 3. Docker build (`docker/app/Dockerfile`, `docker-compose.override.yml`)
+## 3. Docker build (`docker/app/Dockerfile`, `docker-compose.yml`, `docker-compose.override.yml`)
 
 - Dropped `--all-extras` from the dependency-only build layer in `docker/app/Dockerfile`. Previously this unconditionally installed `jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets` into the **production** `ragscope` image, even though only the dev-only `jupyter` override service uses them.
 - Deleted the subsequent "optional notebooks" `RUN uv sync --extra notebooks` layer — it was a complete no-op, since `--all-extras` on the earlier layer had already installed the same packages.
-- Fixed the `jupyter` service in `docker-compose.override.yml`, which shares the same `ragscope:latest` image and would otherwise have broken (no `jupyterlab` binary) once the above was applied: its `command` now runs `pip install jupyterlab ipywidgets matplotlib seaborn` before launching `jupyter lab`, so the notebook environment installs its own extra at container start rather than relying on it being baked into the shared image.
-- **Verified:** `docker compose -f docker-compose.yml -f docker-compose.override.yml config` resolves the merged configuration cleanly (exit code 0) with the new `jupyter` command intact.
+- **First attempt (superseded):** had the `jupyter` service `pip install jupyterlab ipywidgets matplotlib seaborn` as the first step of its container command, before launching `jupyter lab`. This worked but re-ran the full install — a ~100-package resolve and download — on every single container start, since nothing cached it. Reported as a real regression in practice.
+- **Fix:** added a dedicated build stage instead. `docker/app/Dockerfile` now has `builder-notebooks` (extends `builder`, syncs the `notebooks` extra) and a `jupyter` runtime stage (copies that venv, mirrors the `app` stage otherwise). `jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets` are now baked in at **build** time, cached by Docker like any other layer — `docker compose up` no longer re-downloads anything, only `docker compose build jupyter` does, and only when `pyproject.toml`/`uv.lock` change. The `jupyter` service now builds this stage via `build.target: jupyter` and tags the result `ragscope-jupyter:latest` (a distinct image from `ragscope:latest`, since its contents genuinely differ).
+- **Bug found and fixed while making the above change:** adding a stage *after* `app` in the Dockerfile meant Docker's "build the last stage when none is specified" default silently changed what `docker-compose.yml`'s `ragscope` service built — `target:` had never been set on it because there was only ever one runtime stage before. Verified this was a real, live bug (not theoretical): building `ragscope` produced an image with `jupyterlab` importable inside it. Fixed by adding `target: app` explicitly to the `ragscope` service.
+- **Verified:** built both targets from a clean Docker cache — `ragscope:latest` (442 MB) confirmed to have neither `jupyterlab` nor `matplotlib` importable; `ragscope-jupyter:latest` (491 MB) confirmed to have all four notebook packages importable. Rebuilding `jupyter` a second time hit 100% cache with zero downloads. `docker compose -f docker-compose.yml -f docker-compose.override.yml config` resolves cleanly with both services' explicit targets intact.
 
 ---
 
@@ -92,7 +94,9 @@ Rechecked in full against everything above and corrected:
 - Removed `.delete_chunks(chunk_ids)` from the `pipeline/vectorstore.py` Component Reference table.
 - Removed `.is_available()` from the `pipeline/generation/llm_client.py` Component Reference table.
 - Removed `.count_tokens(text)` / `.count_prompt(query, contexts)` from the `telemetry/token_counter.py` Component Reference table, and added a note explaining why (dead code, superseded by `.from_generation_response()`, with a pointer back to the Chapter 3 validation exercise they originally supported).
-- Added a paragraph to the Service Layer (Docker) section documenting that the production image no longer bundles notebook dependencies and that the `jupyter` service now installs them itself at container start.
+- Added a paragraph to the Service Layer (Docker) section documenting that the production image no longer bundles notebook dependencies (later updated again — see below — once the build-time-stage fix in §3 landed).
 - **Unrelated to this pass, found opportunistically while doing the full recheck:** both the "High-Level Architecture" ASCII diagram and the "Module Dependency Map" ASCII diagram were missing the Knowledge Base page (`05_knowledge_base.py`) — they'd gone stale when that page was added earlier in the project, predating this simplification effort. Fixed both while already in the file.
 
-No other sections required changes — the RAG pipeline description, telemetry record schema, RAGAS judge configuration, retrieval algorithms, experimental conditions, and configuration reference were all already accurate and unaffected by this pass.
+No other sections required changes at that time — the RAG pipeline description, telemetry record schema, RAGAS judge configuration, retrieval algorithms, experimental conditions, and configuration reference were all already accurate and unaffected by this pass.
+
+**Follow-up update, once the §3 build-time-stage fix landed:** `docs/architecture.md`'s Service Layer section and `README.md`'s Docker Reference section were both updated again to describe the corrected approach (notebook dependencies baked in at build time via a dedicated `jupyter` target, not `pip install`-ed at container start), and to note that both `ragscope` and `jupyter` now pin an explicit Compose `target:`.
