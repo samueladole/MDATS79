@@ -338,7 +338,7 @@ The dashboard is a five-page Streamlit application providing real-time and retro
 | Comparison | `02_comparison.py` | RAGAS heatmaps and Cohen's d table across all four conditions; flags missing/sparse conditions instead of silently reporting a false zero effect size |
 | Query Explorer | `03_query_explorer.py` | Per-query drill-down: chunks, scores, latency decomposition, pipeline flow Sankey, raw JSON |
 | Benchmark Results | `04_benchmark_results.py` | Load benchmark CSVs; grouped bar of mean RAGAS scores, box plots, hallucination risk band distribution, Cohen's d effect-size chart, latency/token breakdown, Pearson correlation heatmap, per-dataset breakdown |
-| Knowledge Base | `05_knowledge_base.py` | Read-only ChromaDB browser: collection stats, corpus composition by dataset, paginated chunk browser, semantic search preview |
+| Knowledge Base | `05_knowledge_base.py` | Read-only ChromaDB browser: collection stats, corpus composition by dataset, a 3D PCA projection of sampled embeddings, paginated chunk browser, semantic search preview |
 
 Shared visualisation components live in `dashboard/components/`:
 
@@ -347,6 +347,7 @@ Shared visualisation components live in `dashboard/components/`:
 | `metric_cards.py` | Modern colour-graded RAGAS scorecard tiles (icon, value, meter bar, quality badge); `similarity_meter_html()` for chunk similarity bars; 6-column telemetry row (adds Evaluation Latency) |
 | `latency_chart.py` | Time-series, histogram, grouped box-plot, and `pipeline_flow_sankey()` — a theme-aware Sankey diagram of one query's full stage-by-stage latency breakdown (Plotly) |
 | `heatmap.py` | RAGAS score heatmap; token usage heatmap (Plotly) |
+| `vector_space.py` | `pca_3d()` — pure-numpy PCA (via SVD, no scikit-learn/UMAP dependency) projecting sampled embeddings to 3D; `vector_space_scatter()` — Plotly 3D scatter coloured by dataset, for the Knowledge Base page |
 
 **Colour conventions used throughout the dashboard:**
 - Experimental conditions (Llama3/Mistral × Dense/Hybrid) use a fixed categorical colour per condition, never reassigned by row order.
@@ -482,9 +483,10 @@ pipeline/vectorstore.py                     │
 | `.count()` | method | Total chunks in the collection |
 | `.count_where(where)` | method | Count chunks matching a metadata filter, without transferring documents/embeddings |
 | `.get_chunks(where, limit, offset)` | method | Plain metadata-filtered browse (not similarity-ranked) — powers the Knowledge Base chunk browser; returned `RetrievedChunk.score` is always 0.0 |
+| `.sample_embeddings(where, sample_size, seed)` | method | Random sample of chunks with `.embedding` populated, for the Knowledge Base's 3D vector-space view — fetches matching IDs first (cheap), samples in Python, then fetches full records only for the sampled IDs, since ChromaDB's `.get()` has no native random-sampling mode |
 | `.embedding_dimension()` | method | Dimensionality of a stored embedding, read directly from the collection (`None` if empty) |
 | `.reset()` | method | Delete and recreate collection (destructive) |
-| `RetrievedChunk` | dataclass | `chunk_id`, `text`, `score` (cosine sim [0,1]), `metadata` |
+| `RetrievedChunk` | dataclass | `chunk_id`, `text`, `score` (cosine sim [0,1]), `metadata`, `embedding` (`list[float] \| None`, only populated by `sample_embeddings()`) |
 | `get_vector_store()` | function | Module-level singleton |
 
 **Distance conversion:** ChromaDB returns cosine distance ∈ [0, 2]. The wrapper converts to similarity via `max(0, 1 − distance/2)` so scores are always in [0, 1].
@@ -692,7 +694,7 @@ The Streamlit app uses multi-page routing via the `dashboard/pages/` directory. 
 | Comparison | `02_comparison` | `telemetry/logger`, `evaluation/metrics`, `dashboard/components/heatmap` |
 | Query Explorer | `03_query_explorer` | `telemetry/logger`, `evaluation/hallucination_score`, all component modules incl. `latency_chart.pipeline_flow_sankey` |
 | Benchmark Results | `04_benchmark_results` | `pandas`, `plotly.express`, `evaluation/metrics` |
-| Knowledge Base | `05_knowledge_base` | `pipeline/vectorstore.get_vector_store`, `pipeline/embeddings.get_embedding_generator` |
+| Knowledge Base | `05_knowledge_base` | `pipeline/vectorstore.get_vector_store`, `pipeline/embeddings.get_embedding_generator`, `dashboard/components/vector_space` |
 
 ---
 
