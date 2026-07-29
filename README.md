@@ -141,7 +141,7 @@ The platform is organised into six stages, each mapped to a specific research qu
 - Comparative performance heatmaps across retrieval × LLM conditions
 - Retrieved document chunk viewer with colour-graded per-chunk similarity scores
 - Sankey diagram of the full pipeline process flow — every instrumented stage (embedding, retrieval sub-stages, generation, RAGAS evaluation) sized by actual wall-clock duration for a single query
-- Read-only ChromaDB knowledge-base browser with corpus composition breakdown and a semantic search preview
+- Read-only ChromaDB knowledge-base browser with corpus composition breakdown, a 3D PCA projection of sampled embeddings, and a semantic search preview
 - Export of session data to CSV for downstream analysis
 
 ### 🗂️ Benchmark Pipeline
@@ -267,12 +267,13 @@ ragscope/
 │   │   ├── 02_comparison.py       # Cross-condition comparative analysis
 │   │   ├── 03_query_explorer.py   # Per-query drill-down view + pipeline flow Sankey
 │   │   ├── 04_benchmark_results.py # Benchmark experiment results
-│   │   └── 05_knowledge_base.py   # Read-only ChromaDB browser + semantic search preview
+│   │   └── 05_knowledge_base.py   # Read-only ChromaDB browser + 3D embedding view + semantic search preview
 │   └── components/
 │       ├── theme.py               # Shared icons (Material Symbols / inline SVG) + CSS theme
 │       ├── metric_cards.py        # Metric display components
 │       ├── latency_chart.py       # Latency visualisation
-│       └── heatmap.py             # RAGAS score heatmaps
+│       ├── heatmap.py             # RAGAS score heatmaps
+│       └── vector_space.py        # Pure-numpy PCA + 3D embedding scatter
 │
 ├── experiments/                   # Experimental scripts
 │   ├── run_2x2_factorial.py       # Full 2×2 factorial experiment runner
@@ -566,7 +567,7 @@ The dashboard provides five views at `http://localhost:8501`:
 - **Comparison** — side-by-side heatmaps of RAGAS scores across LLM × retrieval conditions
 - **Query Explorer** — click any logged query to inspect retrieved chunks, similarity scores, faithfulness breakdowns, latency decomposition, and the same per-query pipeline flow Sankey
 - **Benchmark Results** — full visualisation of the 200-query benchmark experiment results
-- **Knowledge Base** — read-only browser of the ChromaDB collection: corpus composition by dataset, a paginated chunk browser, and a semantic search preview
+- **Knowledge Base** — read-only browser of the ChromaDB collection: corpus composition by dataset, a 3D PCA projection of sampled embeddings coloured by dataset, a paginated chunk browser, and a semantic search preview
 
 ### Running the Benchmark Evaluation
 
