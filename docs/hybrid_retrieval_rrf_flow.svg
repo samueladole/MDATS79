@@ -1,0 +1,81 @@
+<svg width="100%" viewBox="0 0 640 460" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Hybrid retrieval: dense + BM25 fused via Reciprocal Rank Fusion</title>
+<desc>Figure showing how RAGScope's hybrid retrieval strategy combines dense (ChromaDB ANN) and sparse (BM25) candidate lists via Reciprocal Rank Fusion, with k=60 and dense/BM25 weights of 0.6/0.4, to produce the top-5 chunks passed to generation.</desc>
+
+<defs>
+<marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+<style>
+  text { font-family: "Anthropic Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+  .title  { font-size: 14px; font-weight: 500; text-anchor: middle; dominant-baseline: central; }
+  .sub    { font-size: 11.5px; font-weight: 400; text-anchor: middle; dominant-baseline: central; }
+  .tiny   { font-size: 10px; font-weight: 400; text-anchor: middle; dominant-baseline: central; }
+  .conn   { fill: none; stroke: rgb(120,118,108); stroke-width: 1.5px; }
+  .box    { stroke-width: 1px; }
+</style>
+</defs>
+
+<rect x="0" y="0" width="640" height="460" fill="rgb(255,255,255)"/>
+
+<!-- Title -->
+<text x="320" y="20" text-anchor="middle" font-size="14" font-weight="500" fill="rgb(30,28,24)">Figure 3.2 &#8212; Hybrid Retrieval: Reciprocal Rank Fusion</text>
+<text x="320" y="37" text-anchor="middle" font-size="10.5" fill="rgb(95,93,86)">pipeline/retrieval/hybrid.py &#8212; top-k fixed at 5 across all experimental conditions</text>
+
+<!-- Query -->
+<g class="box" fill="rgb(68,68,65)" stroke="rgb(180,178,169)">
+<rect x="245" y="56" width="150" height="30" rx="15"/>
+</g>
+<text x="320" y="71" class="tiny" fill="rgb(255,255,255)">User Query</text>
+
+<line x1="320" y1="86" x2="320" y2="100" class="conn" opacity="0.6"/>
+<path d="M320 100 L150 100 L150 116" fill="none" class="conn" marker-end="url(#arrow2)" opacity="0.6"/>
+<path d="M320 100 L490 100 L490 116" fill="none" class="conn" marker-end="url(#arrow2)" opacity="0.6"/>
+
+<!-- Dense branch -->
+<g class="box" fill="rgb(60,52,137)" stroke="rgb(175,169,236)">
+<rect x="40" y="118" width="220" height="76" rx="8"/>
+</g>
+<text x="150" y="140" class="title" fill="rgb(255,255,255)">Dense Retrieval</text>
+<text x="150" y="160" class="sub" fill="rgb(214,211,250)">ChromaDB ANN &#183; cosine &#183; MiniLM</text>
+<text x="150" y="178" class="tiny" fill="rgb(214,211,250)">up to 50 candidates, ranked</text>
+
+<!-- BM25 branch -->
+<g class="box" fill="rgb(60,52,137)" stroke="rgb(175,169,236)">
+<rect x="380" y="118" width="220" height="76" rx="8"/>
+</g>
+<text x="490" y="140" class="title" fill="rgb(255,255,255)">BM25 Sparse Retrieval</text>
+<text x="490" y="160" class="sub" fill="rgb(214,211,250)">rank_bm25 BM25Okapi &#183; JSONL index</text>
+<text x="490" y="178" class="tiny" fill="rgb(214,211,250)">up to 50 candidates, ranked</text>
+
+<!-- Convergence -->
+<path d="M150 194 L150 226 L320 226 L320 234" fill="none" class="conn" marker-end="url(#arrow2)" opacity="0.6"/>
+<path d="M490 194 L490 226 L320 226" fill="none" class="conn" opacity="0.6"/>
+
+<!-- RRF fusion box -->
+<g class="box" fill="rgb(113,43,19)" stroke="rgb(240,153,123)">
+<rect x="130" y="236" width="380" height="92" rx="8"/>
+</g>
+<text x="320" y="258" class="title" fill="rgb(255,255,255)">Reciprocal Rank Fusion (RRF)</text>
+<text x="320" y="278" class="sub" fill="rgb(250,214,199)">RRF score = &#931; 1 / (k + rank),  k = 60</text>
+<text x="320" y="296" class="sub" fill="rgb(250,214,199)">dense weight 0.6 &#183; BM25 weight 0.4</text>
+<text x="320" y="314" class="tiny" fill="rgb(250,214,199)">Cormack, Clarke &amp; Buettcher (2009)</text>
+
+<line x1="320" y1="328" x2="320" y2="346" class="conn" marker-end="url(#arrow2)" opacity="0.6"/>
+
+<!-- Output -->
+<g class="box" fill="rgb(8,80,65)" stroke="rgb(93,202,165)">
+<rect x="195" y="348" width="250" height="52" rx="8"/>
+</g>
+<text x="320" y="368" class="title" fill="rgb(255,255,255)">Top-5 Fused Chunks</text>
+<text x="320" y="386" class="tiny" fill="rgb(198,239,224)">re-ranked by fused RRF score</text>
+
+<line x1="320" y1="400" x2="320" y2="418" class="conn" marker-end="url(#arrow2)" opacity="0.6"/>
+
+<!-- Generation handoff -->
+<g class="box" fill="rgb(240,240,236)" stroke="rgb(180,178,169)">
+<rect x="200" y="420" width="240" height="30" rx="15"/>
+</g>
+<text x="320" y="435" class="tiny" fill="rgb(60,58,52)">&#8594; passed to LLM Generation (&#167;3.6.4)</text>
+
+</svg>

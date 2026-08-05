@@ -1,0 +1,34 @@
+graph TD
+    %% Custom Styling to match image 0.png
+    classDef header fill:none,stroke:none,color:black,font-weight:bold,font-size:18px;
+    classDef grey fill:#4D4D4D,stroke:#ffffff,color:#ffffff,rx:15px,ry:15px,font-weight:bold;
+    classDef purple fill:#684D9E,stroke:#ffffff,color:#ffffff,rx:8px,ry:8px;
+    classDef brown fill:#D98A2C,stroke:#ffffff,color:#ffffff,rx:8px,ry:8px;
+    classDef green fill:#33732F,stroke:#ffffff,color:#ffffff,rx:8px,ry:8px;
+    classDef lightgrey fill:#E0E0E0,stroke:#808080,color:#000000,rx:12px,ry:12px;
+
+    %% 1. User Query
+    U(["<span style='white-space: nowrap; padding: 0 30px;'>User Query</span>"]):::grey
+
+    %% 2. Retrieval Branches (Parallel)
+    D["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Dense Retrieval</strong><br/>ChromaDB ANN • cosine • MiniLM<br/>up to 50 candidates, ranked</div>"]:::purple
+    S["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>BM25 Sparse Retrieval</strong><br/>rank_bm25 BM25Okapi • JSONL index<br/>up to 50 candidates, ranked</div>"]:::purple
+
+    U --> D
+    U --> S
+
+    %% 3. Fusion Component
+    R["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Reciprocal Rank Fusion (RRF)</strong><br/>RRF score = Σ 1 / (k + rank), k = 60<br/>dense weight 0.6 • BM25 weight 0.4<br/>Cormack, Clarke & Buettcher (2009)</div>"]:::brown
+
+    D --> R
+    S --> R
+
+    %% 4. Top Results
+    T["<div style='white-space: nowrap; padding: 10px 40px; text-align: center;'><strong>Top-5 Fused Chunks</strong><br/>re-ranked by fused RRF score</div>"]:::green
+
+    R --> T
+
+    %% 5. Final Step
+    N("<span style='white-space: nowrap; padding: 0 30px;'>LLM Generation</span>"):::lightgrey
+
+    T --> N
