@@ -80,7 +80,7 @@ class Settings(BaseSettings):
         description="LLM used as the RAGAS judge for metric computation.",
     )
     ragas_judge_temperature: float = Field(
-        default=0.8,
+        default=0.0,
         description="Temperature for the RAGAS judge LLM (0-1).",
     )
     ragas_max_tokens: int = Field(default=2048)
