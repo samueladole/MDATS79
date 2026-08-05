@@ -1,0 +1,75 @@
+graph TD
+    %% Define color palette based on your original image
+    classDef data fill:#2A8F8A,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef pipeline fill:#684D9E,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef eval fill:#F07167,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef telemetry fill:#D98A2C,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef dashboard fill:#2874A6,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef exp fill:#33732F,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef query fill:#4D4D4D,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:20px,ry:20px;
+    classDef transparent fill:none,stroke:none;
+
+    %% 1. Data Stage
+    subgraph Stage1 [1. Data]
+        direction LR
+        D1[Benchmark Corpora] --> D2[Preprocessing & Indexing]
+        D2 --> D3[Retrieval Index]
+    end
+    class D1,D2,D3 data;
+
+    %% 2. RAG Query Pipeline Stage
+    subgraph Stage2 [2. RAG Query Pipeline]
+        direction TB
+        Q([User Query]):::query
+        P1[Dense Retrieval]
+        P2[Hybrid Retrieval]
+        P3[LLM Generation]
+        
+        Q --> P1
+        Q --> P2
+        P1 --> P3
+        P2 --> P3
+    end
+    class P1,P2,P3 pipeline;
+
+    %% Link Data to Pipeline
+    D3 -. index feeds retrieval .-> P1
+    D3 -. index feeds retrieval .-> P2
+
+    %% 3. Evaluation Stage
+    subgraph Stage3 [3. Evaluation]
+        direction LR
+        E1[RAGAS Runner] --> E2[Hallucination Risk]
+    end
+    class E1,E2 eval;
+    
+    P3 --> E1
+
+    %% 4. Telemetry Stage
+    subgraph Stage4 [4. Telemetry]
+        direction LR
+        T1[Instrumentation] --> T2[Telemetry Record]
+        T2 --> T3[Statistics]
+    end
+    class T1,T2,T3 telemetry;
+
+    E1 --> T1
+
+    %% 5. Dashboard Stage
+    subgraph Stage5 [5. Dashboard]
+        DB[Streamlit Dashboard]
+    end
+    class DB dashboard;
+
+    T3 --> DB
+    Q -.-> DB
+
+    %% 6. Experiments Stage
+    subgraph Stage6 [6. Experiments]
+        direction LR
+        X1[Run 2x2 Factorial] --> X2[Analyze Results]
+    end
+    class X1,X2 exp;
+
+    DB --> X1
+    T3 -. feeds .-> X2
