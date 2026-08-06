@@ -1,0 +1,90 @@
+<svg width="100%" viewBox="0 0 640 620" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Document ingestion and preprocessing pipeline</title>
+<desc>Figure showing the RAGScope ingestion pipeline: raw passages from three benchmark corpora streamed in mini-batches of 256 chunks through preprocessing, chunking, and embedding, then indexed in parallel into ChromaDB (dense) and a BM25 JSONL index (sparse).</desc>
+
+<defs>
+<marker id="arrow3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+<style>
+  text { font-family: "Anthropic Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+  .title  { font-size: 14px; font-weight: 500; text-anchor: middle; dominant-baseline: central; }
+  .sub    { font-size: 11.5px; font-weight: 400; text-anchor: middle; dominant-baseline: central; }
+  .tiny   { font-size: 10px; font-weight: 400; text-anchor: middle; dominant-baseline: central; }
+  .item   { font-size: 10.5px; font-weight: 400; }
+  .conn   { fill: none; stroke: rgb(120,118,108); stroke-width: 1.5px; }
+  .box    { stroke-width: 1px; }
+</style>
+</defs>
+
+<rect x="0" y="0" width="640" height="620" fill="rgb(255,255,255)"/>
+
+<!-- Title -->
+<text x="320" y="20" text-anchor="middle" font-size="14" font-weight="500" fill="rgb(30,28,24)">Figure 3.2 &#8212; Document Ingestion &amp; Preprocessing Pipeline</text>
+<text x="320" y="37" text-anchor="middle" font-size="10.5" fill="rgb(95,93,86)">pipeline/ingestion.py &#8212; streamed in mini-batches of 256 chunks</text>
+
+<!-- 1. Raw passages -->
+<g class="box" fill="rgb(8,80,65)" stroke="rgb(93,202,165)">
+<rect x="170" y="54" width="300" height="52" rx="8"/>
+</g>
+<text x="320" y="74" class="title" fill="rgb(255,255,255)">Raw Passages</text>
+<text x="320" y="94" class="tiny" fill="rgb(198,239,224)">MS MARCO &#183; Natural Questions &#183; HotpotQA</text>
+
+<line x1="320" y1="106" x2="320" y2="122" class="conn" marker-end="url(#arrow3)" opacity="0.6"/>
+
+<!-- 2. Preprocessing -->
+<g class="box" fill="rgb(8,80,65)" stroke="rgb(93,202,165)">
+<rect x="120" y="124" width="400" height="140" rx="8"/>
+</g>
+<text x="320" y="146" class="title" fill="rgb(255,255,255)">Preprocessing</text>
+<text x="150" y="168" class="item" fill="rgb(198,239,224)">&#8226; Unicode normalisation</text>
+<text x="150" y="184" class="item" fill="rgb(198,239,224)">&#8226; HTML tag removal &amp; entity decoding</text>
+<text x="150" y="200" class="item" fill="rgb(198,239,224)">&#8226; Control character removal</text>
+<text x="150" y="216" class="item" fill="rgb(198,239,224)">&#8226; Whitespace normalisation</text>
+<text x="320" y="242" class="tiny" fill="rgb(159,225,203)">Meaningfulness filter: drop if &lt;50 chars or &lt;40% alphabetic</text>
+
+<line x1="320" y1="264" x2="320" y2="280" class="conn" marker-end="url(#arrow3)" opacity="0.6"/>
+
+<!-- 3. Chunking -->
+<g class="box" fill="rgb(8,80,65)" stroke="rgb(93,202,165)">
+<rect x="170" y="282" width="300" height="60" rx="8"/>
+</g>
+<text x="320" y="304" class="title" fill="rgb(255,255,255)">Chunking</text>
+<text x="320" y="324" class="tiny" fill="rgb(198,239,224)">tiktoken cl100k_base &#183; 512-token max &#183; 64-token overlap</text>
+
+<line x1="320" y1="342" x2="320" y2="358" class="conn" marker-end="url(#arrow3)" opacity="0.6"/>
+
+<!-- 4. Embedding -->
+<g class="box" fill="rgb(8,80,65)" stroke="rgb(93,202,165)">
+<rect x="170" y="360" width="300" height="60" rx="8"/>
+</g>
+<text x="320" y="382" class="title" fill="rgb(255,255,255)">Embedding</text>
+<text x="320" y="402" class="tiny" fill="rgb(198,239,224)">all-MiniLM-L6-v2 &#183; 384-dim &#183; L2-normalised</text>
+
+<line x1="320" y1="420" x2="320" y2="436" class="conn" opacity="0.6"/>
+<path d="M320 436 L220 436 L220 452" fill="none" class="conn" marker-end="url(#arrow3)" opacity="0.6"/>
+<path d="M320 436 L420 436 L420 452" fill="none" class="conn" marker-end="url(#arrow3)" opacity="0.6"/>
+
+<!-- 5a. ChromaDB -->
+<g class="box" fill="rgb(60,52,137)" stroke="rgb(175,169,236)">
+<rect x="70" y="454" width="300" height="118" rx="8"/>
+</g>
+<text x="220" y="476" class="title" fill="rgb(255,255,255)">ChromaDB Index (dense)</text>
+<text x="220" y="496" class="tiny" fill="rgb(214,211,250)">HNSW &#183; cosine distance</text>
+<text x="220" y="516" class="tiny" fill="rgb(214,211,250)">vectors + metadata upserted per batch</text>
+<text x="220" y="540" font-size="10" fill="rgb(214,211,250)" text-anchor="middle" font-style="italic">used by dense &amp; hybrid</text>
+<text x="220" y="556" font-size="10" fill="rgb(214,211,250)" text-anchor="middle" font-style="italic">retrieval (&#167;3.6.3)</text>
+
+<!-- 5b. BM25 JSONL -->
+<g class="box" fill="rgb(60,52,137)" stroke="rgb(175,169,236)">
+<rect x="410" y="454" width="200" height="118" rx="8"/>
+</g>
+<text x="510" y="476" class="title" fill="rgb(255,255,255)">BM25 JSONL Index (sparse)</text>
+<text x="510" y="496" class="tiny" fill="rgb(214,211,250)">chunk id + text</text>
+<text x="510" y="516" class="tiny" fill="rgb(214,211,250)">written to disk</text>
+<text x="510" y="540" font-size="10" fill="rgb(214,211,250)" text-anchor="middle" font-style="italic">used by hybrid</text>
+<text x="510" y="556" font-size="10" fill="rgb(214,211,250)" text-anchor="middle" font-style="italic">retrieval only (&#167;3.6.3)</text>
+
+<text x="320" y="598" text-anchor="middle" font-size="10" fill="rgb(95,93,86)">Result: 57,816 passages &#8594; 57,849 chunks indexed in both stores (&#167;3.7.3)</text>
+
+</svg>

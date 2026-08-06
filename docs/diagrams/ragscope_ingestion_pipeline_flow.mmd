@@ -1,0 +1,31 @@
+graph TD
+    %% Custom Styles
+    classDef green fill:#134E3A,stroke:#ffffff,color:#ffffff,rx:8px,ry:8px;
+    classDef purple fill:#4A148C,stroke:#ffffff,color:#ffffff,rx:10px,ry:10px;
+    classDef label fill:none,stroke:none,color:#555555,font-size:12px;
+
+    %% Pipeline Nodes
+    P1["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Raw Passages</strong><br/>MS MARCO • Natural Questions • HotpotQA</div>"]:::green
+
+    P2["<div style='white-space: nowrap; padding: 12px 25px; text-align: left;'><strong>Preprocessing</strong><br/>• Unicode normalisation<br/>• HTML tag removal & entity decoding<br/>• Control character removal<br/>• Whitespace normalisation<br/><br/><i>Meaningfulness filter: drop if <50 chars or <40% alphabetic</i></div>"]:::green
+
+    P3["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Chunking</strong><br/>tiktoken cl100k_base • 512-token max • 64-token overlap</div>"]:::green
+
+    P4["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Embedding</strong><br/>all-MiniLM-L6-v2 • 384-dim • L2-normalised</div>"]:::green
+
+    %% Storage Index Nodes
+    I1["<div style='white-space: nowrap; padding: 12px 20px; text-align: center;'><strong>ChromaDB Index (dense)</strong><br/>HNSW • cosine distance<br/>vectors + metadata upserted per batch<br/><br/><i>used by dense & hybrid retrieval (S3.6.3)</i></div>"]:::purple
+
+    I2["<div style='white-space: nowrap; padding: 12px 20px; text-align: center;'><strong>BM25 JSONL Index (sparse)</strong><br/>chunk id + text<br/>written to disk<br/><br/><i>used by hybrid retrieval only (S3.6.3)</i></div>"]:::purple
+
+    %% Connections
+    P1 --> P2
+    P2 --> P3
+    P3 --> P4
+    P4 --> I1
+    P4 --> I2
+
+    %% Result Footer
+    RESULT["Result: 57,816 passages → 57,849 chunks indexed in both stores (S3.7.3)"]:::label
+    I1 --> RESULT
+    I2 --> RESULT
