@@ -1,0 +1,38 @@
+graph TD
+    %% Custom Styles
+    classDef brown fill:#6E2A18,stroke:#6E2A18,color:#ffffff,rx:8px,ry:8px;
+    classDef darkgrey fill:#404040,stroke:#404040,color:#ffffff,rx:8px,ry:8px;
+    classDef low fill:#20C997,stroke:#20C997,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
+    classDef med fill:#FFC107,stroke:#FFC107,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
+    classDef high fill:#E63946,stroke:#E63946,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
+    classDef label fill:none,stroke:none,color:#333333;
+    classDef footer fill:none,stroke:none,color:#666666,font-size:11px;
+
+    %% Metric Input Boxes
+    AF["<div style='white-space: nowrap; padding: 10px 25px; text-align: center;'><strong>Answer Faithfulness</strong><br/>weight 0.6</div>"]:::brown
+    CR["<div style='white-space: nowrap; padding: 10px 25px; text-align: center;'><strong>Context Relevance</strong><br/>weight 0.4</div>"]:::brown
+
+    %% Formula Node
+    FORMULA["<div style='white-space: nowrap; padding: 12px 30px; text-align: center;'><strong>Risk = 1 – (0.6 × Faithfulness + 0.4 × Context Relevance)</strong></div>"]:::darkgrey
+
+    AF --> FORMULA
+    CR --> FORMULA
+
+    %% Risk Bands Header
+    RB["<strong>Risk Bands</strong>"]:::label
+    FORMULA --> RB
+
+    %% Risk Bands Bar
+    subgraph Bands [" "]
+        direction LR
+        L["<div style='white-space: nowrap; padding: 10px 35px;'>LOW (0.00 – 0.35)</div>"]:::low
+        M["<div style='white-space: nowrap; padding: 10px 35px;'>MEDIUM (0.35 – 0.65)</div>"]:::med
+        H["<div style='white-space: nowrap; padding: 10px 35px;'>HIGH (0.65 – 1.00)</div>"]:::high
+        L --- M --- H
+    end
+
+    RB --> Bands
+
+    %% Footer Citation Note
+    FOOTER["<div style='white-space: nowrap;'>Thresholds derived from preliminary calibration against answer correctness on a pilot sample</div>"]:::footer
+    Bands --> FOOTER
