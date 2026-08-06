@@ -1,0 +1,76 @@
+<svg width="100%" viewBox="0 0 640 420" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Query sampling and retrieval corpus composition across the three benchmark datasets</title>
+<desc>Figure showing the 200-query stratified benchmark sample (60 MS MARCO, 40 Natural Questions, 100 HotpotQA) alongside the 57,816-passage retrieval corpus composition, which is heavily dominated by MS MARCO despite the more balanced query sample.</desc>
+
+<defs>
+<style>
+  text { font-family: "Anthropic Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+  .seg    { font-size: 11.5px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+  .subseg { font-size: 10px; font-weight: 400; }
+  .cap    { font-size: 11px; font-weight: 500; fill: rgb(30,28,24); }
+  .note   { font-size: 9.5px; font-weight: 400; fill: rgb(110,108,100); font-style: italic; }
+</style>
+</defs>
+
+<rect x="0" y="0" width="640" height="420" fill="rgb(255,255,255)"/>
+
+<!-- Title -->
+<text x="320" y="22" text-anchor="middle" font-size="14" font-weight="500" fill="rgb(30,28,24)">Figure 3.4 &#8212; Query Sampling &amp; Retrieval Corpus Composition</text>
+<text x="320" y="39" text-anchor="middle" font-size="10.5" fill="rgb(95,93,86)">Balanced 200-query sample vs. the MS MARCO-dominated 57,816-passage corpus</text>
+
+<!-- ══════════ Query sample bar (n=200) ══════════ -->
+<text x="40" y="66" class="cap">Query Sample &#8212; n = 200 (seed = 42, stratified per dataset)</text>
+
+<!-- bar: total width 560 at x=40..600, height 46 -->
+<!-- MS MARCO: 60/200 = 168px -->
+<rect x="40" y="76" width="168" height="46" fill="rgb(42,120,214)"/>
+<text x="124" y="99" class="seg" fill="rgb(255,255,255)">MS MARCO: 60</text>
+<!-- NQ: 40/200 = 112px -->
+<rect x="208" y="76" width="112" height="46" fill="rgb(0,131,0)"/>
+<text x="264" y="99" class="seg" fill="rgb(255,255,255)">NQ: 40</text>
+<!-- HotpotQA: 100/200 = 280px -->
+<rect x="320" y="76" width="280" height="46" fill="rgb(232,123,164)"/>
+<text x="460" y="99" class="seg" fill="rgb(255,255,255)">HotpotQA: 100</text>
+
+<line x1="40" y1="122" x2="600" y2="122" stroke="rgb(200,198,190)" stroke-width="1"/>
+
+<!-- Sub-stratification callouts -->
+<text x="124" y="140" text-anchor="middle" class="subseg" fill="rgb(42,120,214)">30 single-answer &#183; 30 multi-passage</text>
+<text x="460" y="140" text-anchor="middle" class="subseg" fill="rgb(232,123,164)">50 bridge &#183; 50 comparison</text>
+
+<!-- ══════════ Corpus bar (n=57,816) ══════════ -->
+<text x="40" y="182" class="cap">Retrieval Corpus &#8212; n = 57,816 passages &#8594; 57,849 chunks</text>
+
+<!-- MS MARCO: 50000/57816 -> 484px, adjusted to 480 to make room for NQ min-width sliver -->
+<rect x="40" y="192" width="480" height="46" fill="rgb(42,120,214)"/>
+<text x="280" y="215" class="seg" fill="rgb(255,255,255)">MS MARCO: 50,000</text>
+<!-- NQ: true width 0.4px, rendered at min 6px with callout -->
+<rect x="520" y="192" width="6" height="46" fill="rgb(0,131,0)"/>
+<!-- HotpotQA: 7776/57816 -> ~75px -->
+<rect x="526" y="192" width="74" height="46" fill="rgb(232,123,164)"/>
+<text x="563" y="215" class="seg" fill="rgb(255,255,255)">7,776</text>
+
+<!-- NQ callout leader line -->
+<path d="M523 192 L523 168 L470 168" fill="none" stroke="rgb(0,131,0)" stroke-width="1" opacity="0.8"/>
+<text x="466" y="168" text-anchor="end" font-size="10" fill="rgb(0,131,0)" dominant-baseline="central">NQ: 40 passages</text>
+
+<line x1="40" y1="238" x2="600" y2="238" stroke="rgb(200,198,190)" stroke-width="1"/>
+<text x="40" y="254" class="note">Natural Questions' true share (40 / 57,816 = 0.07%) is imperceptible at this scale;</text>
+<text x="40" y="267" class="note">its segment width above is exaggerated to a visible minimum, not proportional.</text>
+
+<!-- ══════════ Legend ══════════ -->
+<rect x="40" y="288" width="14" height="14" rx="3" fill="rgb(42,120,214)"/>
+<text x="60" y="295" font-size="11" fill="rgb(60,58,52)" dominant-baseline="central">MS MARCO</text>
+<rect x="170" y="288" width="14" height="14" rx="3" fill="rgb(0,131,0)"/>
+<text x="190" y="295" font-size="11" fill="rgb(60,58,52)" dominant-baseline="central">Natural Questions</text>
+<rect x="330" y="288" width="14" height="14" rx="3" fill="rgb(232,123,164)"/>
+<text x="350" y="295" font-size="11" fill="rgb(60,58,52)" dominant-baseline="central">HotpotQA</text>
+
+<!-- ══════════ Observation callout ══════════ -->
+<rect x="40" y="318" width="560" height="82" rx="8" fill="rgb(246,244,238)" stroke="rgb(210,207,197)" stroke-width="1"/>
+<text x="60" y="338" font-size="11" font-weight="600" fill="rgb(30,28,24)">Observation</text>
+<text x="60" y="358" font-size="10.5" fill="rgb(60,58,52)">The query sample is deliberately near-balanced across datasets (30/20/50%), but the</text>
+<text x="60" y="374" font-size="10.5" fill="rgb(60,58,52)">indexed retrieval corpus is not: MS MARCO passages outnumber HotpotQA's roughly</text>
+<text x="60" y="390" font-size="10.5" fill="rgb(60,58,52)">6:1 and NQ's over 1,000:1, since corpus size follows retrieval realism, not query count.</text>
+
+</svg>
