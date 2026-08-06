@@ -19,7 +19,7 @@
 <rect x="0" y="0" width="640" height="460" fill="rgb(255,255,255)"/>
 
 <!-- Title -->
-<text x="320" y="20" text-anchor="middle" font-size="14" font-weight="500" fill="rgb(30,28,24)">Figure 3.2 &#8212; Hybrid Retrieval: Reciprocal Rank Fusion</text>
+<text x="320" y="20" text-anchor="middle" font-size="14" font-weight="500" fill="rgb(30,28,24)">Figure 3.3 &#8212; Hybrid Retrieval: Reciprocal Rank Fusion</text>
 <text x="320" y="37" text-anchor="middle" font-size="10.5" fill="rgb(95,93,86)">pipeline/retrieval/hybrid.py &#8212; top-k fixed at 5 across all experimental conditions</text>
 
 <!-- Query -->
