@@ -10,20 +10,23 @@ graph TD
     classDef transparent fill:none,stroke:none;
 
     %% 1. Data Stage
-    subgraph Stage1 [1. Data]
+    subgraph Stage1 ["1. Data: three benchmark corpora, preprocessing, index"]
         direction LR
-        D1[Benchmark Corpora] --> D2[Preprocessing & Indexing]
-        D2 --> D3[Retrieval Index]
+        D1["<div style='white-space: nowrap; text-align: center;'><strong>3 Benchmark Corpora</strong><br/>MS MARCO • NQ • HotpotQA<br/>200 queries total</div>"]
+        D2["<div style='white-space: nowrap; text-align: center;'><strong>Preprocessing & Indexing</strong><br/>clean -> chunk -> embed<br/>512-tok/64-overlap • MiniLM 384d</div>"]
+        D3["<div style='white-space: nowrap; text-align: center;'><strong>Retrieval Index</strong><br/>ChromaDB + BM25</div>"]
+        D1 --> D2
+        D2 --> D3
     end
     class D1,D2,D3 data;
 
     %% 2. RAG Query Pipeline Stage
-    subgraph Stage2 [2. RAG Query Pipeline]
+    subgraph Stage2 ["2. RAG Query Pipeline: rag.py orchestrator (RQ3)"]
         direction TB
-        Q([User Query]):::query
-        P1[Dense Retrieval]
-        P2[Hybrid Retrieval]
-        P3[LLM Generation]
+        Q(["User Query"]):::query
+        P1["<div style='white-space: nowrap; text-align: center;'><strong>Dense Retrieval</strong><br/>ChromaDB ANN search</div>"]
+        P2["<div style='white-space: nowrap; text-align: center;'><strong>Hybrid Retrieval</strong><br/>+ BM25 -> RRF (k=60)</div>"]
+        P3["<div style='white-space: nowrap; text-align: center;'><strong>LLM Generation (Ollama)</strong><br/>Llama 3 8B / Mistral 7B</div>"]
         
         Q --> P1
         Q --> P2
@@ -37,27 +40,33 @@ graph TD
     D3 -. index feeds retrieval .-> P2
 
     %% 3. Evaluation Stage
-    subgraph Stage3 [3. Evaluation]
+    subgraph Stage3 ["3. Evaluation (RQ1: hallucination-risk calibration)"]
         direction LR
-        E1[RAGAS Runner] --> E2[Hallucination Risk]
+        E1["<div style='white-space: nowrap; text-align: center;'><strong>RAGAS Runner</strong><br/>3 metrics<br/>judge: qwen2.5:7b (constant)</div>"]
+        E2["<div style='white-space: nowrap; text-align: center;'><strong>Hallucination Risk</strong><br/>1 - (0.6 * faith + 0.4 * ctx_rel)<br/>LOW / MEDIUM / HIGH</div>"]
+        E1 --> E2
     end
     class E1,E2 eval;
     
     P3 --> E1
 
     %% 4. Telemetry Stage
-    subgraph Stage4 [4. Telemetry]
+    subgraph Stage4 ["4. Telemetry (RQ2: per-stage fault localisation)"]
         direction LR
-        T1[Instrumentation] --> T2[Telemetry Record]
-        T2 --> T3[Statistics]
+        T1["<div style='white-space: nowrap; text-align: center;'><strong>Instrumentation</strong><br/>per-stage ms • tokens<br/>timer.py • token_counter.py</div>"]
+        T2["<div style='white-space: nowrap; text-align: center;'><strong>Telemetry Record</strong><br/>logger.py -> flat JSON<br/>telemetry/store/{id}.json</div>"]
+        T3["<div style='white-space: nowrap; text-align: center;'><strong>Statistics (metrics.py)</strong><br/>Cohen's d • Pearson r -> pure Python</div>"]
+        
+        T1 --> T2
+        T2 --> T3
     end
     class T1,T2,T3 telemetry;
 
     E1 --> T1
 
     %% 5. Dashboard Stage
-    subgraph Stage5 [5. Dashboard]
-        DB[Streamlit Dashboard]
+    subgraph Stage5 ["5. Dashboard: dashboard/app.py (Objective 5)"]
+        DB["<div style='white-space: nowrap; text-align: center;'><strong>Streamlit Dashboard (5 views)</strong><br/>Live Monitor • Comparison • Query Explorer<br/>Benchmark Results • Knowledge Base<br/><small>shared: metric_cards • latency_chart • heatmap</small></div>"]
     end
     class DB dashboard;
 
@@ -65,9 +74,11 @@ graph TD
     Q -.-> DB
 
     %% 6. Experiments Stage
-    subgraph Stage6 [6. Experiments]
+    subgraph Stage6 ["6. Experiments (RQ3 / Objective 6: 2x2 factorial)"]
         direction LR
-        X1[Run 2x2 Factorial] --> X2[Analyze Results]
+        X1["<div style='white-space: nowrap; text-align: center;'><strong>run_2x2_factorial.py</strong><br/>4 conditions x 200 queries<br/>re-runs stages 2-4 above -> CSV</div>"]
+        X2["<div style='white-space: nowrap; text-align: center;'><strong>analyse_results.py</strong><br/>reads CSV -> .md report<br/>Cohen's d • Pearson r</div>"]
+        X1 --> X2
     end
     class X1,X2 exp;
 
