@@ -93,7 +93,7 @@ The platform is organised into six stages, each mapped to a specific research qu
 ```
  1. Data          2. RAG Query Pipeline        3. Evaluation
  ────────    ▶    ─────────────────────   ▶    ─────────────
- 3 corpora        Dense/Hybrid retrieval        RAGAS Runner (judge: qwen2.5:7b)
+ BioASQ corpus    Dense/Hybrid retrieval        RAGAS Runner (judge: qwen2.5:7b)
  → preprocess     → LLM generation              → Hallucination Risk score
  → index          (Llama 3 8B / Mistral 7B)     (RQ1)
  (RQ3)            (RQ3)
@@ -145,7 +145,7 @@ The platform is organised into six stages, each mapped to a specific research qu
 - Export of session data to CSV for downstream analysis
 
 ### 🗂️ Benchmark Pipeline
-- Pre-built loaders for MS MARCO, Natural Questions, and HotpotQA
+- Pre-built BioASQ loaders covering three evaluation roles (Phase A retrieval, factoid, summary)
 - Stratified query sampling utilities
 - Ground-truth answer alignment for RAGAS answer correctness computation
 
@@ -153,32 +153,23 @@ The platform is organised into six stages, each mapped to a specific research qu
 
 ## Datasets
 
-Three publicly available benchmark datasets are used for evaluation. All are available under open licences permitting academic re-use.
+A single benchmark dataset, **BioASQ**, is used for evaluation — accessed via `rag-datasets/rag-mini-bioasq`, a freely downloadable HuggingFace mirror derived from the official BioASQ Task 11b training release (CC BY 2.5). The official release requires registration at bioasq.org and includes a ~23M-abstract PubMed corpus; this mirror provides a bounded, dissertation-scale derivative (40,221 passages, 4,719 QA pairs) instead. See [`docs/datasets.md`](docs/datasets.md) for the full methodology, including how the platform's original three evaluation roles are reconstructed from BioASQ's answer shapes (it carries no native question-type label).
 
-### MS MARCO — Passage Ranking
-- **Source:** [microsoft.github.io/msmarco](https://microsoft.github.io/msmarco/)
-- **Licence:** MIT
-- **Usage in this project:** 50,000 passages indexed as the primary retrieval corpus; 60 development-set queries (30 single-answer, 30 multi-passage) used for evaluation
-- **Why:** Large-scale, web-sourced passage retrieval — tests the platform under realistic retrieval corpus conditions
+### BioASQ
+- **Source:** [huggingface.co/datasets/rag-datasets/rag-mini-bioasq](https://huggingface.co/datasets/rag-datasets/rag-mini-bioasq)
+- **Licence:** CC BY 2.5
+- **Usage in this project:** 27,972 PubMed-abstract passages (cleaned from a raw 40,221) indexed as the retrieval corpus; 200 queries split across three roles:
+  - **Phase A** (60 queries, 30 single-relevant + 30 multi-relevant) — passage retrieval, mirroring the platform's original MS MARCO role
+  - **Factoid** (40 queries, short exact answers) — mirroring the platform's original Natural Questions role
+  - **Summary** (100 queries, 50 yes/no + 50 long-form) — multi-passage synthesis, mirroring the platform's original HotpotQA role
+- **Why:** A single, domain-realistic corpus — biomedical questions authored by domain experts against PubMed abstracts — while preserving the same three-condition evaluation structure (retrieval / factual QA / synthesis) the platform was designed around
 
-### Natural Questions (NQ)
-- **Source:** [ai.google.com/research/NaturalQuestions](https://ai.google.com/research/NaturalQuestions)
-- **Licence:** CC BY-SA 3.0
-- **Usage in this project:** 40 development-set queries with Wikipedia ground-truth answers
-- **Why:** Real Google Search queries — naturalistic, unambiguous ground-truth answers enable precise faithfulness measurement
-
-### HotpotQA
-- **Source:** [hotpotqa.github.io](https://hotpotqa.github.io/)
-- **Licence:** CC BY-SA 4.0
-- **Usage in this project:** 100 development-set queries (50 bridge, 50 comparison) from the full-wiki setting
-- **Why:** Multi-hop reasoning — the hardest condition for RAG faithfulness, and the most diagnostic test for hallucination detection
-
-| Dataset | Query Type | Corpus Source | Queries Used | Licence |
-|---|---|---|:---:|---|
-| MS MARCO | Passage ranking | Web documents | 60 | MIT |
-| Natural Questions | Single-hop QA | Wikipedia | 40 | CC BY-SA 3.0 |
-| HotpotQA | Multi-hop QA | Wikipedia (full) | 100 | CC BY-SA 4.0 |
-| **Total** | | | **200** | |
+| Role | Query Type | Corpus Source | Queries Used |
+|---|---|---|:---:|
+| Phase A | Passage retrieval | PubMed abstracts | 60 |
+| Factoid | Short exact-answer QA | PubMed abstracts | 40 |
+| Summary | Multi-passage synthesis | PubMed abstracts | 100 |
+| **Total** | | | **200** |
 
 ---
 
@@ -227,9 +218,7 @@ ragscope/
 │
 ├── data/                          # Dataset loading and preprocessing
 │   ├── loaders/
-│   │   ├── msmarco.py             # MS MARCO passage & query loader
-│   │   ├── natural_questions.py   # NQ development set loader
-│   │   └── hotpotqa.py            # HotpotQA full-wiki loader
+│   │   └── bioasq.py              # BioASQ corpus + 3-role query loader
 │   ├── preprocessing/
 │   │   ├── chunker.py             # Text chunking strategies
 │   │   └── cleaner.py             # Text normalisation utilities
@@ -372,9 +361,9 @@ The dashboard will be available at **http://localhost:8501** once both services 
  ✔ ragscope     Started   → http://localhost:8501
 ```
 
-**5. Ingest the benchmark datasets**
+**5. Ingest the benchmark dataset**
 
-Run this once to download and embed the MS MARCO, NQ, and HotpotQA passages into ChromaDB:
+Run this once to download and embed the BioASQ passages into ChromaDB:
 
 ```bash
 docker compose exec ragscope uv run python pipeline/ingestion.py \
@@ -588,13 +577,13 @@ uv run python experiments/run_2x2_factorial.py \
 
 # Single condition only (either runner)
 uv run python experiments/run_2x2_factorial.py \
-  --dataset hotpotqa \
+  --dataset bioasq_summary \
   --llm mistral \
   --retrieval dense \
-  --output experiments/results/hotpotqa_mistral_dense.csv
+  --output experiments/results/bioasq_summary_mistral_dense.csv
 ```
 
-> ⚠️ **Expected runtime:** The full 800-query experiment takes approximately 4–8 hours on consumer hardware (CPU inference). Run as an overnight job. A `--resume` flag resumes from a checkpoint if the run is interrupted.
+> ⚠️ **Expected runtime:** The full 800-query experiment takes on the order of half a day on consumer hardware (CPU inference) — RAGAS judge latency dominates per-query time. Run as a background/overnight job. A `--resume` flag resumes from a checkpoint if the run is interrupted.
 
 After the experiment completes, run the statistical analysis:
 
@@ -727,7 +716,7 @@ The core experiment follows a **2 × 2 fully factorial design**:
 | **Llama 3 (8B)** | Condition A | Condition B |
 | **Mistral 7B** | Condition C | Condition D |
 
-- **200 queries** per condition (60 MS MARCO + 40 NQ + 100 HotpotQA)
+- **200 queries** per condition (60 BioASQ Phase A + 40 factoid + 100 summary)
 - **800 total query-result records** with full telemetry and RAGAS annotation
 - **Statistical analysis:** Descriptive statistics, Cohen's d effect sizes, Pearson correlations
 - **Auxiliary LLM for RAGAS:** Qwen2.5 (7B) — deliberately a third model, distinct from both generator LLMs under evaluation, and held constant across all four conditions
@@ -801,10 +790,8 @@ Full bibliography available in the dissertation.
 
 This project is licensed under the **MIT Licence**. See [LICENSE](LICENSE) for details.
 
-Datasets used in this research are subject to their own licences:
-- MS MARCO: MIT
-- Natural Questions: CC BY-SA 3.0
-- HotpotQA: CC BY-SA 4.0
+The dataset used in this research is subject to its own licence:
+- BioASQ (via `rag-datasets/rag-mini-bioasq`): CC BY 2.5
 
 ---
 
