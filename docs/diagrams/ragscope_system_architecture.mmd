@@ -12,7 +12,7 @@ graph TD
     %% 1. Data Stage
     subgraph Stage1 ["1. Data: three benchmark corpora, preprocessing, index"]
         direction LR
-        D1["<div style='white-space: nowrap; text-align: center;'><strong>3 Benchmark Corpora</strong><br/>MS MARCO • NQ • HotpotQA<br/>200 queries total</div>"]
+        D1["<div style='white-space: nowrap; text-align: center;'><strong>BioASQ Corpus</strong><br/>PubMed abstracts<br/>27,972 passages · 200 queries</div>"]
         D2["<div style='white-space: nowrap; text-align: center;'><strong>Preprocessing & Indexing</strong><br/>clean -> chunk -> embed<br/>512-tok/64-overlap • MiniLM 384d</div>"]
         D3["<div style='white-space: nowrap; text-align: center;'><strong>Retrieval Index</strong><br/>ChromaDB + BM25</div>"]
         D1 --> D2

@@ -3,46 +3,49 @@ graph TD
     classDef blue fill:#2C7BE5,stroke:#ffffff,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
     classDef green fill:#008000,stroke:#ffffff,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
     classDef pink fill:#E685AC,stroke:#ffffff,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
+    classDef teal fill:#087858,stroke:#ffffff,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
+    classDef red fill:#E74C3C,stroke:#ffffff,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
+    classDef grey fill:#95A5A6,stroke:#ffffff,color:#ffffff,font-weight:bold,rx:4px,ry:4px;
     classDef header fill:none,stroke:none,color:#000000;
     classDef text fill:none,stroke:none,color:#555555,font-size:12px;
     classDef obs fill:#FDFCF0,stroke:#D4D1C3,color:#333333,rx:10px,ry:10px;
 
-    %% 1. Query Sample Section
-    S1["<div style='white-space: nowrap; font-size: 15px; font-weight: bold;'>Query Sample — n = 200 (seed = 42, stratified per dataset)</div>"]:::header
+    %% 1. Query Sample Section (stratified by BioASQ role, not by dataset)
+    S1["<div style='white-space: nowrap; font-size: 15px; font-weight: bold;'>Query Sample — n = 200 (seed = 42, stratified by role, S3.7.2)</div>"]:::header
 
     subgraph Bar1 [" "]
         direction LR
-        Q_MS["<div style='white-space: nowrap; padding: 15px 40px;'>MS MARCO: 60</div>"]:::blue
-        Q_NQ["<div style='white-space: nowrap; padding: 15px 30px;'>NQ: 40</div>"]:::green
-        Q_HP["<div style='white-space: nowrap; padding: 15px 60px;'>HotpotQA: 100</div>"]:::pink
-        Q_MS --- Q_NQ --- Q_HP
+        Q_PA["<div style='white-space: nowrap; padding: 15px 40px;'>Phase A: 60</div>"]:::blue
+        Q_FA["<div style='white-space: nowrap; padding: 15px 30px;'>Factoid: 40</div>"]:::green
+        Q_SU["<div style='white-space: nowrap; padding: 15px 60px;'>Summary: 100</div>"]:::pink
+        Q_PA --- Q_FA --- Q_SU
     end
 
-    %% Split sub-labels using inline HTML for exact color matching and spacing
-    S1_SUB["<div style='white-space: nowrap;'><span style='color: #2C7BE5;'>30 single-answer · 30 multi-passage · </span><span style='color: #E685AC;'>50 bridge · 50 comparison</span></div>"]:::text
+    S1_SUB["<div style='white-space: nowrap;'><span style='color: #2C7BE5;'>30 single-relevant · 30 multi-relevant · </span><span style='color: #E685AC;'>50 yes/no · 50 summary</span></div>"]:::text
 
     S1 --> Bar1
     Bar1 --> S1_SUB
 
-    %% 2. Retrieval Corpus Section
-    S2["<div style='white-space: nowrap; font-size: 15px; font-weight: bold; margin-top: 20px;'>Retrieval Corpus — n = 57,816 passages → 57,849 chunks</div>"]:::header
+    %% 2. Corpus Cleaning Section (BioASQ is a single unified corpus — the
+    %% interesting composition question is raw-to-cleaned reduction, not
+    %% per-dataset share, since there is only one source now)
+    S2["<div style='white-space: nowrap; font-size: 15px; font-weight: bold; margin-top: 20px;'>Corpus Cleaning — n = 40,221 raw passages -&gt; 27,972 kept</div>"]:::header
 
     subgraph Bar2 [" "]
         direction LR
-        C_MS["<div style='white-space: nowrap; padding: 15px 120px;'>MS MARCO: 50,000</div>"]:::blue
-        C_NQ["<div style='white-space: nowrap; padding: 15px 15px;'>NQ: 40</div>"]:::green
-        C_HP["<div style='white-space: nowrap; padding: 15px 40px;'>7,776</div>"]:::pink
-        C_MS --- C_NQ --- C_HP
+        C_KEPT["<div style='white-space: nowrap; padding: 15px 100px;'>Kept: 27,972</div>"]:::teal
+        C_NAN["<div style='white-space: nowrap; padding: 15px 50px;'>&quot;nan&quot;: 12,220</div>"]:::red
+        C_OTHER["<div style='white-space: nowrap; padding: 15px 5px;'>Other: 29</div>"]:::grey
+        C_KEPT --- C_NAN --- C_OTHER
     end
 
-    %% Controlled width for the italicized note so it wraps correctly without breaking the layout
-    S2_NOTE["<div style='width: 600px; text-align: center; font-style: italic; color: #666;'>Natural Questions' true share (40 / 57,816 = 0.07%) is imperceptible at this scale;<br/>its segment width above is exaggerated to a visible minimum, not proportional.</div>"]:::text
+    S2_NOTE["<div style='width: 600px; text-align: center; font-style: italic; color: #666;'>30.4% of raw passages were literal &quot;nan&quot; placeholder strings — a data-quality artefact<br/>of the source HuggingFace mirror, confirmed by direct inspection, not a bug in this pipeline.</div>"]:::text
 
     S1_SUB --> S2
     S2 --> Bar2
     Bar2 --> S2_NOTE
 
     %% 3. Observation Box
-    OBS["<div style='width: 600px; text-align: left; padding: 15px 20px;'><strong>Observation</strong><br/><br/>The query sample is deliberately near-balanced across datasets (30/20/50%), but the indexed retrieval corpus is not: MS MARCO passages outnumber HotpotQA's roughly 6:1 and NQ's over 1,000:1, since corpus size follows retrieval realism, not query count.</div>"]:::obs
+    OBS["<div style='width: 600px; text-align: left; padding: 15px 20px;'><strong>Observation</strong><br/><br/>Unlike the platform's original three-dataset corpus, BioASQ is indexed as a single unified corpus with no per-source imbalance to report. The more interesting composition question here is data quality: nearly a third of the raw mirror was unusable placeholder text.</div>"]:::obs
 
     S2_NOTE --> OBS

@@ -5,7 +5,7 @@ graph TD
     classDef label fill:none,stroke:none,color:#555555,font-size:12px;
 
     %% Pipeline Nodes
-    P1["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Raw Passages</strong><br/>MS MARCO • Natural Questions • HotpotQA</div>"]:::green
+    P1["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Raw Passages</strong><br/>BioASQ (rag-mini-bioasq) • 40,221 raw passages</div>"]:::green
 
     P2["<div style='white-space: nowrap; padding: 12px 25px; text-align: left;'><strong>Preprocessing</strong><br/>• Unicode normalisation<br/>• HTML tag removal & entity decoding<br/>• Control character removal<br/>• Whitespace normalisation<br/><br/><i>Meaningfulness filter: drop if <50 chars or <40% alphabetic</i></div>"]:::green
 
@@ -26,6 +26,6 @@ graph TD
     P4 --> I2
 
     %% Result Footer
-    RESULT["Result: 57,816 passages → 57,849 chunks indexed in both stores (S3.7.3)"]:::label
+    RESULT["Result: 27,972 passages → 30,850 chunks indexed in both stores (S3.7.3)"]:::label
     I1 --> RESULT
     I2 --> RESULT
