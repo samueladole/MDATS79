@@ -119,7 +119,7 @@ RAGScope uses **RAGAS ≥ 0.2** via its `EvaluationDataset` API. Each query is w
 
 **What a low score indicates:** The LLM has either ignored the retrieved context or generated claims beyond what the context supports. This is the direct signal of hallucination in RAG output, and it is the primary metric weighted in the composite hallucination risk score.
 
-**Note on binary questions:** For HotpotQA comparison questions with short answers like "yes" or "no", faithfulness scoring may behave unexpectedly because atomic claim decomposition is not well-defined for single-word answers. Scores for this query type should be interpreted with caution.
+**Note on binary questions:** For BioASQ summary-role yes/no questions, faithfulness scoring may behave unexpectedly because atomic claim decomposition is not well-defined for short, binary-prefixed answers (e.g. "Yes, papilin is a secreted protein"). Scores for this query type should be interpreted with caution.
 
 ---
 
@@ -137,13 +137,13 @@ RAGScope uses **RAGAS ≥ 0.2** via its `EvaluationDataset` API. Each query is w
 2. **Semantic similarity** — both answers are embedded; cosine similarity between their embedding vectors is computed.
 3. The final score is a weighted combination of factual and semantic similarity.
 
-**Ground-truth sources by dataset:**
+**Ground-truth sources by role:**
 
-| Dataset | Ground Truth | Notes |
+| Role | Ground Truth | Notes |
 |---|---|---|
-| MS MARCO | `answers` field | Human-authored; may have multiple acceptable forms |
-| Natural Questions | `short_answer` extraction | Precise verbatim span from Wikipedia |
-| HotpotQA | `answer` field | "yes"/"no" or named entity; precise for factual questions |
+| Phase A | `answer` field | Domain-expert-authored; often multi-sentence |
+| Factoid | `answer` field (≤ 6 words) | Domain-expert-authored; entity/phrase-level precision |
+| Summary | `answer` field | Free-text or "yes"/"no"-prefixed; precise for factual questions |
 
 **When ground truth is absent:** If no `ground_truth` is supplied to `RAGPipeline.query()`, `answer_correctness` is not computed and the telemetry record stores `None`. The hallucination risk score is still computed from faithfulness and context relevance alone.
 
@@ -194,9 +194,9 @@ scores = runner.evaluate(
 
 The following limitations are acknowledged in the dissertation and should be considered when interpreting results:
 
-**Judge model bias:** RAGAS metrics are computed using an LLM judge, which may share biases with the evaluated generation model — particularly when Llama 3 is both the generator (Conditions A and B) and the judge. Claims that the judge LLM is inclined to agree with may be marked as faithful even when they are not. This is mitigated by using a fixed judge model and noting the potential for bias in the analysis.
+**Judge model bias:** RAGAS metrics are computed using an LLM judge (Qwen2.5 7B), which may carry its own systematic biases regardless of which generator produced the answer. Qwen2.5 is deliberately a third model distinct from both generators (Llama 3, Mistral 7B), avoiding generator–judge overlap, but this does not eliminate judge-level bias entirely — it was not cross-validated against human annotations within the dissertation timeline.
 
-**Short-answer edge cases:** For queries with very short ground-truth answers (e.g., "yes", "no", entity names of 1–2 words), the atomic claim decomposition step of faithfulness scoring and the factual overlap step of correctness scoring may behave unpredictably. Scores for HotpotQA comparison questions should be interpreted at the group level (mean across 50 queries) rather than individually.
+**Short-answer edge cases:** For queries with very short ground-truth answers (e.g., "yes", "no", entity names of 1–2 words), the atomic claim decomposition step of faithfulness scoring and the factual overlap step of correctness scoring may behave unpredictably. Scores for BioASQ summary-role yes/no questions should be interpreted at the group level (mean across 50 queries) rather than individually.
 
 **Reference-free vs. reference-based:** Context relevance and faithfulness are reference-free — they do not require ground-truth answers. Answer correctness is reference-based and therefore only meaningful when a high-quality ground truth is available. The quality of ground-truth annotations varies across the three benchmark datasets.
 
@@ -596,22 +596,22 @@ print(usage.estimated_cost_usd)  # 0.000000 (local inference)
 A single query through the RAGScope pipeline produces the following metric values:
 
 ```
-Query:    "Who directed the film that starred the actor born in 1969 who
-           won the Oscar for Best Actor in 2006?"
-Dataset:  HotpotQA (bridge)
+Query:    "Which gene mutation is most commonly associated with hereditary
+           haemochromatosis type 1?"
+Dataset:  BioASQ (Phase A)
 Model:    Llama 3 (8B)
 Strategy: Hybrid retrieval
 
 ─── Retrieved Chunks (top 5, hybrid) ──────────────────────
-  [1] score=0.043 | "Forest Whitaker was born on 15 July 1961..."  ← wrong year
-  [2] score=0.041 | "The Last King of Scotland is a 2006 film..."
-  [3] score=0.038 | "Kevin Spacey won the Academy Award for..."     ← different year
-  [4] score=0.035 | "Forrest Whitaker starred in The Last King..."
-  [5] score=0.031 | "Kevin Bacon was born in 1958..."               ← wrong person
+  [1] score=0.043 | "HFE-related haemochromatosis is caused by mutations..."
+  [2] score=0.041 | "The C282Y mutation in the HFE gene accounts for..."
+  [3] score=0.038 | "TFR2 mutations cause a rarer, non-HFE form..."   ← different gene
+  [4] score=0.035 | "Homozygosity for C282Y is found in the majority..."
+  [5] score=0.031 | "Juvenile haemochromatosis involves HJV or HAMP..."  ← wrong subtype
 
 ─── Generated Answer ────────────────────────────────────────
-  "The film The Last King of Scotland was directed by Kevin Macdonald,
-   starring Forest Whitaker who won Best Actor at the 2006 Academy Awards."
+  "Hereditary haemochromatosis type 1 is most commonly caused by the
+   C282Y mutation in the HFE gene, usually in the homozygous state."
 
 ─── Telemetry ───────────────────────────────────────────────
   embed_query_ms :    38.2 ms
@@ -627,9 +627,9 @@ Strategy: Hybrid retrieval
   estimated_cost :   $0.000000
 
 ─── RAGAS Evaluation ────────────────────────────────────────
-  context_relevance   : 0.62   ← moderate; chunk [1] incorrect year is noise
+  context_relevance   : 0.62   ← moderate; chunks [3] and [5] are off-topic noise
   answer_faithfulness : 0.91   ← high; answer grounded in chunks [2] and [4]
-  answer_correctness  : 0.74   ← correct answer but wrong birth year in query
+  answer_correctness  : 0.74   ← correct gene/mutation, phrasing differs from ground truth
   hallucination_risk  : 0.16   ← LOW: 1 − (0.6×0.91 + 0.4×0.62) = 0.16
 ```
 
