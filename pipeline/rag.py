@@ -155,7 +155,7 @@ class RAGPipeline:
     top_k              : Number of chunks to retrieve per query.
     run_evaluation     : Whether to run RAGAS metrics after generation.
     telemetry_logger   : TelemetryLogger instance.
-    dataset            : Dataset label for telemetry (e.g. ``"msmarco"``).
+    dataset            : Dataset label for telemetry (e.g. ``"bioasq_phase_a"``).
     experiment_id      : Optional experiment identifier for batch runs.
     """
 

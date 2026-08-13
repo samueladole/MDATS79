@@ -1,10 +1,9 @@
 """
 RAGScope — Text Cleaner
 ========================
-Normalises raw text from all three benchmark corpora before chunking
+Normalises raw text from the BioASQ benchmark corpus before chunking
 and embedding. Handles HTML artefacts, unicode noise, and whitespace
-inconsistencies that are common in web-sourced (MS MARCO) and
-Wikipedia-derived (NQ, HotpotQA) documents.
+inconsistencies common in PubMed abstract text.
 """
 
 from __future__ import annotations

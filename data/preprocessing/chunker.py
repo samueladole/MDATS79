@@ -10,7 +10,7 @@ Design choices
   character counts, ensuring the embedding model never receives input
   that exceeds its context window.
 * A configurable overlap window preserves cross-boundary context,
-  which is particularly important for multi-hop HotpotQA passages
+  which is particularly important for BioASQ's summary-style passages
   that often carry reasoning chains across sentence boundaries.
 * Each chunk is returned as a ``Chunk`` dataclass that carries its
   source document identifier and positional metadata — required by
@@ -103,7 +103,7 @@ class TokenChunker:
         ----------
         text     : Cleaned document text.
         doc_id   : Unique source document identifier.
-        metadata : Optional dict propagated to each chunk (e.g. ``{"dataset": "msmarco"}``).
+        metadata : Optional dict propagated to each chunk (e.g. ``{"dataset": "bioasq"}``).
 
         Returns
         -------

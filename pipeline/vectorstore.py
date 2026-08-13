@@ -247,7 +247,7 @@ class VectorStore:
 
         Parameters
         ----------
-        where : ChromaDB metadata filter dict, e.g. ``{"dataset": "msmarco"}``.
+        where : ChromaDB metadata filter dict, e.g. ``{"dataset": "bioasq"}``.
         """
         result = self._collection.get(where=where, include=[])
         return len(result["ids"])
@@ -302,7 +302,7 @@ class VectorStore:
         Parameters
         ----------
         where       : Optional ChromaDB metadata filter dict, e.g.
-                      ``{"dataset": "msmarco"}``. ``None`` samples the whole
+                      ``{"dataset": "bioasq"}``. ``None`` samples the whole
                       collection.
         sample_size : Maximum number of chunks to sample.
         seed        : Random seed for reproducible sampling. Defaults to
