@@ -66,7 +66,7 @@ class TestTelemetryLogger:
             chunk_id="doc1::chunk_0",
             text="test passage",
             score=0.85,
-            metadata={"dataset": "msmarco"},
+            metadata={"dataset": "bioasq"},
         )
         usage = TokenUsage(
             prompt_tokens=100, completion_tokens=50, total_tokens=150, estimated_cost_usd=0.0
@@ -74,7 +74,7 @@ class TestTelemetryLogger:
         record = build_record(
             query_id="q1",
             query="What is NLP?",
-            dataset="msmarco",
+            dataset="bioasq",
             query_type="single_hop",
             llm_model="llama3",
             retrieval_strategy="dense",

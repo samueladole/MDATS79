@@ -24,7 +24,7 @@ def _make_chunk(chunk_id: str, score: float, text: str = "passage text") -> Retr
         chunk_id=chunk_id,
         text=text,
         score=score,
-        metadata={"dataset": "msmarco"},
+        metadata={"dataset": "bioasq"},
     )
 
 

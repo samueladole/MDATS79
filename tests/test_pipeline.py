@@ -77,9 +77,9 @@ class TestTokenChunker:
         chunks = self.chunker.chunk(
             "Some passage text. " * 10,
             doc_id="d1",
-            metadata={"dataset": "msmarco"},
+            metadata={"dataset": "bioasq"},
         )
-        assert all(c.metadata.get("dataset") == "msmarco" for c in chunks)
+        assert all(c.metadata.get("dataset") == "bioasq" for c in chunks)
 
     def test_overlap_invalid_raises(self):
         with pytest.raises(ValueError):
