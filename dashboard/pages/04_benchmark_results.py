@@ -370,9 +370,9 @@ st.divider()
 if "dataset" in df.columns:
     st.subheader("Performance by Dataset")
     st.caption(
-        "Mean quality scores per source benchmark dataset (MS MARCO / Natural Questions / "
-        "HotpotQA) × condition — useful for spotting whether a condition struggles on a "
-        "specific query type (e.g. HotpotQA's multi-hop reasoning)."
+        "Mean quality scores per BioASQ query role (Phase A retrieval / factoid / summary) "
+        "× condition — useful for spotting whether a condition struggles on a specific "
+        "query type (e.g. summary questions requiring multi-passage synthesis)."
     )
     dataset_agg = (
         df.groupby(["dataset", "condition"])[
