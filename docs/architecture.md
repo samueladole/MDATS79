@@ -72,9 +72,9 @@ The system integrates five concerns into a single cohesive platform:
 │  ┌──────────────────┐   ┌──────────────────┐   ┌───────────────────────┐  │
 │  │  Data Ingestion  │   │  Query Pipeline  │   │  Evaluation Layer     │  │
 │  │                  │   │                  │   │                       │  │
-│  │  MS MARCO        │   │  Query           │   │  RAGAS Runner         │  │
-│  │  Natural Qs      │──▶│  ├─ Dense Ret.   │──▶│  ├─ Context Rel.     │  │
-│  │  HotpotQA        │   │  └─ Hybrid Ret.  │   │  ├─ Faithfulness     │  │
+│  │  BioASQ          │   │  Query           │   │  RAGAS Runner         │  │
+│  │  (PubMed         │──▶│  ├─ Dense Ret.   │──▶│  ├─ Context Rel.     │  │
+│  │  abstracts)      │   │  └─ Hybrid Ret.  │   │  ├─ Faithfulness     │  │
 │  │                  │   │                  │   │  ├─ Correctness       │  │
 │  │  Clean → Chunk   │   │  LLM Generation  │   │  └─ Hallucin. Risk   │  │
 │  │  Embed → Upsert  │   │  ├─ Llama 3      │   │                       │  │
@@ -128,7 +128,7 @@ config/settings.py
     ├── data/preprocessing/cleaner.py
     ├── data/preprocessing/chunker.py
     │       │
-    │       └── data/loaders/{msmarco, natural_questions, hotpotqa}.py
+    │       └── data/loaders/bioasq.py
     │
     ├── pipeline/embeddings.py
     ├── pipeline/vectorstore.py
@@ -197,7 +197,7 @@ Ingestion is a streaming pipeline that processes documents in mini-batches to ke
 
 | Step | Module | Description |
 |---|---|---|
-| Load | `data/loaders/{msmarco,nq,hotpotqa}.py` | Download and load raw passages from HuggingFace Datasets |
+| Load | `data/loaders/bioasq.py` | Download and load raw passages from HuggingFace Datasets |
 | Deduplicate | `pipeline/ingestion.py` | Track seen passage IDs in a set; skip cross-dataset duplicates |
 | Clean | `data/preprocessing/cleaner.py` | Strip HTML, normalise unicode, collapse whitespace |
 | Chunk | `data/preprocessing/chunker.py` | Token-bounded overlapping chunks via tiktoken |
@@ -572,7 +572,7 @@ Applying the correct template is essential — supplying a completion-style prom
 
 | Flag | Default | Description |
 |---|---|---|
-| `--corpus` | `all` | `all` \| `msmarco` \| `natural_questions` \| `hotpotqa` |
+| `--corpus` | `bioasq` | `bioasq` \| `all` (alias for the same single corpus) |
 | `--chunk-size` | `512` | Max tokens per chunk |
 | `--chunk-overlap` | `64` | Token overlap between consecutive chunks |
 | `--embed-batch-size` | `256` | Chunks per embedding forward pass (RAM control) |
@@ -679,7 +679,7 @@ class Timer:
 
 | Symbol | Type | Description |
 |---|---|---|
-| `load_benchmark(seed)` | function | Returns shuffled 200-query list (60 MS MARCO + 40 NQ + 100 HotpotQA) |
+| `load_benchmark(seed)` | function | Returns shuffled 200-query list (60 BioASQ Phase A + 40 factoid + 100 summary) |
 | `run_benchmark(pipeline, queries, ...)` | function | Executes all queries; supports checkpoint/resume; returns `list[dict]` |
 
 ---
