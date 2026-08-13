@@ -7,7 +7,7 @@ Orchestrates the full ingestion workflow:
 
 Steps
 -----
-    1. Load raw passages from benchmark corpora (MS MARCO, NQ, HotpotQA)
+    1. Load raw passages from the BioASQ corpus
     2. Deduplicate passages across datasets by document ID
     3. Clean and chunk documents using the token-bounded chunker
     4. Generate dense embeddings in streaming mini-batches
@@ -24,10 +24,11 @@ Design decisions
   size, not the total corpus. For embed_batch_size=256 with 384-d embeddings
   that is approximately 2 MB of text + 0.4 MB of vectors at any one time.
 
-* **Deduplication** — passage IDs are tracked in a set; duplicates that arise
-  from overlapping HotpotQA context passages across examples are silently
-  skipped. This prevents ChromaDB from storing redundant embeddings and keeps
-  the BM25 index clean.
+* **Deduplication** — passage IDs are tracked in a set; any duplicate IDs are
+  silently skipped. This prevents ChromaDB from storing redundant embeddings
+  and keeps the BM25 index clean. (With a single source corpus this is mostly
+  a defensive guard rather than a load-bearing dedup step, but the loader
+  interface still returns one dataset per call so the logic is kept general.)
 
 * **Idempotency** — ChromaDB ``upsert`` is idempotent by design. Re-running
   ingestion after a crash will skip already-stored chunks and only add the
@@ -45,23 +46,20 @@ Design decisions
 
 Usage
 -----
-    # Ingest all datasets (recommended for the research experiment)
-    uv run python pipeline/ingestion.py --corpus all
-
-    # Ingest a single dataset
-    uv run python pipeline/ingestion.py --corpus msmarco
+    # Ingest the BioASQ corpus (recommended for the research experiment)
+    uv run python pipeline/ingestion.py --corpus bioasq
 
     # Wipe the collection and re-ingest from scratch
-    uv run python pipeline/ingestion.py --corpus all --reset
+    uv run python pipeline/ingestion.py --corpus bioasq --reset
 
     # Dry run: report estimated chunk counts without writing
-    uv run python pipeline/ingestion.py --corpus all --dry-run
+    uv run python pipeline/ingestion.py --corpus bioasq --dry-run
 
     # Custom batch sizes (for machines with limited RAM)
-    uv run python pipeline/ingestion.py --corpus all --embed-batch-size 64
+    uv run python pipeline/ingestion.py --corpus bioasq --embed-batch-size 64
 
     # Docker
-    docker compose exec ragscope uv run python pipeline/ingestion.py --corpus all
+    docker compose exec ragscope uv run python pipeline/ingestion.py --corpus bioasq
 """
 
 from __future__ import annotations
@@ -78,9 +76,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from config.settings import settings
-from data.loaders import hotpotqa as hq_loader
-from data.loaders import msmarco as mm_loader
-from data.loaders import natural_questions as nq_loader
+from data.loaders import bioasq as bioasq_loader
 from data.preprocessing.chunker import Chunk, TokenChunker
 from pipeline.embeddings import get_embedding_generator
 from pipeline.vectorstore import get_vector_store
@@ -171,8 +167,9 @@ def ingest_corpus(
 
     Parameters
     ----------
-    corpus            : ``"all"`` | ``"msmarco"`` | ``"natural_questions"``
-                        | ``"hotpotqa"``
+    corpus            : ``"bioasq"`` (only value — kept as an explicit
+                        parameter rather than hardcoded so the pipeline can
+                        add further corpora without changing this signature)
     chunk_size        : Max tokens per chunk. Defaults to ``settings.chunk_size``.
     chunk_overlap     : Token overlap between consecutive chunks. Defaults to
                         ``settings.chunk_overlap``.
@@ -326,9 +323,8 @@ def _load_all_passages(
     """
     Load passages from all requested datasets and deduplicate.
 
-    Deduplication is by ``passage["id"]``.  MS MARCO, NQ, and HotpotQA
-    can produce passages from the same Wikipedia article, so deduplication
-    is meaningful rather than purely defensive.
+    Deduplication is by ``passage["id"]`` — a defensive guard rather than
+    a load-bearing step now that there is a single source corpus.
 
     Returns
     -------
@@ -378,32 +374,15 @@ def _resolve_datasets(corpus: str) -> list[tuple[str, callable]]:
     Each loader function returns ``list[dict]`` with the standard passage
     schema: ``{"id": str, "text": str, "title": str, "dataset": str}``.
     """
-
-    def _load_nq():
-        _, passages = nq_loader.load_queries_and_passages()
-        return passages
-
-    def _load_hq():
-        _, passages = hq_loader.load_queries_and_passages()
-        return passages
-
     all_datasets: list[tuple[str, callable]] = [
-        ("msmarco", mm_loader.load_corpus),
-        ("natural_questions", _load_nq),
-        ("hotpotqa", _load_hq),
+        ("bioasq", bioasq_loader.load_corpus),
     ]
 
-    if corpus == "all":
+    if corpus in ("all", "bioasq"):
         return all_datasets
 
-    mapping = {name: fn for name, fn in all_datasets}
-    if corpus not in mapping:
-        logger.error(
-            f"Unknown corpus value '{corpus}'. Valid options: all, {', '.join(mapping.keys())}"
-        )
-        sys.exit(1)
-
-    return [(corpus, mapping[corpus])]
+    logger.error(f"Unknown corpus value '{corpus}'. Valid options: all, bioasq")
+    sys.exit(1)
 
 
 def _stream_ingest(
@@ -680,8 +659,8 @@ def _log_banner(corpus: str, dry_run: bool) -> None:
 @app.command()
 def main(
     corpus: str = typer.Option(
-        "all",
-        help="Corpus to ingest: all | msmarco | natural_questions | hotpotqa",
+        "bioasq",
+        help="Corpus to ingest: bioasq (or 'all', an alias for the same single corpus).",
     ),
     chunk_size: int = typer.Option(
         512,
