@@ -99,7 +99,7 @@ Two separate problems here:
 
 **Finding: the Jupyter service and `notebooks/` directory are not part of the research platform's architecture — they're a separate exploratory-analysis convenience.**
 
-`docs/ragscope_system_architecture.svg` currently draws `jupyter` as a first-class box in the "Deployment topology" row, on equal visual footing with `chromadb` and `ragscope`. But:
+`docs/images/ragscope_system_architecture.svg` currently draws `jupyter` as a first-class box in the "Deployment topology" row, on equal visual footing with `chromadb` and `ragscope`. But:
 - Nothing in Chapter 3's system description (§3.6.1) treats Jupyter as part of the platform — it isn't a RAG pipeline component, a telemetry component, or a dashboard component. It's a notebook environment for you to poke at data during development.
 - It's explicitly dev-only (`docker-compose.override.yml`, not the base `docker-compose.yml`), consistent with it not being part of what gets evaluated.
 
@@ -132,7 +132,7 @@ Every item below was verified by grepping the **entire codebase** (application c
 
 This is very likely what "simplify the architecture" actually means in practice — not primarily the Python code (which is, module-for-module, reasonably lean — see [Section 6](#6-what-not-to-touch--necessary-complexity)), but the **system architecture diagram** trying to show everything at once.
 
-I extracted every text label currently drawn in `docs/ragscope_system_architecture.svg`. It draws **~37 distinct boxes across 7 layers**:
+I extracted every text label currently drawn in `docs/images/ragscope_system_architecture.svg`. It draws **~37 distinct boxes across 7 layers**:
 
 | Layer | Boxes drawn | Count |
 |---|---|:---:|

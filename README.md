@@ -88,7 +88,7 @@ RAGScope fills the integration gap: it combines the evaluative richness of RAGAS
 
 ## System Architecture
 
-The platform is organised into six stages, each mapped to a specific research question or SMART objective — see `docs/ragscope_system_architecture.svg` for the full diagram (and `docs/architecture.md` for the detailed prose description of every module).
+The platform is organised into six stages, each mapped to a specific research question or SMART objective — see `docs/images/ragscope_system_architecture.svg` for the full diagram (and `docs/architecture.md` for the detailed prose description of every module).
 
 ```
  1. Data          2. RAG Query Pipeline        3. Evaluation
@@ -751,7 +751,7 @@ The following limitations are acknowledged and discussed in full in the disserta
 |---|---|---|
 | MSc Research Proposal | ✅ Complete | Submitted separately — not tracked in this repository |
 | Literature Review | 🔄 In progress | Submitted separately — not tracked in this repository |
-| System Architecture | ✅ Complete | `docs/architecture.md`, `docs/ragscope_system_architecture.svg` |
+| System Architecture | ✅ Complete | `docs/architecture.md`, `docs/images/ragscope_system_architecture.svg` |
 | Platform Implementation | ✅ Complete | `pipeline/`, `evaluation/`, `dashboard/` |
 | Benchmark Experiment | 🔄 In progress | `experiments/results/` |
 | Dissertation | ⏳ Submission Sep 2026 | — |

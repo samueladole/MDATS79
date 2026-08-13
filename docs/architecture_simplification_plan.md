@@ -7,7 +7,7 @@
 >
 > **Nothing has been changed yet.** This is a plan for you to mark up, cut, or redirect.
 > Once you've reviewed both documents and told me what to keep/change, the next step is
-> for me to redraw `docs/ragscope_system_architecture.svg` to match what you've approved,
+> for me to redraw `docs/images/ragscope_system_architecture.svg` to match what you've approved,
 > and only then touch any code (per your instruction).
 
 ---
@@ -160,7 +160,7 @@ objective," which is a much easier claim to defend than a 37-node diagram where 
 Once you've told me your calls on the open questions above and which findings from the
 analysis document to act on, the sequence I'd suggest is:
 
-1. Redraw `docs/ragscope_system_architecture.svg` to the approved ~16-box structure (diagram-only change, no code touched).
+1. Redraw `docs/images/ragscope_system_architecture.svg` to the approved ~16-box structure (diagram-only change, no code touched).
 2. You review the new diagram.
 3. Once the diagram is approved, apply the approved subset of the code/dependency/Docker
    cleanups from the analysis document (each one is independent — you can approve them

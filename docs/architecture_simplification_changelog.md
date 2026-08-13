@@ -14,12 +14,12 @@
 
 ## 1. Architecture diagram
 
-- **`docs/ragscope_system_architecture.svg`** — redrawn from scratch. ~37 boxes across 7 mixed-granularity layers (research pipeline interleaved with Docker deployment topology) → **15 boxes across 6 stages**, each stage explicitly labelled with the research question or SMART objective it evidences (Data → RAG Query Pipeline → Evaluation → Telemetry → Dashboard → Experiments).
+- **`docs/images/ragscope_system_architecture.svg`** — redrawn from scratch. ~37 boxes across 7 mixed-granularity layers (research pipeline interleaved with Docker deployment topology) → **15 boxes across 6 stages**, each stage explicitly labelled with the research question or SMART objective it evidences (Data → RAG Query Pipeline → Evaluation → Telemetry → Dashboard → Experiments).
 - Deployment/Docker topology dropped from the diagram entirely — it's a different kind of diagram (infrastructure vs. research data-flow) and is already covered in prose in this file's [Service Layer (Docker)](architecture.md#service-layer-docker) section and Chapter 3 §3.6.1.
 - `metrics.py` ("Statistics") drawn once as a standalone cross-cutting node with arrows into both the Dashboard and Experiments stages, reflecting how it's actually used (not nested inside the per-query Evaluation stage, which never calls it).
 - Colour legend reduced from 7 categories to 6 (Teal/Purple/Coral/Amber/Blue/Green) — no separate "Gray/shared" category, since the Statistics node now lives inside the Coral (evaluation) family.
 - Every box's rendered text width was verified against its container width via font-metric measurement (PIL) before finalising coordinates, then the whole diagram was rendered through headless Chrome to visually confirm layout, following the same verification method used earlier in the project to catch a text-overflow bug in the previous diagram revision.
-- **`docs/ragscope_system_architecture_v1_full.svg`** — the pre-simplification diagram, archived unchanged for reference.
+- **`docs/images/archive/ragscope_system_architecture_v1_full.svg`** — the pre-simplification diagram, archived unchanged for reference.
 
 ---
 
