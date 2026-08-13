@@ -1,6 +1,6 @@
 # RAGScope — Datasets
 
-> **MSc Data Science Dissertation · Leeds Beckett University · 2026**  
+> **MSc Data Science Dissertation · Leeds Beckett University · 2026**
 > Phase 3 Deliverable — Data Collection and Preparation
 
 ---
@@ -9,9 +9,8 @@
 
 - [Overview](#overview)
 - [Benchmark Composition](#benchmark-composition)
-- [Dataset 1 — MS MARCO Passage Ranking](#dataset-1--ms-marco-passage-ranking)
-- [Dataset 2 — Natural Questions](#dataset-2--natural-questions)
-- [Dataset 3 — HotpotQA](#dataset-3--hotpotqa)
+- [Dataset — BioASQ](#dataset--bioasq)
+- [Role-Mapping Heuristic](#role-mapping-heuristic)
 - [Data Preparation Pipeline](#data-preparation-pipeline)
   - [Text Cleaning](#text-cleaning)
   - [Token-Bounded Chunking](#token-bounded-chunking)
@@ -30,262 +29,117 @@
 
 ## Overview
 
-Three publicly available, widely validated benchmark datasets are used in this research. Each dataset was selected to cover a distinct query type that tests a different aspect of RAG reliability and the observability platform's diagnostic capacity. Together they form a 200-query evaluation benchmark that is diverse in query structure, reasoning complexity, and grounding condition.
+The evaluation benchmark is built from a single dataset, **BioASQ** — the large-scale biomedical semantic indexing and question-answering challenge — accessed via `rag-datasets/rag-mini-bioasq`, a HuggingFace mirror derived from the official BioASQ Task 11b training release. Earlier iterations of this platform drew on three separate general-domain datasets (MS MARCO, Natural Questions, HotpotQA), each covering a distinct query type. BioASQ replaces all three while preserving the same three-way methodological structure: the platform still evaluates passage retrieval, precise factual QA, and multi-document synthesis as separate conditions — it now does so within a single biomedical domain rather than across three general-domain sources.
 
-All datasets are:
-- Available under open licences explicitly permitting academic re-use
-- Hosted on HuggingFace Datasets Hub for reproducible, versioned downloading
-- Well-documented in the peer-reviewed literature with established baselines
-- Directly compatible with standard RAG evaluation tooling including RAGAS
+The official BioASQ release (question-type labels, `exact_answer`/`ideal_answer` fields, RDF triples, and a ~23-million-abstract PubMed corpus) requires free registration at bioasq.org and is not a `pip install`-able dataset. `rag-mini-bioasq` provides a bounded, freely downloadable derivative — a 40,221-passage corpus and 4,719 question/answer pairs with relevance judgements — sufficient to reconstruct a dissertation-scale benchmark without a multi-million-document ingest. It carries **no native question-type field**, so the three evaluation roles below are reconstructed from answer shape and relevance-judgement count rather than an official annotation; see [Role-Mapping Heuristic](#role-mapping-heuristic).
 
-**Selection rationale** (proposal §3 — Benchmark Corpus and Query Set):
+**Selection rationale:**
 
-> The evaluation corpus must test the platform across qualitatively different failure modes: simple factual retrieval where the answer is unambiguous, large-scale passage ranking where retrieval precision is the primary challenge, and multi-hop reasoning where the generative model must synthesise information across multiple passages — the hardest condition for faithfulness.
+> The evaluation corpus must test the platform across qualitatively different failure modes: simple factual retrieval where the answer is unambiguous, large-scale passage ranking where retrieval precision is the primary challenge, and multi-document reasoning where the generative model must synthesise information across multiple passages — the hardest condition for faithfulness. BioASQ's own task structure (Phase A retrieval; Phase B factoid/list; Phase B summary/yes-no) maps directly onto these three conditions within a single, domain-realistic corpus.
 
 ---
 
 ## Benchmark Composition
 
-| Dataset | Query Type | Corpus Source | Queries | Passages in Retrieval Corpus | Licence |
-|---|---|---|:---:|:---:|---|
-| MS MARCO | Passage ranking | Web documents (Bing) | 60 | 50,000 sampled | MIT |
-| Natural Questions | Single-hop QA | Wikipedia | 40 | 40 supporting passages | CC BY-SA 3.0 |
-| HotpotQA (fullwiki) | Multi-hop QA | Wikipedia (full corpus) | 100 | 7,776 supporting passages | CC BY-SA 4.0 |
-| **Total** | **Mixed** | | **200** | **57,816** | |
+| Role | BioASQ Analogue | Corpus Source | Queries | Selection Criterion |
+|---|---|---|:---:|---|
+| Phase A | Passage retrieval | PubMed abstracts | 60 | Stratified by relevance-judgement count (single vs. multi-relevant) |
+| Factoid | Factoid & List QA | PubMed abstracts | 40 | Short answer (≤ 6 words) |
+| Summary | Summary & Yes/No QA | PubMed abstracts | 100 | Long-form or yes/no answer |
+| **Total** | | | **200** | |
 
-Passage counts above are exact, taken from `data/ingestion_manifest.json` for the research ingestion run (not estimates). HotpotQA contributes far more passages relative to its 100 queries than the other two datasets because the loader indexes every document listed in each example's fullwiki `context` field — the full set of candidate documents the retriever must search, not only the small number of documents named in `supporting_facts` — consistent with `fullwiki` being an open-domain retrieval setting rather than one with a pre-filtered shortlist.
+All 200 queries are drawn from a single, disjoint partition of the 4,719-row BioASQ QA pool (seed 42) — no question appears in more than one role. The retrieval corpus (27,972 passages after cleaning, from a raw 40,221) is shared across all three roles, since BioASQ Phase A/B retrieval in the real challenge operates over the same PubMed collection regardless of question type; see [Retrieval Corpus Composition](#retrieval-corpus-composition).
 
-The benchmark is **stratified** by query type to ensure the experimental results are not dominated by a single difficulty level. The 60/40/100 split was chosen to weight multi-hop queries more heavily because they represent the most demanding condition for RAG faithfulness and the most diagnostic scenario for the observability platform.
+The benchmark is **stratified by role** to ensure experimental results are not dominated by a single difficulty level. The 60/40/100 split mirrors the original three-dataset design's weighting, which favoured the hardest, most diagnostic condition (100 queries) over precise factual QA (40) and passage retrieval (60).
 
 ---
 
-## Dataset 1 — MS MARCO Passage Ranking
+## Dataset — BioASQ
 
 ### Overview
 
 | Property | Value |
 |---|---|
-| Full name | Microsoft Machine Reading Comprehension |
-| Version | v2.1 |
-| Source | Real anonymised user queries submitted to the Bing search engine |
-| Passages | ~8.8 million web-sourced passages |
-| Training queries | ~1,000,000 |
-| Development queries | 6,980 (with human-annotated relevance labels) |
-| Licence | MIT |
-| HuggingFace Hub | `microsoft/ms_marco` / `v2.1` |
-| Paper | Bajaj et al. (2016), arXiv:1611.09268 |
-| Download | https://microsoft.github.io/msmarco/ |
+| Full name | BioASQ: Large-Scale Biomedical Semantic Indexing and Question Answering |
+| Source | Official BioASQ Task 11b training release, mirrored via `rag-datasets/rag-mini-bioasq` |
+| Corpus | PubMed abstracts — 40,221 passages (27,972 after cleaning; see [Text Cleaning](#text-cleaning)) |
+| QA pairs | 4,719, each with a free-text answer and a list of relevant passage IDs |
+| Licence | CC BY 2.5 |
+| HuggingFace Hub | `rag-datasets/rag-mini-bioasq`, configs `text-corpus` and `question-answer-passages` |
+| Official challenge | https://bioasq.org (registration required for the full release; not used here) |
 
 ### Characteristics
 
-MS MARCO is the most widely used dataset for passage retrieval research and provides the primary large-scale retrieval corpus for this project. Its queries reflect naturalistic web search behaviour across diverse topics including factual lookup, how-to questions, and definitional queries.
+BioASQ questions are written by biomedical domain experts and answered against PubMed abstracts, spanning genetics, pharmacology, disease classification, and clinical research. Unlike the general-domain datasets used previously, every query in this benchmark now shares a single realistic domain — a meaningfully different evaluation condition, since embedding models and LLMs are more likely to have systematic strengths or gaps concentrated in specialised vocabulary (gene names, drug names, clinical terminology) than in general web or encyclopaedic text.
 
-**Why MS MARCO?**
-- The 8.8M passage corpus provides realistic retrieval difficulty — relevant passages must be found among a large pool of distractors
-- Human relevance annotations enable precise retrieval quality assessment
-- Established baselines exist in the literature for direct comparison
-- Open MIT licence permits unrestricted academic re-use
-
-**Query types (classified by relevance annotation):**
-- **Single-answer queries** — one passage in the corpus contains the answer; 30 sampled for the benchmark
-- **Multi-passage queries** — multiple passages contain relevant information; 30 sampled for the benchmark
+**Why BioASQ?**
+- Domain-expert-authored questions with genuine biomedical information needs, not synthetic or crowd-sourced approximations
+- Relevance judgements (`relevant_passage_ids`) enable the same retrieval-quality stratification used for the platform's original passage-retrieval role
+- A single coherent domain lets the dissertation additionally comment on whether RAG failure modes identified on general-domain text (Chapter 2's literature review) transfer to a specialised domain
+- Freely available without registration via `rag-mini-bioasq`, at a scale (tens of thousands of passages) compatible with a dissertation timeline
 
 ### Loader
 
 ```python
-from data.loaders.msmarco import load_corpus, load_queries
+from data.loaders.bioasq import load_corpus, load_phase_a_queries, load_factoid_queries, load_summary_queries
 
-# Load 50,000 passages for the retrieval corpus
-passages = load_corpus(sample_size=50_000, seed=42)
+# Load the full cleaned passage corpus (27,972 passages)
+passages = load_corpus()
 
-# Load 60 stratified evaluation queries
-queries = load_queries(sample_size=60, seed=42)
+# Load the three query roles (60 + 40 + 100 = 200, mutually disjoint)
+phase_a = load_phase_a_queries(sample_size=60, seed=42)
+factoid = load_factoid_queries(sample_size=40, seed=42)
+summary = load_summary_queries(sample_size=100, seed=42)
 ```
 
 **Passage schema:**
 ```json
 {
-  "id":      "msmarco_<query_id>_<passage_idx>",
-  "text":    "cleaned passage text",
+  "id":      "20598273",
+  "text":    "cleaned PubMed abstract text",
   "title":   "",
-  "dataset": "msmarco"
+  "dataset": "bioasq"
 }
 ```
 
-**Query schema:**
+**Query schema (Phase A example):**
 ```json
 {
-  "id":         "query_id",
-  "query":      "cleaned query text",
-  "answers":    ["answer string"],
-  "query_type": "single_answer | multi_passage",
-  "dataset":    "msmarco"
+  "id":                     "152",
+  "query":                  "What is known about clinical efficacy of ceftriaxone for treatment of amyotrophic lateral sclerosis?",
+  "answers":                ["There have been a few case reports to suggest that ceftriaxone can be effective..."],
+  "relevant_passage_ids":   ["18326497", "22680643", "..."],
+  "query_type":             "single_relevant | multi_relevant",
+  "dataset":                "bioasq_phase_a"
 }
 ```
+
+Factoid and summary queries share the same shape, with `query_type` set to `"factoid"` or `"yesno" | "summary"` respectively, and `dataset` set to `"bioasq_factoid"` or `"bioasq_summary"`.
 
 ### Usage in this Research
 
-A stratified random sample of 50,000 passages is drawn from the training split and indexed into ChromaDB as the primary retrieval corpus. The sample is stratified by passage source domain to maintain diversity. The 60 evaluation queries are also drawn from the training split — both `load_corpus()` and `load_queries()` read the same `train` split of `microsoft/ms_marco` — using the per-passage `is_selected` relevance annotations carried on every split (including train) to classify each query as single-answer or multi-passage, split equally between single-answer (30) and multi-passage (30) types.
+The full cleaned corpus (27,972 passages) is indexed into ChromaDB — no subsampling is applied, since this is already a bounded, dissertation-appropriate scale (unlike the original MS MARCO component, which sampled 50,000 from an 8.8-million-passage pool). The 200 evaluation queries are partitioned from the 4,719-row QA pool into three disjoint roles by a single deterministic pass (`data/loaders/bioasq.py::_build_role_pools`), guaranteeing that no question is evaluated under more than one role even though all three roles draw from the same underlying pool.
 
 ---
 
-## Dataset 2 — Natural Questions
+## Role-Mapping Heuristic
 
-### Overview
+`rag-mini-bioasq` does not preserve BioASQ's official question-type labels (factoid/list/summary/yesno), so each of the platform's three roles is reconstructed from the shape of the `answer` field and the size of `relevant_passage_ids`. Classification is applied in a fixed priority order over the full QA pool, so the three resulting pools are disjoint by construction:
 
-| Property | Value |
-|---|---|
-| Full name | Natural Questions |
-| Source | Real Google Search queries; answers from Wikipedia |
-| Training set | 307,373 examples |
-| Development set | 7,842 examples |
-| Licence | CC BY-SA 3.0 |
-| HuggingFace Hub | `google-research-datasets/natural_questions` |
-| Paper | Kwiatkowski et al. (2019), TACL 7:452–466 |
-| Download | https://ai.google.com/research/NaturalQuestions |
+1. **Factoid** (n = 40, sampled from 256 candidates) — answer ≤ 6 words. Approximates BioASQ's convention that "exact answers" are short entity/phrase strings (gene names, drug names, diagnoses).
+2. **Summary — yes/no** (n = 50, sampled from 802 candidates) — remaining rows whose answer starts with "yes" or "no" (e.g. *"Yes, papilin is a secreted protein"*), standing in for BioASQ's yes/no question type.
+3. **Summary — long-form** (n = 50, sampled from the first 50 of 3,661 remaining long-answer rows) — free-text paragraph answers, standing in for BioASQ's summary question type and requiring the same multi-passage synthesis the platform's original multi-hop role tested.
+4. **Phase A** (n = 60) — drawn from whatever remains *after* the summary role has claimed its 50 long-form rows (3,611 remaining), stratified by `len(relevant_passage_ids)`: 30 single-relevant (from 677 candidates) and 30 multi-relevant (from 2,934 candidates). This mirrors the original MS MARCO component's `is_selected`-count-based single-answer/multi-passage split, and is deliberately answer-shape-agnostic — Phase A in the real BioASQ challenge is a pure retrieval task, not an answer-extraction one.
 
-### Characteristics
+This ordering is a real implementation detail, not just documentation: an earlier draft of the loader sampled Phase A and the summary role independently from the same overlapping long-answer pool, which could hand both roles the same question. The shipped implementation samples summary's share first and only then exposes the remainder to Phase A, which was verified empirically (zero ID overlap across all three role pools at seed 42) before being adopted.
 
-Natural Questions (NQ) provides the single-hop factual QA component of the benchmark. Queries are real Google Search queries submitted by users, making them naturalistic and representative of genuine information-seeking behaviour — more authentic than artificially constructed test questions.
-
-Each example includes:
-- A real Google Search query
-- A **long-answer** annotation — the Wikipedia passage containing the answer
-- A **short-answer** annotation — the specific span within the passage
-
-**Why Natural Questions?**
-- Unambiguous short-answer ground truths enable precise RAGAS `answer_correctness` computation
-- Naturalistic queries reflect realistic deployment conditions
-- Wikipedia passages are cleanly structured with low noise
-- The short-answer span serves as the reference answer for RAGAS evaluation
-
-### Answer Extraction
-
-NQ stores document content as flat token arrays with associated HTML markup flags. The loader (`data/loaders/natural_questions.py`) extracts long-answer passages by:
-
-1. Reading the `long_answers` annotation for `start_token` and `end_token` indices
-2. Slicing the `document.tokens.token` array
-3. Filtering out tokens where `is_html == True` (removing markup)
-4. Joining remaining tokens with spaces and applying the text cleaner
-
-This produces a clean, HTML-free passage text. Examples where no extractable short answer or valid long answer exists are skipped.
-
-### Loader
-
-```python
-from data.loaders.natural_questions import load_queries_and_passages
-
-queries, passages = load_queries_and_passages(sample_size=40, seed=42)
-```
-
-**Query schema:**
-```json
-{
-  "id":           "example_id",
-  "query":        "What is the capital of France?",
-  "short_answer": "Paris",
-  "long_answer":  "Paris is the capital and most populous city of France...",
-  "answers":      ["Paris"],
-  "query_type":   "single_hop",
-  "dataset":      "natural_questions"
-}
-```
-
-**Supporting passage schema:**
-```json
-{
-  "id":      "nq_<example_id>",
-  "text":    "cleaned long-answer passage",
-  "title":   "Wikipedia article title",
-  "dataset": "natural_questions"
-}
-```
-
-### Usage in this Research
-
-40 queries are drawn from the development set, filtered to retain only examples with extractable short answers. The corresponding long-answer Wikipedia passages are added to the retrieval corpus. This ensures the ground-truth answer is always findable by the retriever — enabling a controlled measurement of faithfulness and correctness without retrieval failure confounding the results.
-
----
-
-## Dataset 3 — HotpotQA
-
-### Overview
-
-| Property | Value |
-|---|---|
-| Full name | HotpotQA |
-| Configuration | `fullwiki` (full Wikipedia retrieval setting) |
-| Source | Crowd-sourced; Wikipedia articles |
-| Development set | 7,405 examples |
-| Licence | CC BY-SA 4.0 |
-| HuggingFace Hub | `hotpotqa/hotpot_qa` / `fullwiki` |
-| Paper | Yang et al. (2018), EMNLP, pp. 2369–2380 |
-| Download | https://hotpotqa.github.io/ |
-
-### Characteristics
-
-HotpotQA is the stress-test component of the benchmark. It is the hardest condition for RAG faithfulness because each question requires reasoning across **two or more Wikipedia articles** to arrive at the correct answer. The `fullwiki` setting does not provide the supporting documents — the retrieval component must identify them from the full Wikipedia corpus without guidance, making it a genuine open-domain multi-hop retrieval task.
-
-**Question types:**
-- **Bridge questions** — require chaining information sequentially across two entities. *Example: "What year was the director of [Film X] born?"* — requires finding the director of Film X, then finding their birth year.
-- **Comparison questions** — require retrieving an attribute of two separate entities and comparing them. *Example: "Which country has a larger population, [Country A] or [Country B]?"*
-
-**Why HotpotQA?**
-- Multi-hop reasoning is the failure mode most strongly associated with hallucination in RAG systems (Barnett et al., 2024)
-- The `fullwiki` setting tests retrieval under realistic open-domain conditions
-- Bridge and comparison question types probe different multi-step reasoning patterns
-- HotpotQA has extensive established baselines for retrieval and QA performance
-
-### Supporting Documents
-
-Each HotpotQA example includes a `context` field — a list of `[title, sentences]` pairs — which serves as the gold supporting documents. In the fullwiki setting, these documents are not provided at query time (the retriever must find them). However, RAGScope **adds these documents to the retrieval corpus** during ingestion so that:
-
-1. The retriever has the opportunity to find the relevant passages
-2. RAGAS faithfulness can be measured against the content of those passages
-3. The experiment tests whether the retriever correctly surfaces the relevant supporting passages rather than distractors
-
-### Loader
-
-```python
-from data.loaders.hotpotqa import load_queries_and_passages
-
-queries, passages = load_queries_and_passages(sample_size=100, seed=42)
-# Returns 50 bridge + 50 comparison queries
-```
-
-**Query schema:**
-```json
-{
-  "id":               "5a8b57f25542992500000001",
-  "query":            "Were Scott Derrickson and Ed Wood both directors?",
-  "answer":           "yes",
-  "answers":          ["yes"],
-  "query_type":       "bridge",
-  "supporting_facts": ["Scott Derrickson", "Ed Wood"],
-  "passage_ids":      ["hotpotqa_<id>_Scott_Derrickson", "hotpotqa_<id>_Ed_Wood"],
-  "dataset":          "hotpotqa"
-}
-```
-
-**Supporting passage schema:**
-```json
-{
-  "id":      "hotpotqa_<example_id>_<title_slug>",
-  "text":    "Scott Derrickson is an American director...",
-  "title":   "Scott Derrickson",
-  "dataset": "hotpotqa"
-}
-```
-
-### Usage in this Research
-
-100 queries are drawn from the development set: 50 bridge and 50 comparison, stratified equally. Supporting passages from the `context` field of each example are added to the retrieval corpus. This produces a corpus where relevant passages exist and can in principle be retrieved — the experiment then measures whether they actually are retrieved and whether the LLM uses them faithfully.
+**Threshold calibration.** The ≤ 6-word factoid threshold and the "yes"/"no" prefix rule were chosen after inspecting the real answer-length distribution (median 24 words; 5.4% of rows ≤ 6 words; 18.5% yes/no-prefixed), confirming enough candidates exist for each role at the target sample sizes before committing to the heuristic.
 
 ---
 
 ## Data Preparation Pipeline
 
-All three datasets pass through the same preparation pipeline before indexing. The pipeline is implemented in `data/preprocessing/` and orchestrated by `pipeline/ingestion.py`.
+The single BioASQ corpus passes through the same preparation pipeline previously used for all three legacy datasets. The pipeline is implemented in `data/preprocessing/` and orchestrated by `pipeline/ingestion.py`.
 
 ### Text Cleaning
 
@@ -301,7 +155,7 @@ Applied to every passage and query before any further processing.
 | Whitespace normalisation | `_normalise_whitespace()` | Collapse tabs, carriage returns, multiple spaces; limit blank lines |
 | Punctuation collapsing | `_collapse_repeated_punctuation()` | `...` → `...`; `---` → `—`; `===` stripped |
 
-**Meaningfulness filter:** `is_meaningful(text, min_chars=50)` — rejects passages shorter than 50 characters or where fewer than 40% of characters are alphabetic (e.g., navigation tables, code blocks). This prevents low-quality passages from degrading retrieval precision.
+**Meaningfulness filter:** `is_meaningful(text, min_chars=50)` — rejects passages shorter than 50 characters or where fewer than 40% of characters are alphabetic. For BioASQ this filter is doing real work beyond its original navigation-table/code-block use case: of the 40,221 raw passages in `rag-mini-bioasq`'s `text-corpus` config, 12,220 (30.4%) are literal placeholder strings reading `"nan"` — a data-quality artefact of how this HuggingFace mirror was generated from the official release, confirmed by direct inspection, not a bug in this project's cleaning logic. The filter correctly discards them, leaving 27,972 real passages.
 
 ### Token-Bounded Chunking
 
@@ -314,7 +168,7 @@ Passages are split into overlapping chunks using the `tiktoken` tokeniser (`cl10
 | Parameter | Value | Rationale |
 |---|---|---|
 | `chunk_size` | 512 tokens | Fits comfortably within `all-MiniLM-L6-v2`'s 256-token limit after subword tokenisation differences; avoids truncation |
-| `chunk_overlap` | 64 tokens | Preserves cross-boundary reasoning chains important for HotpotQA passages |
+| `chunk_overlap` | 64 tokens | Preserves cross-boundary reasoning chains, important for BioASQ's summary-style passages |
 
 **Chunk schema (`Chunk` dataclass):**
 
@@ -325,12 +179,12 @@ Passages are split into overlapping chunks using the `tiktoken` tokeniser (`cl10
 | `chunk_index` | int | Zero-based position within the source passage |
 | `start_token` | int | Token offset of first token in source |
 | `end_token` | int | Token offset (exclusive) of last token |
-| `metadata` | dict | `{"dataset": "...", "title": "..."}` |
+| `metadata` | dict | `{"dataset": "bioasq", "title": ""}` |
 | `chunk_id` | property | `{doc_id}::chunk_{chunk_index}` |
 
 ### Embedding Generation
 
-**Module:** `pipeline/embeddings.py`  
+**Module:** `pipeline/embeddings.py`
 **Model:** `sentence-transformers/all-MiniLM-L6-v2`
 
 | Property | Value |
@@ -347,12 +201,7 @@ L2 normalisation is applied to all embeddings so that cosine similarity reduces 
 
 **Stage:** `pipeline/ingestion.py` → `_load_all_passages()`
 
-Passage IDs are tracked in a `set[str]` across all three datasets. A passage is skipped if its ID has already been seen. This handles the case where HotpotQA examples share supporting passages (common for popular Wikipedia articles) and prevents:
-- Redundant embeddings in ChromaDB consuming unnecessary storage
-- Inflated BM25 index with duplicate entries that distort IDF scores
-- Misleading ingestion statistics (counting the same passage twice)
-
-Deduplication is reported in the ingestion manifest (`data/ingestion_manifest.json`) under `per_dataset[].passages_skipped`.
+Passage IDs are tracked in a `set[str]`; a passage is skipped if its ID has already been seen. With a single source corpus this is a defensive guard rather than a load-bearing step — `rag-mini-bioasq`'s corpus rows already carry unique PubMed IDs — but the logic is kept general so the pipeline can add further corpora in future without changing this stage.
 
 ---
 
@@ -362,7 +211,7 @@ The ingestion pipeline is fully configurable via CLI flags or environment variab
 
 ```bash
 uv run python pipeline/ingestion.py \
-  --corpus all \           # Process all three datasets
+  --corpus bioasq \        # The single BioASQ corpus
   --chunk-size 512 \       # Tokens per chunk
   --chunk-overlap 64 \     # Token overlap
   --embed-batch-size 256 \ # Chunks per embedding forward pass
@@ -372,7 +221,7 @@ uv run python pipeline/ingestion.py \
 **Reproducing the exact research corpus** (seed is set globally in `.env`):
 ```bash
 # Ensure EXPERIMENT_RANDOM_SEED=42 in .env, then:
-uv run python pipeline/ingestion.py --corpus all --reset
+uv run python pipeline/ingestion.py --corpus bioasq --reset
 ```
 
 The `--reset` flag wipes the ChromaDB collection first, ensuring a clean reproducible state. Without `--reset`, ingestion is idempotent — running it a second time will upsert but not duplicate existing chunks.
@@ -381,16 +230,13 @@ The `--reset` flag wipes the ChromaDB collection first, ensuring a clean reprodu
 
 ## Retrieval Corpus Composition
 
-After ingestion, the ChromaDB collection contains the following (exact counts from `data/ingestion_manifest.json` for the research ingestion run):
+After ingestion, the ChromaDB collection contains the following (exact counts from `data/ingestion_manifest.json` for the research ingestion run, completed in 159.2 seconds):
 
 | Source | Passages | Chunks | Avg Chunks/Passage |
 |---|:---:|:---:|:---:|
-| MS MARCO (sampled) | 50,000 | 50,000 | 1.00 |
-| Natural Questions | 40 | 47 | 1.18 |
-| HotpotQA supporting passages | 7,776 | 7,802 | 1.00 |
-| **Total** | **57,816** | **57,849** | **1.00** |
+| BioASQ | 27,972 | 30,850 | 1.10 |
 
-> **Note:** Passages average almost exactly one chunk each — most passages in all three source datasets fall well under the 512-token chunk size, so the chunker rarely needs to split them; the count only rises where an individual passage happens to exceed ~512 tokens (as with a handful of the longer Natural Questions long-answer passages). Chunk counts depend on passage lengths and the chunk-size/overlap configuration, so a differently configured or re-sampled ingestion run will not reproduce these exact figures — re-run `pipeline/ingestion.py` and consult the regenerated `data/ingestion_manifest.json` for that run's actual counts.
+> **Note:** Unlike the original three-dataset corpus (which had a highly imbalanced per-dataset composition — one dataset outnumbering another by three orders of magnitude), BioASQ contributes a single, unified corpus, so there is no per-source breakdown to report. The 1.10 average chunks/passage (compared with the original corpus's ~1.00) reflects PubMed abstracts running slightly longer on average than the passages in the previous corpus, so a somewhat larger share needed to be split into two chunks. Chunk counts depend on passage lengths and the chunk-size/overlap configuration, so a differently configured or re-sampled ingestion run will not reproduce these exact figures — re-run `pipeline/ingestion.py` and consult the regenerated `data/ingestion_manifest.json` for that run's actual counts.
 
 The BM25 index (`data/bm25_corpus.jsonl`) mirrors the ChromaDB collection exactly — one JSONL entry per chunk — ensuring consistent coverage between dense and hybrid retrieval.
 
@@ -404,18 +250,18 @@ The 200-query benchmark is assembled by `evaluation/benchmark.py` → `load_benc
 from evaluation.benchmark import load_benchmark
 
 queries = load_benchmark(seed=42)
-# Returns: 60 MS MARCO + 40 NQ + 100 HotpotQA = 200 queries, shuffled
+# Returns: 60 Phase A + 40 factoid + 100 summary = 200 queries, shuffled
 ```
 
 **Stratification rationale:**
 
 | Query type | Count | Reasoning |
 |---|:---:|---|
-| MS MARCO — single answer | 30 | Baseline: standard factual retrieval |
-| MS MARCO — multi-passage | 30 | Tests retrieval across multiple relevant documents |
-| NQ — single hop | 40 | Unambiguous ground truth for precise correctness measurement |
-| HotpotQA — bridge | 50 | Sequential multi-hop: hardest faithfulness condition |
-| HotpotQA — comparison | 50 | Attribute comparison: tests synthesis across entities |
+| Phase A — single-relevant | 30 | Baseline: standard factual retrieval, one relevant passage |
+| Phase A — multi-relevant | 30 | Tests retrieval across multiple relevant documents |
+| Factoid | 40 | Unambiguous short ground truth for precise correctness measurement |
+| Summary — yes/no | 50 | Binary judgement requiring synthesis across evidence |
+| Summary — long-form | 50 | Multi-passage synthesis: hardest faithfulness condition |
 
 All queries are shuffled with `random.Random(seed=42)` before being presented to the pipeline. Each condition in the 2×2 factorial experiment sees the same shuffled order.
 
@@ -423,39 +269,35 @@ All queries are shuffled with `random.Random(seed=42)` before being presented to
 
 ## Ground-Truth Alignment
 
-RAGAS `answer_correctness` requires a ground-truth reference answer. Alignment by dataset:
+RAGAS `answer_correctness` requires a ground-truth reference answer. All three BioASQ roles draw their ground truth from the same `answer` field in the source QA pairs:
 
-| Dataset | Ground Truth Source | Quality |
+| Role | Ground Truth Source | Quality |
 |---|---|---|
-| MS MARCO | `answers` field from the dataset annotation | Human-authored; may have multiple valid answer strings |
-| Natural Questions | `short_answer` token string extracted from the NQ annotation | Extracted verbatim from Wikipedia; highly precise |
-| HotpotQA | `answer` field (free-form string, e.g. "yes", "1989", entity names) | Crowd-sourced; precise for factual questions |
+| Phase A | `answer` field, free-form (often multi-sentence) | Domain-expert-authored; may combine several relevant facts |
+| Factoid | `answer` field, short (≤ 6 words) | Domain-expert-authored; entity/phrase-level precision |
+| Summary | `answer` field, free-form or yes/no-prefixed | Domain-expert-authored; paragraph-length for synthesis questions |
 
-For queries where the answer is a binary `"yes"` / `"no"` (HotpotQA comparison), RAGAS `answer_correctness` uses embedding-based semantic similarity — these short answers may score lower than expected even when the model answer is correct. This limitation is acknowledged in the dissertation's limitations section.
+For summary-role queries with a yes/no-prefixed answer (e.g. *"Yes, mutations in the DNA that affect the splicing pattern of genes have been linked..."*), RAGAS `answer_correctness` uses embedding-based semantic similarity against the full sentence, not just the leading "yes"/"no" token — this mirrors the same limitation the original HotpotQA comparison-question component carried, now acknowledged for BioASQ's yes/no questions instead.
 
 ---
 
 ## Ethical and Licensing Considerations
 
-### Data Licences
+### Data Licence
 
 | Dataset | Licence | Restrictions |
 |---|---|---|
-| MS MARCO | MIT | No restrictions on academic use |
-| Natural Questions | CC BY-SA 3.0 | Attribution required; derivative works must use same licence |
-| HotpotQA | CC BY-SA 4.0 | Attribution required; derivative works must use same licence |
+| BioASQ (via `rag-mini-bioasq`) | CC BY 2.5 | Attribution required |
 
-All three licences explicitly permit re-use in academic research. No modifications are made to the query-answer pairs themselves; only preprocessing (cleaning, chunking) is applied to the passage texts.
+The licence explicitly permits re-use in academic research. No modifications are made to the query-answer pairs themselves; only preprocessing (cleaning, chunking) is applied to the passage texts.
 
 ### Privacy
 
-MS MARCO queries are derived from real Bing user searches that have been anonymised by Microsoft Research prior to public release. This project uses the passages and training-split queries only as a retrieval benchmark. No attempt is made to re-identify users, and the queries are treated strictly as evaluation artefacts.
-
-Natural Questions queries are derived from real Google Search logs, similarly anonymised. HotpotQA questions are crowd-sourced by Amazon Mechanical Turk workers and contain no personally identifiable information.
+BioASQ questions are authored by biomedical domain experts as part of the official BioASQ challenge, not derived from real user search logs. The underlying passages are PubMed abstracts — published, publicly available scientific literature. No personally identifiable information is present in either the questions or the corpus.
 
 ### No Personal Data
 
-No personal data is collected, stored, or processed at any stage of this research. The evaluation corpus contains only publicly released academic benchmark data.
+No personal data is collected, stored, or processed at any stage of this research. The evaluation corpus contains only publicly released academic benchmark data and published biomedical abstracts.
 
 ---
 
@@ -470,11 +312,11 @@ EXPERIMENT_RANDOM_SEED=42
 and running:
 
 ```bash
-# Step 1: Download all datasets
+# Step 1: Download BioASQ
 uv run python data/loaders/download_all.py
 
 # Step 2: Ingest (wipe first for a clean state)
-uv run python pipeline/ingestion.py --corpus all --reset
+uv run python pipeline/ingestion.py --corpus bioasq --reset
 
 # Step 3: Load the benchmark
 python -c "
@@ -485,49 +327,38 @@ print('First query:', qs[0]['query'][:80])
 "
 ```
 
-Dataset downloads are cached by HuggingFace Datasets in `data/raw/` and will not be re-downloaded on subsequent runs. The ingestion manifest at `data/ingestion_manifest.json` records the exact corpus composition and timestamps for each ingestion run.
+Dataset downloads are cached by HuggingFace Datasets in `data/raw/bioasq/` and will not be re-downloaded on subsequent runs. The ingestion manifest at `data/ingestion_manifest.json` records the exact corpus composition and timestamps for each ingestion run.
 
 ---
 
 ## Loader API Reference
 
-### `data/loaders/msmarco.py`
+### `data/loaders/bioasq.py`
 
 | Function | Returns | Description |
 |---|---|---|
-| `load_corpus(sample_size, seed)` | `list[dict]` | Random sample of passages for the retrieval corpus |
-| `load_queries(sample_size, seed)` | `list[dict]` | Stratified sample of queries from the training split |
-| `stream_corpus()` | `Iterator[dict]` | Memory-efficient streaming alternative to `load_corpus` |
+| `load_corpus(seed=None)` | `list[dict]` | Full cleaned passage corpus (27,972 passages; no subsampling) |
+| `load_phase_a_queries(sample_size=60, seed=None)` | `list[dict]` | Phase A role, stratified single-/multi-relevant |
+| `load_factoid_queries(sample_size=40, seed=None)` | `list[dict]` | Factoid role, short-answer rows |
+| `load_summary_queries(sample_size=100, seed=None)` | `list[dict]` | Summary role, stratified yes/no and long-form |
 
-### `data/loaders/natural_questions.py`
-
-| Function | Returns | Description |
-|---|---|---|
-| `load_queries_and_passages(sample_size, seed)` | `tuple[list[dict], list[dict]]` | Queries and their associated supporting passages |
-
-### `data/loaders/hotpotqa.py`
-
-| Function | Returns | Description |
-|---|---|---|
-| `load_queries_and_passages(sample_size, seed)` | `tuple[list[dict], list[dict]]` | Stratified bridge/comparison queries and supporting passages |
-| `load_queries(sample_size, seed)` | `list[dict]` | Queries only (no passages) |
+All three query functions call the same internal `_build_role_pools(seed)` partition, so calling any two with the same seed is guaranteed never to return overlapping queries.
 
 ### `data/loaders/download_all.py`
 
-One-shot download script. Calls all three loaders to pre-fetch and cache datasets:
+One-shot download script. Fetches both `rag-mini-bioasq` configs (`text-corpus` and `question-answer-passages`) to pre-fetch and cache the dataset:
 
 ```bash
 uv run python data/loaders/download_all.py
 ```
 
-Exits with code 1 if any download fails.
+Exits with code 1 if the download fails.
 
 ---
 
 ## References
 
-- Bajaj, P. et al. (2016) 'MS MARCO: A human generated machine reading comprehension dataset', *arXiv:1611.09268*.
+- Nentidis, A. et al. (2024) 'Overview of BioASQ 2024: The twelfth BioASQ challenge on Large-Scale Biomedical Semantic Indexing and Question Answering', *CLEF 2024*.
 - Barnett, S. et al. (2024) 'Seven failure points when engineering a retrieval augmented generation system', *ICAIE 2024*.
-- Kwiatkowski, T. et al. (2019) 'Natural Questions: A benchmark for question answering research', *TACL*, 7, pp. 452–466.
 - Thakur, N. et al. (2021) 'BEIR: A heterogeneous benchmark for zero-shot evaluation of information retrieval models', *arXiv:2104.08663*.
-- Yang, Z. et al. (2018) 'HotpotQA: A dataset for diverse, explainable multi-hop question answering', *EMNLP 2018*, pp. 2369–2380.
+- `rag-datasets/rag-mini-bioasq` — HuggingFace Datasets Hub, derived from the official BioASQ Task 11b training release. https://huggingface.co/datasets/rag-datasets/rag-mini-bioasq
