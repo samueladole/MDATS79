@@ -35,36 +35,17 @@ logger.remove()
 logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level} | {message}")
 
 
-def download_msmarco() -> None:
-    """Download MS MARCO v2.1 (train split — the only split the loaders read)."""
-    logger.info("Downloading MS MARCO v2.1 (train split) …")
+def download_bioasq() -> None:
+    """Download the BioASQ corpus and question-answer configs (both needed)."""
+    logger.info("Downloading BioASQ text-corpus config …")
 
-    load_dataset("microsoft/ms_marco", "v2.1", split="train", cache_dir="data/raw/msmarco")
+    load_dataset("rag-datasets/rag-mini-bioasq", name="text-corpus", cache_dir="data/raw/bioasq")
 
-    logger.info("MS MARCO downloaded. ✓")
+    logger.info("Downloading BioASQ question-answer-passages config …")
 
+    load_dataset("rag-datasets/rag-mini-bioasq", name="question-answer-passages", cache_dir="data/raw/bioasq")
 
-def download_natural_questions() -> None:
-    """Download Natural Questions (dev config, validation split)."""
-    logger.info("Downloading Natural Questions (validation split) …")
-
-    load_dataset(
-        "google-research-datasets/natural_questions",
-        "dev",
-        split="validation",
-        cache_dir="data/raw/natural_questions",
-    )
-
-    logger.info("Natural Questions downloaded. ✓")
-
-
-def download_hotpotqa() -> None:
-    """Download HotpotQA fullwiki (validation split)."""
-    logger.info("Downloading HotpotQA fullwiki (validation split) …")
-
-    load_dataset("hotpotqa/hotpot_qa", "fullwiki", split="validation", cache_dir="data/raw/hotpotqa")
-
-    logger.info("HotpotQA downloaded. ✓")
+    logger.info("BioASQ downloaded. ✓")
 
 
 def parse_args() -> argparse.Namespace:
@@ -145,9 +126,7 @@ def main() -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
 
     jobs = {
-        "MS MARCO": download_msmarco,
-        "Natural Questions": download_natural_questions,
-        "HotpotQA": download_hotpotqa,
+        "BioASQ": download_bioasq,
     }
 
     # Parallel by default unless explicitly sequential
@@ -173,7 +152,7 @@ def main() -> None:
 
     logger.info("All datasets ready.")
     logger.info("Run ingestion next:")
-    logger.info("uv run python pipeline/ingestion.py --corpus all")
+    logger.info("uv run python pipeline/ingestion.py --corpus bioasq")
 
 
 if __name__ == "__main__":
