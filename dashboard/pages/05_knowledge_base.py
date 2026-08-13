@@ -20,14 +20,10 @@ st.title(":material/database: Knowledge Base")
 st.caption("Read-only view of the ChromaDB collection backing the RAG pipeline.")
 
 DATASET_LABELS = {
-    "msmarco": "MS MARCO",
-    "natural_questions": "Natural Questions",
-    "hotpotqa": "HotpotQA",
+    "bioasq": "BioASQ",
 }
 DATASET_COLORS = {
-    "MS MARCO": "#2a78d6",
-    "Natural Questions": "#008300",
-    "HotpotQA": "#e87ba4",
+    "BioASQ": "#2a78d6",
     "Other / Unlabelled": "#95a5a6",
 }
 
@@ -48,7 +44,7 @@ if total_chunks == 0:
     st.info(
         "The collection is empty — no chunks have been ingested yet. Run:\n\n"
         "```bash\n"
-        "uv run python pipeline/ingestion.py --corpus all --chunk-size 512 --chunk-overlap 64\n"
+        "uv run python pipeline/ingestion.py --corpus bioasq --chunk-size 512 --chunk-overlap 64\n"
         "```"
     )
     st.stop()
@@ -65,7 +61,7 @@ st.divider()
 
 # ── Corpus composition ────────────────────────────────────────────────────────
 st.subheader("Corpus Composition")
-st.caption("How the indexed chunks split across the three source benchmark datasets.")
+st.caption("Indexed chunks by source dataset — a single BioASQ corpus, so this is a sanity-check total rather than a breakdown.")
 
 dataset_counts = {ds_key: vector_store.count_where({"dataset": ds_key}) for ds_key in DATASET_LABELS}
 other_count = total_chunks - sum(dataset_counts.values())
