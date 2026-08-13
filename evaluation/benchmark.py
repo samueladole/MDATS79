@@ -1,9 +1,9 @@
 """
 RAGScope — Benchmark Runner
 =============================
-Loads the 200-query evaluation benchmark (60 MS MARCO + 40 NQ + 100 HotpotQA)
-and executes queries through the RAG pipeline, collecting full telemetry
-and RAGAS scores for each query.
+Loads the 200-query evaluation benchmark (60 BioASQ Phase A + 40 BioASQ
+factoid + 100 BioASQ summary) and executes queries through the RAG
+pipeline, collecting full telemetry and RAGAS scores for each query.
 
 This module is used by ``experiments/run_2x2_factorial.py`` to produce
 the dataset for Phase 8 analysis.
@@ -19,9 +19,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from config.settings import settings
-from data.loaders import hotpotqa as hq_loader
-from data.loaders import msmarco as mm_loader
-from data.loaders import natural_questions as nq_loader
+from data.loaders import bioasq as bioasq_loader
 
 
 def load_benchmark(seed: int | None = None) -> list[dict]:
@@ -40,17 +38,17 @@ def load_benchmark(seed: int | None = None) -> list[dict]:
     seed = seed if seed is not None else settings.experiment_random_seed
     logger.info("Loading benchmark queries …")
 
-    ms_queries = mm_loader.load_queries(sample_size=60, seed=seed)
-    nq_queries, _ = nq_loader.load_queries_and_passages(sample_size=40, seed=seed)
-    hq_queries = hq_loader.load_queries(sample_size=100, seed=seed)
+    phase_a_queries = bioasq_loader.load_phase_a_queries(sample_size=60, seed=seed)
+    factoid_queries = bioasq_loader.load_factoid_queries(sample_size=40, seed=seed)
+    summary_queries = bioasq_loader.load_summary_queries(sample_size=100, seed=seed)
 
-    benchmark = ms_queries + nq_queries + hq_queries
+    benchmark = phase_a_queries + factoid_queries + summary_queries
     rng = random.Random(seed)
     rng.shuffle(benchmark)
 
     logger.info(
-        f"Benchmark assembled: {len(ms_queries)} MS MARCO + "
-        f"{len(nq_queries)} NQ + {len(hq_queries)} HotpotQA = "
+        f"Benchmark assembled: {len(phase_a_queries)} Phase A + "
+        f"{len(factoid_queries)} factoid + {len(summary_queries)} summary = "
         f"{len(benchmark)} total queries."
     )
     return benchmark
