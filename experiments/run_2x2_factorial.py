@@ -9,8 +9,8 @@ Executes the full benchmark experiment across all four experimental conditions:
     Condition D: Mistral + Hybrid retrieval
 
 Each condition is evaluated against the full 200-query benchmark
-(60 MS MARCO + 40 NQ + 100 HotpotQA). Results are written to a
-timestamped CSV file in ``experiments/results/``.
+(60 BioASQ Phase A + 40 BioASQ factoid + 100 BioASQ summary). Results
+are written to a timestamped CSV file in ``experiments/results/``.
 
 Expected runtime: 4–8 hours on CPU (consumer hardware).
 Run as an overnight job. Use ``--resume`` to continue from a checkpoint.
@@ -58,7 +58,7 @@ ALL_CONDITIONS: list[tuple[str, str]] = [
 @app.command()
 def main(
     dataset: str = typer.Option(
-        "all", help="Dataset subset: all | msmarco | natural_questions | hotpotqa"
+        "all", help="Dataset subset: all | bioasq_phase_a | bioasq_factoid | bioasq_summary"
     ),
     conditions: str = typer.Option(
         "all",
