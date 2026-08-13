@@ -1,0 +1,76 @@
+<svg width="100%" viewBox="0 0 640 420" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Query role sampling and corpus cleaning composition for the BioASQ benchmark</title>
+<desc>Figure showing the 200-query stratified benchmark sample (60 Phase A, 40 factoid, 100 summary) alongside the BioASQ corpus cleaning outcome: 40,221 raw passages reduced to 27,972 after removing literal "nan" placeholder artifacts and other short/low-quality passages.</desc>
+
+<defs>
+<style>
+  text { font-family: "Anthropic Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+  .seg    { font-size: 11.5px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+  .subseg { font-size: 10px; font-weight: 400; }
+  .cap    { font-size: 11px; font-weight: 500; fill: rgb(30,28,24); }
+  .note   { font-size: 9.5px; font-weight: 400; fill: rgb(110,108,100); font-style: italic; }
+</style>
+</defs>
+
+<rect x="0" y="0" width="640" height="420" fill="rgb(255,255,255)"/>
+
+<!-- Title -->
+<text x="320" y="22" text-anchor="middle" font-size="14" font-weight="500" fill="rgb(30,28,24)">Figure 3.4 &#8212; Query Role Sampling &amp; Corpus Cleaning</text>
+<text x="320" y="39" text-anchor="middle" font-size="10.5" fill="rgb(95,93,86)">200-query role split vs. the BioASQ corpus's raw-to-cleaned reduction</text>
+
+<!-- ══════════ Query sample bar (n=200) ══════════ -->
+<text x="40" y="66" class="cap">Query Sample &#8212; n = 200 (seed = 42, stratified by role, &#167;3.7.2)</text>
+
+<!-- bar: total width 560 at x=40..600, height 46 -->
+<!-- Phase A: 60/200 = 168px -->
+<rect x="40" y="76" width="168" height="46" fill="rgb(42,120,214)"/>
+<text x="124" y="99" class="seg" fill="rgb(255,255,255)">Phase A: 60</text>
+<!-- Factoid: 40/200 = 112px -->
+<rect x="208" y="76" width="112" height="46" fill="rgb(0,131,0)"/>
+<text x="264" y="99" class="seg" fill="rgb(255,255,255)">Factoid: 40</text>
+<!-- Summary: 100/200 = 280px -->
+<rect x="320" y="76" width="280" height="46" fill="rgb(232,123,164)"/>
+<text x="460" y="99" class="seg" fill="rgb(255,255,255)">Summary: 100</text>
+
+<line x1="40" y1="122" x2="600" y2="122" stroke="rgb(200,198,190)" stroke-width="1"/>
+
+<!-- Sub-stratification callouts -->
+<text x="124" y="140" text-anchor="middle" class="subseg" fill="rgb(42,120,214)">30 single-relevant &#183; 30 multi-relevant</text>
+<text x="460" y="140" text-anchor="middle" class="subseg" fill="rgb(232,123,164)">50 yes/no &#183; 50 summary</text>
+
+<!-- ══════════ Corpus cleaning bar (n=40,221 raw) ══════════ -->
+<text x="40" y="182" class="cap">Corpus Cleaning &#8212; n = 40,221 raw passages &#8594; 27,972 kept</text>
+
+<!-- Kept: 27972/40221 -> 389px, adjusted to 385 to make room for "other" sliver -->
+<rect x="40" y="192" width="385" height="46" fill="rgb(8,120,95)"/>
+<text x="232" y="215" class="seg" fill="rgb(255,255,255)">Kept: 27,972</text>
+<!-- NaN artifact: 12220/40221 -> 170px -->
+<rect x="425" y="192" width="170" height="46" fill="rgb(231,76,60)"/>
+<text x="510" y="215" class="seg" fill="rgb(255,255,255)">"nan": 12,220</text>
+<!-- Other dropped: true width 0.4px, rendered at min 5px with callout -->
+<rect x="595" y="192" width="5" height="46" fill="rgb(149,165,166)"/>
+
+<!-- Other callout leader line -->
+<path d="M597 192 L597 168 L610 168" fill="none" stroke="rgb(149,165,166)" stroke-width="1" opacity="0.8"/>
+<text x="576" y="168" text-anchor="end" font-size="10" fill="rgb(110,108,100)" dominant-baseline="central">Other: 29</text>
+
+<line x1="40" y1="238" x2="600" y2="238" stroke="rgb(200,198,190)" stroke-width="1"/>
+<text x="40" y="254" class="note">30.4% of raw passages were literal "nan" placeholder strings &#8212; a data-quality artefact</text>
+<text x="40" y="267" class="note">of the source HuggingFace mirror, confirmed by direct inspection, not a bug in this pipeline.</text>
+
+<!-- ══════════ Legend ══════════ -->
+<rect x="40" y="288" width="14" height="14" rx="3" fill="rgb(8,120,95)"/>
+<text x="60" y="295" font-size="11" fill="rgb(60,58,52)" dominant-baseline="central">Kept (real passage)</text>
+<rect x="210" y="288" width="14" height="14" rx="3" fill="rgb(231,76,60)"/>
+<text x="230" y="295" font-size="11" fill="rgb(60,58,52)" dominant-baseline="central">"nan" placeholder</text>
+<rect x="380" y="288" width="14" height="14" rx="3" fill="rgb(149,165,166)"/>
+<text x="400" y="295" font-size="11" fill="rgb(60,58,52)" dominant-baseline="central">Other (too short / low-alphabetic)</text>
+
+<!-- ══════════ Observation callout ══════════ -->
+<rect x="40" y="318" width="560" height="82" rx="8" fill="rgb(246,244,238)" stroke="rgb(210,207,197)" stroke-width="1"/>
+<text x="60" y="338" font-size="11" font-weight="600" fill="rgb(30,28,24)">Observation</text>
+<text x="60" y="358" font-size="10.5" fill="rgb(60,58,52)">Unlike the platform's original three-dataset corpus, BioASQ is indexed as a single unified</text>
+<text x="60" y="374" font-size="10.5" fill="rgb(60,58,52)">corpus with no per-source imbalance to report. The more interesting composition question</text>
+<text x="60" y="390" font-size="10.5" fill="rgb(60,58,52)">here is data quality: nearly a third of the raw mirror was unusable placeholder text.</text>
+
+</svg>

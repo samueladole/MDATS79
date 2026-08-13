@@ -1,6 +1,6 @@
 <svg width="100%" viewBox="0 0 640 620" role="img" xmlns="http://www.w3.org/2000/svg">
 <title>Document ingestion and preprocessing pipeline</title>
-<desc>Figure showing the RAGScope ingestion pipeline: raw passages from three benchmark corpora streamed in mini-batches of 256 chunks through preprocessing, chunking, and embedding, then indexed in parallel into ChromaDB (dense) and a BM25 JSONL index (sparse).</desc>
+<desc>Figure showing the RAGScope ingestion pipeline: raw BioASQ passages streamed in mini-batches of 256 chunks through preprocessing, chunking, and embedding, then indexed in parallel into ChromaDB (dense) and a BM25 JSONL index (sparse).</desc>
 
 <defs>
 <marker id="arrow3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -28,7 +28,7 @@
 <rect x="170" y="54" width="300" height="52" rx="8"/>
 </g>
 <text x="320" y="74" class="title" fill="rgb(255,255,255)">Raw Passages</text>
-<text x="320" y="94" class="tiny" fill="rgb(198,239,224)">MS MARCO &#183; Natural Questions &#183; HotpotQA</text>
+<text x="320" y="94" class="tiny" fill="rgb(198,239,224)">BioASQ (rag-mini-bioasq) &#183; 40,221 raw passages</text>
 
 <line x1="320" y1="106" x2="320" y2="122" class="conn" marker-end="url(#arrow3)" opacity="0.6"/>
 
@@ -85,6 +85,6 @@
 <text x="510" y="540" font-size="10" fill="rgb(214,211,250)" text-anchor="middle" font-style="italic">used by hybrid</text>
 <text x="510" y="556" font-size="10" fill="rgb(214,211,250)" text-anchor="middle" font-style="italic">retrieval only (&#167;3.6.3)</text>
 
-<text x="320" y="598" text-anchor="middle" font-size="10" fill="rgb(95,93,86)">Result: 57,816 passages &#8594; 57,849 chunks indexed in both stores (&#167;3.7.3)</text>
+<text x="320" y="598" text-anchor="middle" font-size="10" fill="rgb(95,93,86)">Result: 27,972 passages &#8594; 30,850 chunks indexed in both stores (&#167;3.7.3)</text>
 
 </svg>

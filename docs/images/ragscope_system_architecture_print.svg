@@ -27,15 +27,15 @@
 <text x="345" y="48" text-anchor="middle" font-size="10" fill="rgb(95,93,86)">Six stages, each mapped to a research question or SMART objective · deployment topology: see docs/architecture.md</text>
 
 <!-- ══════════════════════════════════════════════ 1. DATA ══════════════════════════════════════════════ -->
-<text x="36" y="66" class="hdr">── 1. Data — three benchmark corpora → preprocessing → index</text>
+<text x="36" y="66" class="hdr">── 1. Data — BioASQ corpus → preprocessing → index</text>
 <rect x="28" y="74" width="624" height="96" rx="12" class="container" stroke="rgb(93,202,165)"/>
 
 <g class="box" fill="rgb(8,80,65)" stroke="rgb(93,202,165)">
 <rect x="44" y="90" width="180" height="64" rx="8"/>
 </g>
-<text x="134" y="112" class="title" fill="rgb(159,225,203)">3 Benchmark Corpora</text>
-<text x="134" y="132" class="sub" fill="rgb(93,202,165)">MS MARCO · NQ · HotpotQA</text>
-<text x="134" y="146" class="tiny" fill="rgb(93,202,165)">200 queries total</text>
+<text x="134" y="112" class="title" fill="rgb(159,225,203)">BioASQ Corpus</text>
+<text x="134" y="132" class="sub" fill="rgb(93,202,165)">PubMed abstracts</text>
+<text x="134" y="146" class="tiny" fill="rgb(93,202,165)">27,972 passages · 200 queries</text>
 
 <g class="box" fill="rgb(8,80,65)" stroke="rgb(93,202,165)">
 <rect x="245" y="90" width="200" height="64" rx="8"/>
