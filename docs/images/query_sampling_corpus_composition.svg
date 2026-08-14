@@ -69,8 +69,8 @@
 <!-- ══════════ Observation callout ══════════ -->
 <rect x="40" y="318" width="560" height="82" rx="8" fill="rgb(246,244,238)" stroke="rgb(210,207,197)" stroke-width="1"/>
 <text x="60" y="338" font-size="11" font-weight="600" fill="rgb(30,28,24)">Observation</text>
-<text x="60" y="358" font-size="10.5" fill="rgb(60,58,52)">Unlike the platform's original three-dataset corpus, BioASQ is indexed as a single unified</text>
-<text x="60" y="374" font-size="10.5" fill="rgb(60,58,52)">corpus with no per-source imbalance to report. The more interesting composition question</text>
-<text x="60" y="390" font-size="10.5" fill="rgb(60,58,52)">here is data quality: nearly a third of the raw mirror was unusable placeholder text.</text>
+<text x="60" y="358" font-size="10.5" fill="rgb(60,58,52)">BioASQ is indexed as a single, unified corpus, so there is no per-source imbalance to</text>
+<text x="60" y="374" font-size="10.5" fill="rgb(60,58,52)">report. The more interesting composition question here is data quality: nearly a third</text>
+<text x="60" y="390" font-size="10.5" fill="rgb(60,58,52)">of the raw mirror consisted of unusable placeholder text ("nan" strings).</text>
 
 </svg>
