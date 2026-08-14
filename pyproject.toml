@@ -51,7 +51,7 @@ dependencies = [
     # ── Data processing ───────────────────────────────────────────────────────
     "pandas>=2.2.0",
     "numpy>=1.26.0",
-    "datasets>=2.20.0", # HuggingFace Datasets (MS MARCO, NQ, HotpotQA)
+    "datasets>=2.20.0", # HuggingFace Datasets (BioASQ)
     # ── NLP utilities ─────────────────────────────────────────────────────────
     "tiktoken>=0.7.0", # Token counting
     # ── HTTP / async ──────────────────────────────────────────────────────────
