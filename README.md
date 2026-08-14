@@ -153,16 +153,16 @@ The platform is organised into six stages, each mapped to a specific research qu
 
 ## Datasets
 
-A single benchmark dataset, **BioASQ**, is used for evaluation — accessed via `rag-datasets/rag-mini-bioasq`, a freely downloadable HuggingFace mirror derived from the official BioASQ Task 11b training release (CC BY 2.5). The official release requires registration at bioasq.org and includes a ~23M-abstract PubMed corpus; this mirror provides a bounded, dissertation-scale derivative (40,221 passages, 4,719 QA pairs) instead. See [`docs/datasets.md`](docs/datasets.md) for the full methodology, including how the platform's original three evaluation roles are reconstructed from BioASQ's answer shapes (it carries no native question-type label).
+A single benchmark dataset, **BioASQ**, is used for evaluation — accessed via `rag-datasets/rag-mini-bioasq`, a freely downloadable HuggingFace mirror derived from the official BioASQ Task 11b training release (CC BY 2.5). The official release requires registration at bioasq.org and includes a ~23M-abstract PubMed corpus; this mirror provides a bounded, dissertation-scale derivative (40,221 passages, 4,719 QA pairs) instead. See [`docs/datasets.md`](docs/datasets.md) for the full methodology, including how the three evaluation roles are reconstructed from BioASQ's answer shapes (this mirror carries no native question-type label).
 
 ### BioASQ
 - **Source:** [huggingface.co/datasets/rag-datasets/rag-mini-bioasq](https://huggingface.co/datasets/rag-datasets/rag-mini-bioasq)
 - **Licence:** CC BY 2.5
 - **Usage in this project:** 27,972 PubMed-abstract passages (cleaned from a raw 40,221) indexed as the retrieval corpus; 200 queries split across three roles:
-  - **Phase A** (60 queries, 30 single-relevant + 30 multi-relevant) — passage retrieval, mirroring the platform's original MS MARCO role
-  - **Factoid** (40 queries, short exact answers) — mirroring the platform's original Natural Questions role
-  - **Summary** (100 queries, 50 yes/no + 50 long-form) — multi-passage synthesis, mirroring the platform's original HotpotQA role
-- **Why:** A single, domain-realistic corpus — biomedical questions authored by domain experts against PubMed abstracts — while preserving the same three-condition evaluation structure (retrieval / factual QA / synthesis) the platform was designed around
+  - **Phase A** (60 queries, 30 single-relevant + 30 multi-relevant) — passage retrieval over the PubMed corpus
+  - **Factoid** (40 queries, short exact answers) — precise entity/phrase-level question answering
+  - **Summary** (100 queries, 50 yes/no + 50 long-form) — multi-passage synthesis
+- **Why:** A single, domain-realistic corpus — biomedical questions authored by domain experts against PubMed abstracts — spanning three complementary evaluation conditions (retrieval / factual QA / synthesis), matching BioASQ's own Phase A / Phase B task structure
 
 | Role | Query Type | Corpus Source | Queries Used |
 |---|---|---|:---:|
