@@ -33,7 +33,7 @@ Verified by exhaustive grep across every `.py` file (excluding `.venv`):
 
 | Package | Declared as | Actually used? |
 |---|---|---|
-| `ir-datasets` | "MS MARCO loader" | **No.** `data/loaders/msmarco.py` uses HuggingFace `datasets.load_dataset("microsoft/ms_marco", ...)`, not `ir_datasets`, anywhere. Zero imports. |
+| `ir-datasets` | "dataset loader" | **No.** `data/loaders/bioasq.py` uses HuggingFace `datasets.load_dataset("rag-datasets/rag-mini-bioasq", ...)`, not `ir_datasets`, anywhere. Zero imports. |
 | `nltk` | (uncommented) | **No.** Zero imports anywhere. |
 | `altair` | "Declarative visualisation" | **No.** Every chart in `dashboard/components/` (`heatmap.py`, `latency_chart.py`) uses Plotly exclusively. Zero imports. |
 | `scipy` | "Statistical analysis (Cohen's d)" | **No — and this one actively contradicts your own design principle.** `docs/architecture.md` states as a deliberate design choice: *"Pure-Python statistics. `evaluation/metrics.py` has no numpy or scipy dependency... This makes the module testable without the full ML stack and documents the statistical formulae explicitly."* `evaluation/metrics.py` genuinely does implement Cohen's d and Pearson r from first principles (confirmed by reading the file). `scipy` is dead weight that contradicts the very design principle you'd want to point to in a viva. |
@@ -137,7 +137,7 @@ I extracted every text label currently drawn in `docs/images/ragscope_system_arc
 | Layer | Boxes drawn | Count |
 |---|---|:---:|
 | Deployment topology | `chromadb`, `ragscope`, `ollama`, `jupyter`, `config/settings.py` | 5 |
-| Data ingestion pipeline | MS MARCO, Natural Questions, HotpotQA, `cleaner.py`, `chunker.py`, `embeddings.py`, `ingestion.py`, ChromaDB, `bm25_corpus.jsonl`, `ingestion_manifest` | 10 |
+| Data ingestion pipeline | BioASQ corpus, `cleaner.py`, `chunker.py`, `embeddings.py`, `ingestion.py`, ChromaDB, `bm25_corpus.jsonl`, `ingestion_manifest` | 8 |
 | RAG query pipeline | User query, `dense.py`, `hybrid.py`, `llama3.py`, `mistral.py`, `llm_client.py` | 6 |
 | Telemetry layer | `timer.py`, `token_counter.py`, `logger.py`, `telemetry/store` | 4 |
 | Evaluation layer | `ragas_runner.py`, `hallucination_score.py`, `metrics.py`, output-fields box | 4 |
@@ -147,7 +147,7 @@ I extracted every text label currently drawn in `docs/images/ragscope_system_arc
 **37 boxes is too many for a diagram meant to be grasped at a glance and defended verbally.** Every one of these boxes maps to something real (nothing here is invented), but a diagram's job is to communicate the *shape* of the system, not to be a 1:1 file listing. Right now it's closer to a file listing with colour-coding than an architecture diagram.
 
 Concretely, several groups of boxes are siblings at the wrong level of granularity for a top-level diagram:
-- The three benchmark datasets (MS MARCO / NQ / HotpotQA) are conceptually **one input**: "three benchmark corpora." Their individual sampling strategies matter enormously for Chapter 3's *methodology* text, but not for the *architecture* diagram — a reader doesn't need three boxes to understand "data goes in."
+- The benchmark corpus (BioASQ) is conceptually **one input**. Its query-role sampling strategy matters enormously for Chapter 3's *methodology* text, but not for the *architecture* diagram — a reader doesn't need multiple boxes to understand "data goes in."
 - `cleaner.py` → `chunker.py` → `embeddings.py` → `ingestion.py` is a single **preprocessing pipeline**; showing four sequential boxes for what is conceptually one "clean → chunk → embed → index" stage adds arrows and nodes without adding understanding.
 - `llama3.py` / `mistral.py` / `llm_client.py` is one **generation stage** with two swappable model backends — exactly parallel to how `dense.py`/`hybrid.py` is one **retrieval stage** with two swappable strategies. Right now retrieval gets 2 boxes for 2 strategies and generation gets 3 boxes for 2 models plus their shared base — inconsistent granularity for what's conceptually the same kind of thing (a pluggable strategy pair).
 - `timer.py` + `token_counter.py` are both just **instrumentation feeding `logger.py`** — three boxes for what is, from an architecture point of view, one "measure everything, write it as JSON" stage.

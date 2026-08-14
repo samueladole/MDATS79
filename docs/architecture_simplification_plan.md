@@ -55,7 +55,7 @@ architecture diagram rather than a file listing.
 
 | Today | Proposed |
 |---|---|
-| MS MARCO, Natural Questions, HotpotQA (3 boxes) | **1 box: "3 benchmark corpora (MS MARCO, NQ, HotpotQA)"** — the individual sampling strategy (60/40/100, is_selected classification, etc.) belongs in Chapter 3 prose and Table 3.2-style detail, not as 3 diagram nodes. |
+| Corpus loading (3 boxes) | **1 box: "BioASQ corpus"** — the individual sampling strategy (60/40/100, role-mapping heuristic, etc.) belongs in Chapter 3 prose and Table 3.2-style detail, not as diagram nodes. |
 | `cleaner.py`, `chunker.py`, `embeddings.py`, `ingestion.py` (4 boxes) | **1 box: "Preprocessing & Indexing"** with a sub-caption "clean → chunk (512/64) → embed (MiniLM-384d) → index." One arrow in, one arrow out. |
 | ChromaDB, `bm25_corpus.jsonl`, `ingestion_manifest` (3 boxes) | **1 box: "Retrieval Index"** (vector store + BM25 file) — the manifest is a build artefact, not an architectural component; mention it in a caption if at all, not as a node. |
 

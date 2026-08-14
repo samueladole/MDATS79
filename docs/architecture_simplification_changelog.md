@@ -29,7 +29,7 @@ Removed 5 declared runtime dependencies with zero imports anywhere in the codeba
 
 | Package | Was declared as | Actual usage found |
 |---|---|---|
-| `ir-datasets` | "MS MARCO loader" | None — `data/loaders/msmarco.py` uses `datasets.load_dataset("microsoft/ms_marco", ...)` |
+| `ir-datasets` | "dataset loader" | None — `data/loaders/bioasq.py` uses `datasets.load_dataset("rag-datasets/rag-mini-bioasq", ...)` |
 | `nltk` | (uncommented) | None |
 | `altair` | "Declarative visualisation" | None — dashboard uses Plotly exclusively |
 | `scipy` | "Statistical analysis (Cohen's d)" | None — `evaluation/metrics.py` is deliberately pure Python (see Design Principles in `docs/architecture.md`); this entry directly contradicted that documented design choice |
