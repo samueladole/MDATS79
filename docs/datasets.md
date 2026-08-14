@@ -29,7 +29,7 @@
 
 ## Overview
 
-The evaluation benchmark is built from a single dataset, **BioASQ** — the large-scale biomedical semantic indexing and question-answering challenge — accessed via `rag-datasets/rag-mini-bioasq`, a HuggingFace mirror derived from the official BioASQ Task 11b training release. Earlier iterations of this platform drew on three separate general-domain datasets (MS MARCO, Natural Questions, HotpotQA), each covering a distinct query type. BioASQ replaces all three while preserving the same three-way methodological structure: the platform still evaluates passage retrieval, precise factual QA, and multi-document synthesis as separate conditions — it now does so within a single biomedical domain rather than across three general-domain sources.
+The evaluation benchmark is built from a single dataset, **BioASQ** — the large-scale biomedical semantic indexing and question-answering challenge — accessed via `rag-datasets/rag-mini-bioasq`, a HuggingFace mirror derived from the official BioASQ Task 11b training release. BioASQ was selected on the recommendation of the project supervisor: as a domain-specific biomedical benchmark, it tests the platform against realistic, expert-authored information needs rather than general-domain web or encyclopaedic text. The evaluation spans three conditions derived directly from BioASQ's own challenge structure — Phase A passage retrieval, and Phase B factoid/list and summary/yes-no question answering — each testing a qualitatively different aspect of RAG reliability.
 
 The official BioASQ release (question-type labels, `exact_answer`/`ideal_answer` fields, RDF triples, and a ~23-million-abstract PubMed corpus) requires free registration at bioasq.org and is not a `pip install`-able dataset. `rag-mini-bioasq` provides a bounded, freely downloadable derivative — a 40,221-passage corpus and 4,719 question/answer pairs with relevance judgements — sufficient to reconstruct a dissertation-scale benchmark without a multi-million-document ingest. It carries **no native question-type field**, so the three evaluation roles below are reconstructed from answer shape and relevance-judgement count rather than an official annotation; see [Role-Mapping Heuristic](#role-mapping-heuristic).
 
@@ -50,7 +50,7 @@ The official BioASQ release (question-type labels, `exact_answer`/`ideal_answer`
 
 All 200 queries are drawn from a single, disjoint partition of the 4,719-row BioASQ QA pool (seed 42) — no question appears in more than one role. The retrieval corpus (27,972 passages after cleaning, from a raw 40,221) is shared across all three roles, since BioASQ Phase A/B retrieval in the real challenge operates over the same PubMed collection regardless of question type; see [Retrieval Corpus Composition](#retrieval-corpus-composition).
 
-The benchmark is **stratified by role** to ensure experimental results are not dominated by a single difficulty level. The 60/40/100 split mirrors the original three-dataset design's weighting, which favoured the hardest, most diagnostic condition (100 queries) over precise factual QA (40) and passage retrieval (60).
+The benchmark is **stratified by role** to ensure experimental results are not dominated by a single difficulty level. The 60/40/100 split deliberately weights the hardest, most diagnostic condition (summary, 100 queries) more heavily than precise factual QA (factoid, 40) and passage retrieval (Phase A, 60).
 
 ---
 
@@ -70,11 +70,11 @@ The benchmark is **stratified by role** to ensure experimental results are not d
 
 ### Characteristics
 
-BioASQ questions are written by biomedical domain experts and answered against PubMed abstracts, spanning genetics, pharmacology, disease classification, and clinical research. Unlike the general-domain datasets used previously, every query in this benchmark now shares a single realistic domain — a meaningfully different evaluation condition, since embedding models and LLMs are more likely to have systematic strengths or gaps concentrated in specialised vocabulary (gene names, drug names, clinical terminology) than in general web or encyclopaedic text.
+BioASQ questions are written by biomedical domain experts and answered against PubMed abstracts, spanning genetics, pharmacology, disease classification, and clinical research. Every query in the benchmark shares this single realistic domain, which is significant for evaluation: embedding models and LLMs are more likely to have systematic strengths or gaps concentrated in specialised vocabulary (gene names, drug names, clinical terminology) than in general web or encyclopaedic text.
 
 **Why BioASQ?**
 - Domain-expert-authored questions with genuine biomedical information needs, not synthetic or crowd-sourced approximations
-- Relevance judgements (`relevant_passage_ids`) enable the same retrieval-quality stratification used for the platform's original passage-retrieval role
+- Relevance judgements (`relevant_passage_ids`) enable retrieval-quality stratification for the Phase A passage-retrieval role
 - A single coherent domain lets the dissertation additionally comment on whether RAG failure modes identified on general-domain text (Chapter 2's literature review) transfer to a specialised domain
 - Freely available without registration via `rag-mini-bioasq`, at a scale (tens of thousands of passages) compatible with a dissertation timeline
 
@@ -118,7 +118,7 @@ Factoid and summary queries share the same shape, with `query_type` set to `"fac
 
 ### Usage in this Research
 
-The full cleaned corpus (27,972 passages) is indexed into ChromaDB — no subsampling is applied, since this is already a bounded, dissertation-appropriate scale (unlike the original MS MARCO component, which sampled 50,000 from an 8.8-million-passage pool). The 200 evaluation queries are partitioned from the 4,719-row QA pool into three disjoint roles by a single deterministic pass (`data/loaders/bioasq.py::_build_role_pools`), guaranteeing that no question is evaluated under more than one role even though all three roles draw from the same underlying pool.
+The full cleaned corpus (27,972 passages) is indexed into ChromaDB — no subsampling is applied, since this is already a bounded, dissertation-appropriate scale. The 200 evaluation queries are partitioned from the 4,719-row QA pool into three disjoint roles by a single deterministic pass (`data/loaders/bioasq.py::_build_role_pools`), guaranteeing that no question is evaluated under more than one role even though all three roles draw from the same underlying pool.
 
 ---
 
@@ -128,8 +128,8 @@ The full cleaned corpus (27,972 passages) is indexed into ChromaDB — no subsam
 
 1. **Factoid** (n = 40, sampled from 256 candidates) — answer ≤ 6 words. Approximates BioASQ's convention that "exact answers" are short entity/phrase strings (gene names, drug names, diagnoses).
 2. **Summary — yes/no** (n = 50, sampled from 802 candidates) — remaining rows whose answer starts with "yes" or "no" (e.g. *"Yes, papilin is a secreted protein"*), standing in for BioASQ's yes/no question type.
-3. **Summary — long-form** (n = 50, sampled from the first 50 of 3,661 remaining long-answer rows) — free-text paragraph answers, standing in for BioASQ's summary question type and requiring the same multi-passage synthesis the platform's original multi-hop role tested.
-4. **Phase A** (n = 60) — drawn from whatever remains *after* the summary role has claimed its 50 long-form rows (3,611 remaining), stratified by `len(relevant_passage_ids)`: 30 single-relevant (from 677 candidates) and 30 multi-relevant (from 2,934 candidates). This mirrors the original MS MARCO component's `is_selected`-count-based single-answer/multi-passage split, and is deliberately answer-shape-agnostic — Phase A in the real BioASQ challenge is a pure retrieval task, not an answer-extraction one.
+3. **Summary — long-form** (n = 50, sampled from the first 50 of 3,661 remaining long-answer rows) — free-text paragraph answers requiring synthesis across multiple cited passages, standing in for BioASQ's summary question type.
+4. **Phase A** (n = 60) — drawn from whatever remains *after* the summary role has claimed its 50 long-form rows (3,611 remaining), stratified by `len(relevant_passage_ids)`: 30 single-relevant (from 677 candidates) and 30 multi-relevant (from 2,934 candidates). This split is deliberately answer-shape-agnostic — Phase A in the real BioASQ challenge is a pure retrieval task, not an answer-extraction one.
 
 This ordering is a real implementation detail, not just documentation: an earlier draft of the loader sampled Phase A and the summary role independently from the same overlapping long-answer pool, which could hand both roles the same question. The shipped implementation samples summary's share first and only then exposes the remainder to Phase A, which was verified empirically (zero ID overlap across all three role pools at seed 42) before being adopted.
 
@@ -139,7 +139,7 @@ This ordering is a real implementation detail, not just documentation: an earlie
 
 ## Data Preparation Pipeline
 
-The single BioASQ corpus passes through the same preparation pipeline previously used for all three legacy datasets. The pipeline is implemented in `data/preprocessing/` and orchestrated by `pipeline/ingestion.py`.
+The BioASQ corpus passes through a standard preparation pipeline before indexing, implemented in `data/preprocessing/` and orchestrated by `pipeline/ingestion.py`.
 
 ### Text Cleaning
 
@@ -236,7 +236,7 @@ After ingestion, the ChromaDB collection contains the following (exact counts fr
 |---|:---:|:---:|:---:|
 | BioASQ | 27,972 | 30,850 | 1.10 |
 
-> **Note:** Unlike the original three-dataset corpus (which had a highly imbalanced per-dataset composition — one dataset outnumbering another by three orders of magnitude), BioASQ contributes a single, unified corpus, so there is no per-source breakdown to report. The 1.10 average chunks/passage (compared with the original corpus's ~1.00) reflects PubMed abstracts running slightly longer on average than the passages in the previous corpus, so a somewhat larger share needed to be split into two chunks. Chunk counts depend on passage lengths and the chunk-size/overlap configuration, so a differently configured or re-sampled ingestion run will not reproduce these exact figures — re-run `pipeline/ingestion.py` and consult the regenerated `data/ingestion_manifest.json` for that run's actual counts.
+> **Note:** BioASQ is indexed as a single, unified corpus with no per-source breakdown to report. The 1.10 average chunks/passage reflects the typical length of PubMed abstracts, with a modest share of longer abstracts splitting into two chunks. Chunk counts depend on passage lengths and the chunk-size/overlap configuration, so a differently configured or re-sampled ingestion run will not reproduce these exact figures — re-run `pipeline/ingestion.py` and consult the regenerated `data/ingestion_manifest.json` for that run's actual counts.
 
 The BM25 index (`data/bm25_corpus.jsonl`) mirrors the ChromaDB collection exactly — one JSONL entry per chunk — ensuring consistent coverage between dense and hybrid retrieval.
 
@@ -277,7 +277,7 @@ RAGAS `answer_correctness` requires a ground-truth reference answer. All three B
 | Factoid | `answer` field, short (≤ 6 words) | Domain-expert-authored; entity/phrase-level precision |
 | Summary | `answer` field, free-form or yes/no-prefixed | Domain-expert-authored; paragraph-length for synthesis questions |
 
-For summary-role queries with a yes/no-prefixed answer (e.g. *"Yes, mutations in the DNA that affect the splicing pattern of genes have been linked..."*), RAGAS `answer_correctness` uses embedding-based semantic similarity against the full sentence, not just the leading "yes"/"no" token — this mirrors the same limitation the original HotpotQA comparison-question component carried, now acknowledged for BioASQ's yes/no questions instead.
+For summary-role queries with a yes/no-prefixed answer (e.g. *"Yes, mutations in the DNA that affect the splicing pattern of genes have been linked..."*), RAGAS `answer_correctness` uses embedding-based semantic similarity against the full sentence, not just the leading "yes"/"no" token — a known limitation of embedding-based correctness scoring for short binary-leaning answers, acknowledged here for BioASQ's yes/no questions.
 
 ---
 
@@ -360,5 +360,4 @@ Exits with code 1 if the download fails.
 
 - Nentidis, A. et al. (2024) 'Overview of BioASQ 2024: The twelfth BioASQ challenge on Large-Scale Biomedical Semantic Indexing and Question Answering', *CLEF 2024*.
 - Barnett, S. et al. (2024) 'Seven failure points when engineering a retrieval augmented generation system', *ICAIE 2024*.
-- Thakur, N. et al. (2021) 'BEIR: A heterogeneous benchmark for zero-shot evaluation of information retrieval models', *arXiv:2104.08663*.
 - `rag-datasets/rag-mini-bioasq` — HuggingFace Datasets Hub, derived from the official BioASQ Task 11b training release. https://huggingface.co/datasets/rag-datasets/rag-mini-bioasq
