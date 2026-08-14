@@ -60,9 +60,9 @@ RAG systems are powerful but opaque. When a response is wrong, it is rarely obvi
 
 This research is structured around three questions:
 
-- **RQ1 — Metric Calibration:** To what extent can a composite score based on RAGAS-compatible evaluation metrics be calibrated against ground-truth correctness to capture hallucination likelihood and retrieval faithfulness in RAG systems operating under real-time operational constraints?
-- **RQ2 — Fault Localisation:** To what extent does a platform that integrates real-time telemetry with RAGAS-compatible evaluation metrics localise the source of a RAG system failure at the retrieval or generation stage, using per-stage metric signals captured at query-level granularity?
-- **RQ3 — Configuration Trade-offs:** What performance trade-offs exist between dense and hybrid retrieval strategies, and between different open-source LLM configurations, when measured jointly across hallucination risk, retrieval faithfulness, response latency, and token cost?
+- **RQ1 — Metric Calibration:** How reliable is a real-time composite risk score in estimating actual answer correctness within RAG systems?
+- **RQ2 — Fault Localisation:** How effectively can real-time metrics isolate the cause of a RAG failure to either the retrieval or generation stage?
+- **RQ3 — Configuration Trade-offs:** How do dense and hybrid retrieval strategies, when paired with Llama 3 (8B) and Mistral (7B), trade off between output quality (faithfulness and hallucination risk) and system efficiency (latency and token use)?
 
 ---
 
