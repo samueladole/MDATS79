@@ -2,8 +2,9 @@
 RAGScope — BioASQ Loader
 ===========================
 Loads the BioASQ biomedical QA dataset for use as the retrieval corpus
-and a stratified query evaluation set spanning three roles that mirror
-the platform's original MS MARCO / Natural Questions / HotpotQA design.
+and a stratified query evaluation set spanning three roles derived from
+BioASQ's own challenge structure: Phase A (passage retrieval) and
+Phase B (factoid/list and summary/yes-no question answering).
 
 Dataset
 -------
@@ -22,7 +23,7 @@ Dataset
 
 Role mapping
 ------------
-The source dataset carries no official question-type field (no
+This mirror carries no official question-type field (no
 factoid/list/summary/yesno label), so the three evaluation roles are
 approximated from answer shape and relevance-judgement count. Each
 query is assigned to exactly one role by a single deterministic pass
@@ -30,26 +31,28 @@ over the full QA pool (see ``_build_role_pools``), so calling any two
 of the three public loader functions with the same seed can never
 return overlapping queries:
 
-* **Phase A** (MS MARCO's role — passage retrieval): sampled from
-  whatever remains after the two roles below have been carved out,
-  stratified by ``len(relevant_passage_ids)`` — single-relevant vs.
-  multi-relevant — mirroring MS MARCO's ``is_selected``-count split.
-* **Factoid** (Natural Questions' role — short exact answers): answers
-  of 6 words or fewer, approximating BioASQ's convention that "exact
-  answers" are short entity/phrase strings.
-* **Summary** (HotpotQA's role — multi-document synthesis): the
-  remaining long-answer rows, split into yes/no answers (answer text
-  starting with "yes"/"no", e.g. "Yes, papilin is a secreted protein")
-  and free-text summary answers — standing in for HotpotQA's
-  comparison/bridge sub-types respectively.
+* **Phase A** (passage retrieval): sampled from whatever remains after
+  the two roles below have been carved out, stratified by
+  ``len(relevant_passage_ids)`` — single-relevant vs. multi-relevant —
+  reflecting that retrieval quality, not answer shape, is what this
+  role tests.
+* **Factoid** (short exact answers): answers of 6 words or fewer,
+  approximating BioASQ's convention that "exact answers" are short
+  entity/phrase strings.
+* **Summary** (multi-document synthesis): the remaining long-answer
+  rows, split into yes/no answers (answer text starting with
+  "yes"/"no", e.g. "Yes, papilin is a secreted protein") and free-text
+  summary answers, reflecting BioASQ's own yes/no and summary question
+  types.
 
 Usage in this research
 -----------------------
 * All 40,221 corpus passages indexed into ChromaDB (already a bounded,
   dissertation-appropriate size — no further subsampling needed).
-* 200 queries total (60 Phase A + 40 factoid + 100 summary), the same
-  total and sub-stratification shape as the original three-dataset
-  benchmark, so the statistical-power/effect-size design is unchanged.
+* 200 queries total (60 Phase A + 40 factoid + 100 summary), a split
+  weighted toward the summary role since multi-document synthesis is
+  the most demanding condition for faithfulness and the most
+  diagnostic for hallucination detection.
 
 The loader uses HuggingFace ``datasets`` for reproducible, cached
 downloading. Raw files land in ``data/raw/bioasq/``.
