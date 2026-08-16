@@ -1,0 +1,73 @@
+---
+config:
+  layout: fixed
+---
+flowchart TB
+    n1["Retrieval"] --> n2["Generation"]
+    n5["Query rewriting/HyDE"] --> n6["Dense retrieval"]
+    n6 --> n7["Reranking"]
+    n7 --> n8["Context compression"]
+    n8 --> n9["Generation"]
+    n14["Indexing"] --> n15["Retrieval"]
+    n15 --> n16["Fusion"]
+    n16 --> n17["Reranking"]
+    n17 --> n18["Generation"]
+    n26[" "] --> n27[" "]
+    n3["FP1"]
+    n4["FP6"]
+    n10["FP1"]
+    n11["FP1"]
+    n12["FP3"]
+    n13["FP4, FP5, FP6, FP7"]
+    n19["FP1"]
+    n20["FP2"]
+    n21["FP3"]
+    n22["FP4, FP5, FP6, FP7"]
+    n23["`**Naive RAG**<br>(Lewis et al., 2020)`"]
+    n24["`**Advanced RAG**<br>(Gao et al., 2023)`"]
+    n25["`**Modular RAG**<br>(Gao et al., 2024)`"]
+    n28["Expanding diagnostic surface area"]
+    n29["FP1: Missing top-ranked document. FP2: Failure to extract relevant content. FP3: Context not utilised. FP4: Incorrect format. <br>FP5: Incomplete response. FP6: Hallucinated content. FP7: Specification misalignment. (Barnett et al., 2024)"]
+
+    n1@{ shape: proc}
+    n2@{ shape: proc}
+    n5@{ shape: proc}
+    n6@{ shape: proc}
+    n7@{ shape: proc}
+    n8@{ shape: proc}
+    n9@{ shape: proc}
+    n14@{ shape: proc}
+    n15@{ shape: proc}
+    n16@{ shape: proc}
+    n17@{ shape: proc}
+    n18@{ shape: proc}
+    n26@{ shape: anchor}
+    n27@{ shape: anchor}
+    n3@{ shape: text}
+    n4@{ shape: text}
+    n10@{ shape: text}
+    n11@{ shape: text}
+    n12@{ shape: text}
+    n13@{ shape: text}
+    n19@{ shape: text}
+    n20@{ shape: text}
+    n21@{ shape: text}
+    n22@{ shape: text}
+    n23@{ shape: text}
+    n24@{ shape: text}
+    n25@{ shape: text}
+    n28@{ shape: text}
+    n29@{ shape: text}
+    style n2 fill:#e6e6e6
+    style n9 fill:#e6e6e6
+    style n18 fill:#e6e6e6
+    style n3 color:#D50000
+    style n4 color:#D50000
+    style n10 color:#D50000
+    style n11 color:#D50000
+    style n12 color:#D50000
+    style n13 color:#D50000
+    style n19 color:#D50000
+    style n20 color:#D50000
+    style n21 color:#D50000
+    style n22 color:#D50000
