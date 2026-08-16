@@ -1,0 +1,22 @@
+---
+config:
+  layout: fixed
+---
+flowchart TB
+    n1["Hallucination in LLM outputs"] --> n2["Intrinsic hallucination<br>(output contradicts the provided source material)"] & n3["Extrinsic hallucination<br>(output unverifiable against any source)"]
+    n2 --> n4["Faithfulness hallucination<br>(response contradicts claims in the retrieved passages)"]
+    n3 --> n5["Knowledge hallucination<br>(response bypasses retrieved context, falling back on parametric memory)"]
+    n6["(Ji et al., 2023)"]
+
+    n1@{ shape: proc}
+    n2@{ shape: proc}
+    n3@{ shape: proc}
+    n4@{ shape: proc}
+    n5@{ shape: proc}
+    n6@{ shape: text}
+    style n1 fill:#ffffff,font-size:24px
+    style n2 font-size:24px
+    style n3 font-size:24px
+    style n4 stroke-width:2px,stroke-dasharray: 2,fill:#e6e6e6,font-size:24px
+    style n5 stroke-width:2px,stroke-dasharray: 2,fill:#e6e6e6,font-size:24px
+    style n6 font-size:24px
