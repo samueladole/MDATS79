@@ -358,6 +358,6 @@ Exits with code 1 if the download fails.
 
 ## References
 
-- Nentidis, A. et al. (2024) 'Overview of BioASQ 2024: The twelfth BioASQ challenge on Large-Scale Biomedical Semantic Indexing and Question Answering', *CLEF 2024*.
+- Nentidis, A., Katsimpras, G., Krithara, A., Lima-López, S., Farré-Maduell, E., Krallinger, M., Loukachevitch, N., Davydova, V., Tutubalina, E. and Paliouras, G. (2024) 'Overview of BioASQ 2024: The twelfth BioASQ challenge on Large-Scale Biomedical Semantic Indexing and Question Answering', *arXiv preprint arXiv:2508.20532*.
 - Barnett, S. et al. (2024) 'Seven failure points when engineering a retrieval augmented generation system', *ICAIE 2024*.
 - `rag-datasets/rag-mini-bioasq` — HuggingFace Datasets Hub, derived from the official BioASQ Task 11b training release. https://huggingface.co/datasets/rag-datasets/rag-mini-bioasq
