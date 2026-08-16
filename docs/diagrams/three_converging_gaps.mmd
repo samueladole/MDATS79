@@ -1,0 +1,26 @@
+---
+config:
+  layout: fixed
+---
+flowchart TB
+    n3["Convergence 2<br>Architectural complexity vs. diagnostic opacity<br>(Gao et al., 2023; 2024, Barnett et al., 2024)"] --> n5["`**RAGScope**<br>Multi-stage instrumentation, real-time research grade evaluation, controlled comparative evidence`"]
+    n1["Convergence 1<br>Evaluation richness vs. operational applicability<br>(Es et al., 2023)"] --> n5
+    n4["Convergence 3<br>Absent comparative evidence for key design decisions<br>(Karpukhin et al., 2020; Zhao et al., 2024)"] --> n5
+    n6["`**RQ1: Metric Calibration**`"]
+    n7["`**RQ2: Fault Localisation**`"]
+    n8["`**RQ3: Configuration Trade-offs**`"]
+
+    n3@{ shape: rect}
+    n5@{ shape: rect}
+    n1@{ shape: rect}
+    n4@{ shape: rect}
+    n6@{ shape: text}
+    n7@{ shape: text}
+    n8@{ shape: text}
+    style n3 font-size:24px
+    style n5 font-size:24px,stroke-width:2px,stroke-dasharray: 2,fill:#e6e6e6
+    style n1 font-size:24px
+    style n4 font-size:24px
+    style n6 font-size:24px
+    style n7 font-size:24px
+    style n8 font-size:24px
