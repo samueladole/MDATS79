@@ -29,6 +29,14 @@ with st.sidebar:
     st.subheader("Pipeline Configuration")
     llm_choice = st.selectbox("LLM Model", ["llama3", "mistral"], index=0)
     retrieval_choice = st.selectbox("Retrieval Strategy", ["hybrid", "dense"], index=0)
+    query_type_choice = st.selectbox(
+        "Query Type",
+        ["factoid", "single_relevant", "multi_relevant", "yesno", "summary", "unknown"],
+        index=0,
+        help="Label recorded with this query's telemetry. Matches the BioASQ role "
+        "taxonomy used by the benchmark loader (data/loaders/bioasq.py) — pick "
+        "'unknown' if none apply.",
+    )
     top_k = st.slider("Top-k Chunks", min_value=1, max_value=10, value=5)
     run_eval = st.toggle("Run RAGAS Evaluation", value=True)
     st.divider()
@@ -67,6 +75,7 @@ if run_btn and query_text.strip():
             result = pipeline.query(
                 query_text=query_text,
                 ground_truth=ground_truth.strip() or None,
+                query_type=query_type_choice,
             )
     except Exception as exc:
         st.error(f"Pipeline error: {exc}")
@@ -77,6 +86,7 @@ if run_btn and query_text.strip():
         "query_text": query_text,
         "llm_choice": llm_choice,
         "retrieval_choice": retrieval_choice,
+        "query_type_choice": query_type_choice,
         "top_k": top_k,
         "run_eval": run_eval,
     }
@@ -103,6 +113,7 @@ if st.session_state.last_result:
     st.divider()
     st.caption(
         f"Condition: **{data['llm_choice'].title()} + {data['retrieval_choice'].title()}** "
+        f"· query_type={data.get('query_type_choice', 'unknown')} "
         f"· top_k={data['top_k']} · RAGAS eval: {'on' if data['run_eval'] else 'off'} "
         f"· Query: _{data['query_text'][:100]}_"
     )
