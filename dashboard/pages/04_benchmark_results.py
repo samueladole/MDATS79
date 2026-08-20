@@ -164,8 +164,10 @@ st.caption("|d| < 0.2 negligible · 0.2–0.5 small · 0.5–0.8 medium · > 0.8
 COHENS_D_COMPARISONS = [
     ("llama3", "dense", "mistral", "dense", "LLM effect (Dense)"),
     ("llama3", "hybrid", "mistral", "hybrid", "LLM effect (Hybrid)"),
-    ("llama3", "dense", "llama3", "hybrid", "Retrieval effect (Llama3)"),
-    ("mistral", "dense", "mistral", "hybrid", "Retrieval effect (Mistral)"),
+    # group_a=hybrid, group_b=dense so d = hybrid - dense (positive = hybrid higher),
+    # matching the sign convention used throughout Chapter 4's Cohen's d tables.
+    ("llama3", "hybrid", "llama3", "dense", "Retrieval effect (Llama3)"),
+    ("mistral", "hybrid", "mistral", "dense", "Retrieval effect (Mistral)"),
 ]
 COMPARISON_COLORS = dict(
     zip([c[4] for c in COHENS_D_COMPARISONS], ["#2a78d6", "#008300", "#e87ba4", "#eda100"])
@@ -228,25 +230,27 @@ st.divider()
 # ── Latency & token cost breakdown ────────────────────────────────────────────
 st.subheader("Latency & Token Cost Breakdown")
 st.caption(
-    "Left: mean end-to-end latency split into retrieval vs. generation time per condition. "
-    "Right: mean prompt vs. completion token counts per condition."
+    "Left: mean end-to-end latency decomposed into retrieval, generation, and RAGAS "
+    "evaluation time per condition (all records with telemetry, regardless of whether "
+    "RAGAS scoring itself succeeded). Right: mean prompt vs. completion token counts "
+    "per condition."
 )
 
 col_a, col_b = st.columns(2)
 
 with col_a:
-    latency_means = df.groupby("condition")[["retrieval_ms", "generation_ms"]].mean().reset_index()
+    latency_means = df.groupby("condition")[["retrieval_ms", "generation_ms", "evaluation_ms"]].mean().reset_index()
     latency_long = latency_means.melt(id_vars="condition", var_name="stage", value_name="ms")
     latency_long["stage"] = latency_long["stage"].map(
-        {"retrieval_ms": "Retrieval", "generation_ms": "Generation"}
+        {"retrieval_ms": "Retrieval", "generation_ms": "Generation", "evaluation_ms": "RAGAS Evaluation"}
     )
     fig_lat = px.bar(
         latency_long,
         x="condition",
         y="ms",
         color="stage",
-        category_orders={"condition": conditions_present},
-        color_discrete_map={"Retrieval": "#2a78d6", "Generation": "#eda100"},
+        category_orders={"condition": conditions_present, "stage": ["Retrieval", "Generation", "RAGAS Evaluation"]},
+        color_discrete_map={"Retrieval": "#2a78d6", "Generation": "#eda100", "RAGAS Evaluation": "#e74c3c"},
         barmode="stack",
         labels={"condition": "Condition", "ms": "Mean Latency (ms)", "stage": "Stage"},
         title="Mean Latency Breakdown by Condition",
@@ -368,7 +372,7 @@ st.divider()
 
 # ── Per-dataset breakdown ─────────────────────────────────────────────────────
 if "dataset" in df.columns:
-    st.subheader("Performance by Dataset")
+    st.subheader("Performance by Query Role")
     st.caption(
         "Mean quality scores per BioASQ query role (Phase A retrieval / factoid / summary) "
         "× condition — useful for spotting whether a condition struggles on a specific "
@@ -381,8 +385,9 @@ if "dataset" in df.columns:
         .mean()
         .round(3)
         .reset_index()
+        .rename(columns={"dataset": "query_role"})
     )
-    datasets_present = list(dataset_agg["dataset"].unique())
+    datasets_present = list(dataset_agg["query_role"].unique())
 
     dataset_metric_choice = st.selectbox(
         "Metric to chart",
@@ -395,18 +400,18 @@ if "dataset" in df.columns:
     with col_chart:
         fig_dataset = px.bar(
             dataset_agg,
-            x="dataset",
+            x="query_role",
             y=dataset_metric_choice,
             color="condition",
             barmode="group",
-            category_orders={"condition": conditions_present, "dataset": datasets_present},
+            category_orders={"condition": conditions_present, "query_role": datasets_present},
             color_discrete_map=CONDITION_COLORS,
             labels={
-                "dataset": "Dataset",
+                "query_role": "Query Role",
                 dataset_metric_choice: dataset_metric_choice.replace("_", " ").title(),
                 "condition": "Condition",
             },
-            title=f"{dataset_metric_choice.replace('_', ' ').title()} by Dataset × Condition",
+            title=f"{dataset_metric_choice.replace('_', ' ').title()} by Query Role × Condition",
         )
         fig_dataset.update_layout(height=420, yaxis_range=[0, 1.05], **TRANSPARENT_LAYOUT)
         st.plotly_chart(fig_dataset, width="stretch")
