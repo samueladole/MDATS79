@@ -1,0 +1,82 @@
+%%{init: {"flowchart": {"curve": "basis", "nodeSpacing": 45, "rankSpacing": 55, "padding": 10, "wrappingWidth": 300}, "themeVariables": {"fontFamily": "Helvetica, Arial, sans-serif", "fontSize": "16px", "clusterBkg": "#FCFCE8", "clusterBorder": "#D9D98C"}}}%%
+graph TD
+
+%% ================================================================
+%%  RAGScope — simplified system architecture
+%%  Stages are linked subgraph-to-subgraph (S1 --> S2, not D3 --> P1)
+%%  so each band keeps its internal left-to-right flow in every
+%%  Mermaid renderer, and the whole figure reads straight down.
+%% ================================================================
+
+    classDef data      fill:#2A8F8A,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef pipeline  fill:#684D9E,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef eval      fill:#F07167,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef telemetry fill:#D98A2C,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef dashboard fill:#2874A6,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef exp       fill:#33732F,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef query     fill:#4D4D4D,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+
+    %% ---------- 1. Data ----------
+    subgraph S1 ["1. Data"]
+        direction LR
+        D1["<b>BioASQ Corpus</b>"]
+        D2["<b>Preprocessing & Indexing</b>"]
+        D3["<b>Retrieval Index</b>"]
+        D1 --> D2 --> D3
+    end
+
+    %% ---------- 2. RAG Query Pipeline ----------
+    subgraph S2 ["2. RAG Query Pipeline"]
+        direction LR
+        Q(["<b>User Query</b>"])
+        P1["<b>Dense Retrieval</b>"]
+        P2["<b>Hybrid Retrieval</b>"]
+        P3["<b>LLM Generation (Ollama)</b>"]
+        Q --> P1 --> P3
+        Q --> P2 --> P3
+    end
+
+    %% ---------- 3. Evaluation ----------
+    subgraph S3 ["3. Evaluation"]
+        direction LR
+        E1["<b>RAGAS Runner</b>"]
+        E2["<b>Hallucination Risk</b>"]
+        E1 --> E2
+    end
+
+    %% ---------- 4. Telemetry ----------
+    subgraph S4 ["4. Telemetry"]
+        direction LR
+        T1["<b>Instrumentation</b>"]
+        T2["<b>Telemetry Record</b>"]
+        T3["<b>Statistics</b>"]
+        T1 --> T2 --> T3
+    end
+
+    %% ---------- 5. Dashboard ----------
+    subgraph S5 ["5. Dashboard"]
+        DB["<b>Streamlit Dashboard (5 views)</b>"]
+    end
+
+    %% ---------- 6. Experiments ----------
+    subgraph S6 ["6. Experiments"]
+        direction LR
+        X1["<b>2×2 Factorial Runs</b>"]
+        X2["<b>Results Analysis</b>"]
+        X1 --> X2
+    end
+
+    %% ---------- Spine: one arrow per stage boundary ----------
+    S1 -- "index" --> S2
+    S2 -- "answer + contexts" --> S3
+    S3 -- "scores + traces" --> S4
+    S4 -- "live view" --> S5
+    S4 -- "batch runs" --> S6
+
+    class D1,D2,D3 data;
+    class Q query;
+    class P1,P2,P3 pipeline;
+    class E1,E2 eval;
+    class T1,T2,T3 telemetry;
+    class DB dashboard;
+    class X1,X2 exp;

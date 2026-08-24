@@ -1,0 +1,86 @@
+graph TD
+    %% Define color palette based on your original image
+    classDef data fill:#2A8F8A,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef pipeline fill:#684D9E,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef eval fill:#F07167,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef telemetry fill:#D98A2C,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef dashboard fill:#2874A6,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef exp fill:#33732F,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:5px,ry:5px;
+    classDef query fill:#4D4D4D,stroke:#ffffff,stroke-width:2px,color:#ffffff,rx:20px,ry:20px;
+    classDef transparent fill:none,stroke:none;
+
+    %% 1. Data Stage
+    subgraph Stage1 ["1. Data"]
+        direction LR
+        D1["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>BioASQ Corpus</strong></div>"]
+        D2["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Preprocessing & Indexing</strong></div>"]
+        D3["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Retrieval Index</strong></div>"]
+        D1 --> D2
+        D2 --> D3
+    end
+    class D1,D2,D3 data;
+
+    %% 2. RAG Query Pipeline Stage
+    subgraph Stage2 ["2. RAG Query Pipeline"]
+        direction TB
+        Q(["<span style='white-space: nowrap; padding: 0 15px;'><strong>User Query</strong></span>"]):::query
+        P1["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Dense Retrieval</strong></div>"]
+        P2["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Hybrid Retrieval</strong></div>"]
+        P3["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>LLM Generation (Ollama)</strong></div>"]
+        
+        Q --> P1
+        Q --> P2
+        P1 --> P3
+        P2 --> P3
+    end
+    class P1,P2,P3 pipeline;
+
+    %% Link Data to Pipeline
+    D3 -. index feeds retrieval .-> P1
+    D3 -. index feeds retrieval .-> P2
+
+    %% 3. Evaluation Stage
+    subgraph Stage3 ["3. Evaluation"]
+        direction LR
+        E1["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>RAGAS Runner</strong></div>"]
+        E2["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Hallucination Risk</strong></div>"]
+        E1 --> E2
+    end
+    class E1,E2 eval;
+    
+    P3 --> E1
+
+    %% 4. Telemetry Stage
+    subgraph Stage4 ["4. Telemetry"]
+        direction LR
+        T1["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Instrumentation</strong></div>"]
+        T2["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Telemetry Record</strong></div>"]
+        T3["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Statistics (metrics.py)</strong></div>"]
+        
+        T1 --> T2
+        T2 --> T3
+    end
+    class T1,T2,T3 telemetry;
+
+    E1 --> T1
+
+    %% 5. Dashboard Stage
+    subgraph Stage5 ["5. Dashboard"]
+        DB["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>Streamlit Dashboard (5 views)</strong></div>"]
+    end
+    class DB dashboard;
+
+    T3 --> DB
+    Q -.-> DB
+
+    %% 6. Experiments Stage
+    subgraph Stage6 ["6. Experiments"]
+        direction LR
+        X1["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>run_2x2_factorial.py</strong></div>"]
+        X2["<div style='white-space: nowrap; padding: 10px 20px; text-align: center;'><strong>analyse_results.py</strong></div>"]
+        X1 --> X2
+    end
+    class X1,X2 exp;
+
+    DB --> X1
+    T3 -. feeds .-> X2
