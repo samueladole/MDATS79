@@ -1,0 +1,31 @@
+graph TD
+    %% Custom Styles
+    classDef green fill:#134E3A,stroke:#ffffff,color:#ffffff,rx:8px,ry:8px;
+    classDef purple fill:#4A148C,stroke:#ffffff,color:#ffffff,rx:10px,ry:10px;
+    classDef resultBox fill:#f9f9f9,stroke:#555555,stroke-width:1px,color:#333333,rx:8px,ry:8px,font-size:14px;
+
+    %% Pipeline Nodes
+    P1["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Raw Passages</strong></div>"]:::green
+
+    P2["<div style='white-space: nowrap; padding: 12px 25px; text-align: center;'><strong>Preprocessing</strong></div>"]:::green
+
+    P3["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Chunking</strong></div>"]:::green
+
+    P4["<div style='white-space: nowrap; padding: 10px 30px; text-align: center;'><strong>Embedding</strong></div>"]:::green
+
+    %% Storage Index Nodes
+    I1["<div style='white-space: nowrap; padding: 12px 20px; text-align: center;'><strong>ChromaDB Index (dense)</strong></div>"]:::purple
+
+    I2["<div style='white-space: nowrap; padding: 12px 20px; text-align: center;'><strong>BM25 JSONL Index (sparse)</strong></div>"]:::purple
+
+    %% Connections
+    P1 --> P2
+    P2 --> P3
+    P3 --> P4
+    P4 --> I1
+    P4 --> I2
+
+    %% Result Footer
+    RESULT["<div style='padding: 5px 15px;'><strong>Result</strong></div>"]:::resultBox
+    I1 --> RESULT
+    I2 --> RESULT
