@@ -1,0 +1,88 @@
+%%{init: {"flowchart": {"curve": "basis", "nodeSpacing": 32, "rankSpacing": 42, "padding": 6, "wrappingWidth": 320}, "themeVariables": {"fontFamily": "Helvetica, Arial, sans-serif", "fontSize": "16px"}}}%%
+graph TD
+
+%% RAGScope — system architecture
+%% Nesting carries meaning: Instrumentation wraps stages 2-3;
+%% Experiments (stage 6) wraps stages 2-4 and repeats them.
+
+    classDef data      fill:#2A8F8A,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef pipeline  fill:#684D9E,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef eval      fill:#F07167,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef telemetry fill:#D98A2C,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef dashboard fill:#2874A6,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef exp       fill:#33732F,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef query     fill:#4D4D4D,stroke:#ffffff,stroke-width:2px,color:#ffffff;
+    classDef choice    fill:#FFFFFF,stroke:#4D4D4D,stroke-width:2px,color:#333333;
+
+    subgraph S1 ["1. Data"]
+        direction LR
+        D1["<b>BioASQ Corpus</b>"]
+        D2["<b>Preprocessing &amp; Indexing</b>"]
+        D3["<b>Retrieval Index</b>"]
+        D1 --> D2 --> D3
+    end
+
+    subgraph S6 ["<b>6. Experiments</b> — repeats this region: 4 configurations x 200 queries"]
+        direction TB
+
+        subgraph SI ["<b>Instrumentation</b> — times and counts every step inside"]
+            direction TB
+
+            subgraph S2 ["2. RAG Query Pipeline"]
+                direction LR
+                Q(["<b>User Query</b>"])
+                C{"<b>Retrieval<br/>mode</b>"}
+                P1["<b>Dense Retrieval</b>"]
+                P2["<b>Hybrid Retrieval</b>"]
+                P3["<b>LLM Generation</b>"]
+                Q --> C
+                C -- "either" --> P1 --> P3
+                C -- "or" --> P2 --> P3
+            end
+
+            subgraph S3 ["3. Evaluation"]
+                direction LR
+                E1["<b>RAGAS Runner</b>"]
+                E2["<b>Hallucination Risk</b>"]
+                E1 --> E2
+            end
+
+            S2 -- "answer + contexts" --> S3
+        end
+
+        subgraph S4 ["4. Telemetry"]
+            direction LR
+            T2["<b>Telemetry Record</b>"]
+            T3["<b>Statistics</b>"]
+            T2 --> T3
+        end
+
+        SI -- "timings + scores" --> S4
+
+        X2["<b>Results Analysis</b>"]
+        S4 -- "CSV" --> X2
+    end
+
+    subgraph S5 ["5. Dashboard"]
+        DB["<b>Streamlit Dashboard</b>"]
+    end
+
+    S1 -- "index" --> S6
+    S6 -- "results" --> S5
+
+    class D1,D2,D3 data;
+    class Q query;
+    class C choice;
+    class P1,P2,P3 pipeline;
+    class E1,E2 eval;
+    class T2,T3 telemetry;
+    class DB dashboard;
+    class X2 exp;
+
+    style S6 fill:#EAF4EA,stroke:#33732F,stroke-width:2px;
+    style SI fill:#FBEEDA,stroke:#D98A2C,stroke-width:2px;
+    style S1 fill:#FCFCE8,stroke:#D9D98C,stroke-width:1px;
+    style S2 fill:#FCFCE8,stroke:#D9D98C,stroke-width:1px;
+    style S3 fill:#FCFCE8,stroke:#D9D98C,stroke-width:1px;
+    style S4 fill:#FCFCE8,stroke:#D9D98C,stroke-width:1px;
+    style S5 fill:#FCFCE8,stroke:#D9D98C,stroke-width:1px;
