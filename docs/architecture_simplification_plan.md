@@ -130,7 +130,7 @@ box still has a real, defensible answer to "what does this do and why":
 4. **Evaluation** — RAGAS metrics + composite hallucination risk, via a held-constant
    independent judge (RQ1's mechanism).
 5. **Dashboard** — real-time and retrospective observability (Objective 5).
-6. **Experiments** — the 2×2 factorial run + statistical analysis (Objective 6, RQ3).
+6. **Experiments** — the 2×2 factorial run + statistical analysis (Objective 4, RQ3).
 
 That mapping — 6 boxes to 6 objectives/RQs — is itself a strong thing to be able to point
 at: "every box on this diagram exists because of a specific research question or SMART
