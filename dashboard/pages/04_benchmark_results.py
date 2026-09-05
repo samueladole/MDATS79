@@ -102,31 +102,31 @@ st.plotly_chart(fig_bar, width="stretch")
 st.divider()
 
 # ── Score distributions ───────────────────────────────────────────────────────
-st.subheader("Score Distributions")
-st.caption(
-    "Box shows the interquartile range and median for the selected metric; whiskers "
-    "extend to the min/max excluding outliers, dots are individual outlier queries."
-)
-metric_choice = st.selectbox(
-    "Metric",
-    options=METRICS,
-    format_func=lambda x: x.replace("_", " ").title(),
-)
+# st.subheader("Score Distributions")
+# st.caption(
+#     "Box shows the interquartile range and median for the selected metric; whiskers "
+#     "extend to the min/max excluding outliers, dots are individual outlier queries."
+# )
+# metric_choice = st.selectbox(
+#     "Metric",
+#     options=METRICS,
+#     format_func=lambda x: x.replace("_", " ").title(),
+# )
 
-fig = px.box(
-    df.dropna(subset=[metric_choice]),
-    x="condition",
-    y=metric_choice,
-    color="condition",
-    category_orders={"condition": conditions_present},
-    color_discrete_map=CONDITION_COLORS,
-    points="outliers",
-    labels={"condition": "Condition", metric_choice: metric_choice.replace("_", " ").title()},
-    title=f"{metric_choice.replace('_', ' ').title()} Distribution by Condition",
-)
-fig.update_layout(height=420, showlegend=False, **TRANSPARENT_LAYOUT)
-st.plotly_chart(fig, width="stretch")
-st.divider()
+# fig = px.box(
+#     df.dropna(subset=[metric_choice]),
+#     x="condition",
+#     y=metric_choice,
+#     color="condition",
+#     category_orders={"condition": conditions_present},
+#     color_discrete_map=CONDITION_COLORS,
+#     points="outliers",
+#     labels={"condition": "Condition", metric_choice: metric_choice.replace("_", " ").title()},
+#     title=f"{metric_choice.replace('_', ' ').title()} Distribution by Condition",
+# )
+# fig.update_layout(height=420, showlegend=False, **TRANSPARENT_LAYOUT)
+# st.plotly_chart(fig, width="stretch")
+# st.divider()
 
 # ── Hallucination risk profile ────────────────────────────────────────────────
 st.subheader("Hallucination Risk Profile")
@@ -361,7 +361,7 @@ if len(corr_metrics) >= 2:
     fig_corr.update_layout(
         title="Pearson Correlation — All Metrics",
         height=max(820, 40 * len(labels)),
-        margin=dict(l=0, r=0, t=50, b=100),
+        margin=dict(l=0, r=0, t=250, b=100),
         xaxis=dict(side="top", tickangle=-45),
         **TRANSPARENT_LAYOUT,
     )
@@ -421,6 +421,8 @@ if "dataset" in df.columns:
 
 # ── Raw data table ────────────────────────────────────────────────────────────
 with st.expander("Full Results Table", icon=":material/table_chart:"):
+    # Reassign the index to start at 1
+    df.index = range(1, len(df) + 1)
     st.dataframe(df, width="stretch")
     csv = df.to_csv(index=False)
     st.download_button(
