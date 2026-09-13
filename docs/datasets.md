@@ -167,7 +167,7 @@ Passages are split into overlapping chunks using the `tiktoken` tokeniser (`cl10
 
 | Parameter | Value | Rationale |
 |---|---|---|
-| `chunk_size` | 512 tokens | Fits comfortably within `all-MiniLM-L6-v2`'s 256-token limit after subword tokenisation differences; avoids truncation |
+| `chunk_size` | 512 tokens | Keeps most PubMed abstracts whole (1.10 chunks per passage). Note this *exceeds* `all-MiniLM-L6-v2`'s 256-WordPiece window: 67.7% of chunks are truncated when embedded — see Chapter 3, Sections 3.4.3 and 3.9 |
 | `chunk_overlap` | 64 tokens | Preserves cross-boundary reasoning chains, important for BioASQ's summary-style passages |
 
 **Chunk schema (`Chunk` dataclass):**
