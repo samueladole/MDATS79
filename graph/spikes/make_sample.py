@@ -1,5 +1,12 @@
-"""Sample N chunks from the BM25 corpus, one file each, named by chunk_id."""
-import json, pathlib, sys
+"""Sample N chunks from the BM25 corpus, one file each, named by chunk_id.
+
+Sampling is corpus-principled: an even stride across the whole corpus, with no
+reference to the benchmark queries. A subset seeded from gold passages would
+produce an oracle graph that flatters any later retrieval comparison.
+"""
+import json
+import pathlib
+import sys
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 24
 SRC = pathlib.Path("/Users/samuel/Documents/GitHub/MDATS79/data/bm25_corpus.jsonl")
@@ -8,19 +15,25 @@ OUT.mkdir(exist_ok=True)
 for f in OUT.glob("*.md"):
     f.unlink()
 
+total = sum(1 for _ in SRC.open())
+# oversample ~1.6x to survive the length filter, then trim to exactly N
+stride = max(1, total // int(N * 1.6))
+
 picked = []
 with SRC.open() as fh:
     for i, line in enumerate(fh):
-        if i % 977 == 0:                      # prime stride: unbiased spread
-            r = json.loads(line)
-            if 200 < len(r["text"]) < 2000:
-                picked.append(r)
-        if len(picked) == N:
+        if i % stride == 0:
+            record = json.loads(line)
+            if 200 < len(record["text"]) < 2000:
+                picked.append(record)
+        if len(picked) >= N:
             break
 
-for r in picked:
-    (OUT / f"{r['id'].replace('::', '__')}.md").write_text(r["text"])
+picked = picked[:N]
+for record in picked:
+    name = record["id"].replace("::", "__")
+    (OUT / f"{name}.md").write_text(record["text"])
 
 lens = [len(r["text"]) for r in picked]
-print(f"{len(picked)} chunks -> {OUT}")
+print(f"{len(picked)} chunks -> {OUT}  (corpus {total:,}, stride {stride})")
 print(f"  chars: mean {sum(lens)//len(lens)}, min {min(lens)}, max {max(lens)}")
