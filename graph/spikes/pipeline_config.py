@@ -42,7 +42,7 @@ def build_config(source_file: Path, *, model: str = EXTRACTOR_MODEL,
         "llm_overrides": {
             # Default max_output_tokens is 131072, which exceeds the model's
             # context window and aborts before any LLM call is made.
-            "max_output_tokens": 4096,
+            "max_output_tokens": 8192,
             "context_limit": 32000,
             # Without these the extraction is NOT reproducible: the same
             # passage yielded 4 nodes on one run and 2 on the next.

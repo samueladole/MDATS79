@@ -28,7 +28,11 @@ st.session_state.setdefault("last_result", None)
 with st.sidebar:
     st.subheader("Pipeline Configuration")
     llm_choice = st.selectbox("LLM Model", ["llama3", "mistral"], index=0)
-    retrieval_choice = st.selectbox("Retrieval Strategy", ["hybrid", "dense"], index=0)
+    retrieval_choice = st.selectbox(
+        "Retrieval Strategy", ["hybrid", "dense", "graph"], index=0,
+        help="graph: seeds entities from the query, traverses the knowledge "
+             "graph, and fuses the result with dense retrieval.",
+    )
     query_type_choice = st.selectbox(
         "Query Type",
         ["factoid", "single_relevant", "multi_relevant", "yesno", "summary", "unknown"],
@@ -102,6 +106,82 @@ if run_btn and query_text.strip():
 elif run_btn:
     st.warning("Please enter a query before running.")
 
+
+# ── Graph retrieval panel ─────────────────────────────────────────────────────
+
+
+def _render_graph_panel(telemetry: dict, chunks: list) -> None:
+    """
+    Show why the graph retriever returned what it did.
+
+    This is the distinguishing affordance of graph retrieval: dense retrieval
+    yields a similarity score and no account of itself, whereas this yields an
+    inspectable path — which entities the query matched, how far traversal
+    reached, and which of the returned chunks the graph found rather than the
+    dense leg.
+    """
+    st.divider()
+    st.subheader(":material/hub: Graph Retrieval Path")
+
+    seeds = telemetry.get("graph_seed_labels", []) or []
+    from_graph = telemetry.get("graph_chunks_from_graph_leg", 0)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Seed entities", telemetry.get("graph_seeds_found", 0))
+    c2.metric("Subgraph nodes", telemetry.get("graph_subgraph_nodes", 0))
+    c3.metric("Subgraph edges", telemetry.get("graph_subgraph_edges", 0))
+    c4.metric(
+        "Chunks from graph", from_graph,
+        help="Results the graph surfaced that dense retrieval had not already "
+             "found. Zero means the graph contributed nothing for this query.",
+    )
+
+    if not seeds:
+        st.warning(
+            "No entities in this query matched the graph, so retrieval fell back "
+            "entirely to the dense leg. Expected while the graph covers only part "
+            "of the corpus — the entity simply isn't in it yet."
+        )
+        return
+
+    st.markdown("**Query matched these entities**")
+    st.dataframe(
+        pd.DataFrame([
+            {"Entity": s.get("label", ""),
+             "Matched by": s.get("matcher", ""),
+             "Score": round(float(s.get("score", 0.0)), 4)}
+            for s in seeds
+        ]),
+        hide_index=True, use_container_width=True,
+    )
+
+    graph_chunks = [c for c in chunks if "graph" in (c.metadata or {})]
+    if graph_chunks:
+        st.markdown("**How the graph reached each chunk**")
+        for chunk in graph_chunks:
+            info = chunk.metadata["graph"]
+            via = info.get("via", []) or []
+            origin = "graph only" if info.get("from_graph_leg") else "graph + dense"
+            label = f"`{chunk.chunk_id}` — graph rank {info.get('graph_rank', '?')} ({origin})"
+            with st.expander(label):
+                if via:
+                    st.dataframe(
+                        pd.DataFrame([
+                            {"Contributing entity": v.get("node", ""),
+                             "PageRank mass": v.get("mass", 0.0)} for v in via
+                        ]),
+                        hide_index=True, use_container_width=True,
+                    )
+                else:
+                    st.caption("Reached via the document node rather than a named entity.")
+                st.text(chunk.text[:600] + ("..." if len(chunk.text) > 600 else ""))
+    elif from_graph == 0:
+        st.info(
+            "The graph found seeds but surfaced no chunks the dense leg had missed. "
+            "For this query the two legs agreed."
+        )
+
+
 # ── Render the most recent result ─────────────────────────────────────────────
 # Reads from session_state rather than gating on run_btn, so the result stays
 # on screen across reruns triggered by other widgets (e.g. expanding a chunk
@@ -163,6 +243,8 @@ if st.session_state.last_result:
         result.e2e_ms,
         ran_evaluation=data["run_eval"],
     )
+    if result.retrieval_telemetry.get("strategy") == "graph":
+        _render_graph_panel(result.retrieval_telemetry, result.retrieved_chunks)
     if result.retrieval_telemetry.get("strategy") == "hybrid":
         st.caption(
             "Note: BM25 search doesn't depend on the query embedding, but the current "

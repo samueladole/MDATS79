@@ -57,10 +57,28 @@ def _build_hybrid(
     return retriever
 
 
+def _build_graph(
+    *,
+    store: "VectorStore | None" = None,
+    embedder: "EmbeddingGenerator | None" = None,
+    top_k: int | None = None,
+) -> BaseRetriever:
+    # Imported lazily: loading the graph artefacts is graph-specific and
+    # networkx should not be imported by callers using another strategy.
+    from pipeline.retrieval.graph import GraphRetriever
+
+    return GraphRetriever(
+        vector_store=store,
+        embedding_generator=embedder,
+        top_k=top_k,
+    )
+
+
 #: Strategy name -> factory. Each factory owns its own asset loading.
 RETRIEVERS: dict[str, Callable[..., BaseRetriever]] = {
     "dense": _build_dense,
     "hybrid": _build_hybrid,
+    "graph": _build_graph,
 }
 
 

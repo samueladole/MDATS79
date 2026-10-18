@@ -25,10 +25,52 @@ from pathlib import Path
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).parent))
 
+import re  # noqa: E402
+
 import networkx as nx  # noqa: E402
 
 from docling_graph import run_pipeline  # noqa: E402
 from pipeline_config import build_config  # noqa: E402
+
+# Entity names the extractor emits when it finds nothing. Left in, these merge
+# into a junk hub that dominates PageRank — in spike S3 the top traversal hits
+# were all "none" nodes.
+JUNK_NAME = re.compile(
+    r"^\s*(none|n/?a|not applicable|unknown|null|no items|not specified|none / .*)\s*$",
+    re.IGNORECASE,
+)
+# The per-document root. docling-graph keys it on graph_id_fields=["source_id"],
+# which the extractor leaves null, so every chunk's root collapses into a shared
+# node — producing degree-175 super-hubs and fake connectivity (spike S3).
+ROOT_CLASS = "BiomedicalAbstract"
+
+
+def node_name(data: dict) -> str:
+    return str(data.get("name") or data.get("label") or "")
+
+
+def normalise(g: nx.DiGraph, chunk_id: str) -> nx.DiGraph:
+    """Make a per-chunk graph safe to compose into the corpus graph.
+
+    1. Re-key the document root to this chunk, so roots never merge.
+    2. Drop junk-named entities and their edges.
+    """
+    out = nx.DiGraph()
+    remap: dict[str, str] = {}
+    for nid, data in g.nodes(data=True):
+        if data.get("__class__") == ROOT_CLASS:
+            remap[nid] = f"DOC::{chunk_id}"
+            out.add_node(remap[nid], **{**data, "source_id": chunk_id,
+                                        "name": chunk_id, "__class__": ROOT_CLASS})
+        elif JUNK_NAME.match(node_name(data)):
+            continue
+        else:
+            remap[nid] = nid
+            out.add_node(nid, **data)
+    for u, v, data in g.edges(data=True):
+        if u in remap and v in remap:
+            out.add_edge(remap[u], remap[v], **data)
+    return out
 
 HERE = Path(__file__).parent
 DOCS = HERE / "docs"
@@ -43,8 +85,9 @@ def chunk_id_from_stem(stem: str) -> str:
 def extract_one(path: Path) -> tuple[str, nx.DiGraph | None, float, str | None]:
     t0 = time.time()
     try:
+        chunk_id = chunk_id_from_stem(path.stem)
         ctx = run_pipeline(build_config(path))
-        return chunk_id_from_stem(path.stem), ctx.knowledge_graph, time.time() - t0, None
+        return chunk_id, normalise(ctx.knowledge_graph, chunk_id), time.time() - t0, None
     except Exception as exc:  # noqa: BLE001
         return chunk_id_from_stem(path.stem), None, time.time() - t0, type(exc).__name__
 
@@ -104,6 +147,14 @@ def main(concurrency: int = 8) -> None:
         "nodes_spanning_multiple_chunks": multi,
         "pct_nodes_cross_chunk": round(100 * multi / max(unique_nodes, 1), 1),
         "extractor": "llama3.2:latest",
+        "doc_nodes": sum(1 for _, d in merged.nodes(data=True)
+                         if d.get("__class__") == ROOT_CLASS),
+        "entity_nodes": sum(1 for _, d in merged.nodes(data=True)
+                            if d.get("__class__") != ROOT_CLASS),
+        "entity_entity_edges": sum(
+            1 for u, v in merged.edges()
+            if merged.nodes[u].get("__class__") != ROOT_CLASS
+            and merged.nodes[v].get("__class__") != ROOT_CLASS),
     }
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print("\n=== BUILD COMPLETE ===")

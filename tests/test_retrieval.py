@@ -314,7 +314,7 @@ class TestRetrieverRegistry:
         from pipeline.retrieval import build_retriever
 
         with pytest.raises(ValueError, match="Unknown retrieval strategy"):
-            build_retriever("graph")
+            build_retriever("definitely-not-a-strategy")
 
     def test_error_names_the_valid_strategies(self):
         from pipeline.retrieval import build_retriever

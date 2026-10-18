@@ -105,7 +105,11 @@ def build_record(
                 "chunk_id": c.chunk_id,
                 "text": c.text[:500],  # truncated for log compactness
                 "score": round(c.score, 4),
+                "score_kind": c.score_kind,
                 "dataset": c.metadata.get("dataset", ""),
+                # present only for graph retrieval: which seed entities reached
+                # this chunk, and via which nodes
+                **({"graph": c.metadata["graph"]} if "graph" in c.metadata else {}),
             }
             for c in retrieved_chunks
         ],
@@ -114,6 +118,22 @@ def build_record(
         "dense_search_ms": round(retrieval_telemetry.get("dense_search_ms", 0.0), 2),
         "bm25_search_ms": round(retrieval_telemetry.get("bm25_search_ms", 0.0), 2),
         "rrf_fusion_ms": round(retrieval_telemetry.get("rrf_fusion_ms", 0.0), 2),
+        # Graph retrieval stages. Timing keys are whitelisted here rather than
+        # passed through generically, so a key absent from this list is
+        # silently dropped from every persisted record.
+        "graph_seed_ms": round(retrieval_telemetry.get("graph_seed_ms", 0.0), 2),
+        "graph_traverse_ms": round(retrieval_telemetry.get("graph_traverse_ms", 0.0), 2),
+        "graph_score_ms": round(retrieval_telemetry.get("graph_score_ms", 0.0), 2),
+        # Graph diagnostics. graph_chunks_from_graph_leg is the one that says
+        # whether the graph did anything at all: if it is 0, the strategy
+        # degenerated to dense retrieval with extra steps.
+        "graph_seeds_found": retrieval_telemetry.get("graph_seeds_found", 0),
+        "graph_seed_labels": retrieval_telemetry.get("graph_seed_labels", []),
+        "graph_subgraph_nodes": retrieval_telemetry.get("graph_subgraph_nodes", 0),
+        "graph_subgraph_edges": retrieval_telemetry.get("graph_subgraph_edges", 0),
+        "graph_chunks_from_graph_leg": retrieval_telemetry.get(
+            "graph_chunks_from_graph_leg", 0),
+        "score_kind": retrieval_telemetry.get("score_kind", ""),
         "retrieval_ms": round(retrieval_telemetry.get("retrieval_ms", 0.0), 2),
         # ── Generation ────────────────────────────────────────────────────────
         "answer": answer,

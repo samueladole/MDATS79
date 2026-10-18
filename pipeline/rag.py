@@ -58,7 +58,7 @@ except ImportError:
 
 
 LLMChoice = Literal["llama3", "mistral"]
-RetrievalChoice = Literal["dense", "hybrid"]
+RetrievalChoice = Literal["dense", "hybrid", "graph"]
 
 app = typer.Typer(add_completion=False)
 

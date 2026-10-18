@@ -126,7 +126,25 @@ for i, chunk in enumerate(chunks, 1):
         similarity_meter_html(score, label=f"Chunk {i} similarity"),
         unsafe_allow_html=True,
     )
-    with st.expander(f"Chunk {i} — dataset: {chunk.get('dataset', '?')} | {chunk.get('chunk_id', '')}"):
+    graph_info = chunk.get("graph")
+    label = f"Chunk {i} — dataset: {chunk.get('dataset', '?')} | {chunk.get('chunk_id', '')}"
+    if graph_info:
+        origin = "graph only" if graph_info.get("from_graph_leg") else "graph + dense"
+        label += f"  ·  graph rank {graph_info.get('graph_rank', '?')} ({origin})"
+    with st.expander(label):
+        if graph_info:
+            # Graph retrieval records why a chunk was returned, which a
+            # similarity score alone cannot express.
+            via = graph_info.get("via", []) or []
+            if via:
+                st.caption("Reached via these graph entities:")
+                st.dataframe(
+                    [{"Entity": v.get("node", ""), "PageRank mass": v.get("mass", 0.0)}
+                     for v in via],
+                    hide_index=True, use_container_width=True,
+                )
+            else:
+                st.caption("Reached via the document node rather than a named entity.")
         st.markdown(chunk.get("text", ""))
 
 # ── Raw JSON ──────────────────────────────────────────────────────────────────

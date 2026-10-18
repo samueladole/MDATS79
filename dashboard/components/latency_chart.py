@@ -61,6 +61,9 @@ STAGE_PHASE = {
     "Dense Search": "RETRIEVAL",
     "BM25 Search": "RETRIEVAL",
     "RRF Fusion": "RETRIEVAL",
+    "Entity Seeding": "RETRIEVAL",
+    "Graph Traversal": "RETRIEVAL",
+    "Chunk Scoring": "RETRIEVAL",
     "LLM Generation": "GENERATION",
     "RAGAS Evaluation": "EVALUATION",
 }
@@ -252,6 +255,14 @@ def pipeline_flow_sankey(
         stages += [
             ("Dense Search", retrieval_telemetry.get("dense_search_ms", 0.0)),
             ("BM25 Search", retrieval_telemetry.get("bm25_search_ms", 0.0)),
+            ("RRF Fusion", retrieval_telemetry.get("rrf_fusion_ms", 0.0)),
+        ]
+    elif strategy == "graph":
+        stages += [
+            ("Dense Search", retrieval_telemetry.get("dense_search_ms", 0.0)),
+            ("Entity Seeding", retrieval_telemetry.get("graph_seed_ms", 0.0)),
+            ("Graph Traversal", retrieval_telemetry.get("graph_traverse_ms", 0.0)),
+            ("Chunk Scoring", retrieval_telemetry.get("graph_score_ms", 0.0)),
             ("RRF Fusion", retrieval_telemetry.get("rrf_fusion_ms", 0.0)),
         ]
     else:

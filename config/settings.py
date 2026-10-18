@@ -22,7 +22,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #: ``pipeline.retrieval.RETRIEVERS`` asserts its keys match this at import time,
 #: so the two cannot drift. Names must be single tokens: the experiment runner's
 #: ``--conditions`` parser splits labels on '_' and expects exactly two parts.
-RETRIEVAL_STRATEGIES: tuple[str, ...] = ("dense", "hybrid")
+RETRIEVAL_STRATEGIES: tuple[str, ...] = ("dense", "hybrid", "graph")
 
 
 class Settings(BaseSettings):
@@ -130,6 +130,16 @@ class Settings(BaseSettings):
     @property
     def chroma_url(self) -> str:
         return f"http://{self.chroma_host}:{self.chroma_port}"
+
+    # ── Graph retrieval ───────────────────────────────────────────────────────
+    graph_path: Path = Field(
+        default=Path("data/graph/graph.json"),
+        description="NetworkX node-link JSON produced by the offline graph builder.",
+    )
+    graph_node_chunks_path: Path = Field(
+        default=Path("data/graph/node_to_chunks.json"),
+        description="{node_id: [chunk_id, ...]} provenance index for the graph.",
+    )
 
     @field_validator("retrieval_strategy")
     @classmethod

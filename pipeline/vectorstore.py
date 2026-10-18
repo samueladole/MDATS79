@@ -37,7 +37,14 @@ class RetrievedChunk:
     ----------
     chunk_id   : Unique identifier (``{doc_id}::chunk_{index}``).
     text       : Chunk text content.
-    score      : Cosine similarity score in [0, 1]. Higher = more similar.
+    score      : Relevance score, higher = more relevant. **The scale depends
+                 on the retrieval strategy and scores are NOT comparable
+                 across strategies** — dense returns cosine similarity
+                 (typically ~0.75), hybrid returns a Reciprocal Rank Fusion
+                 score (typically ~0.016). Read ``score_kind`` before
+                 comparing or aggregating.
+    score_kind : Which scale ``score`` is on: ``"cosine"``, ``"rrf"`` or
+                 ``"none"`` (a plain browse, where score is fixed at 0.0).
     metadata   : Arbitrary metadata stored alongside the chunk.
     embedding  : The stored dense vector, if fetched (``None`` otherwise —
                  most methods don't request it, since it's the most
@@ -49,6 +56,7 @@ class RetrievedChunk:
     text: str
     score: float
     metadata: dict
+    score_kind: str = "cosine"
     embedding: list[float] | None = field(default=None, repr=False)
 
 
@@ -253,6 +261,36 @@ class VectorStore:
         return len(result["ids"])
 
     @_reconnect_on_stale_collection
+    @_reconnect_on_stale_collection
+    def get_by_ids(self, chunk_ids: list[str]) -> dict[str, RetrievedChunk]:
+        """
+        Fetch specific chunks by id, returning ``{chunk_id: RetrievedChunk}``.
+
+        Needed by any retriever that identifies chunks by some means other than
+        a vector search — the graph retriever reaches chunks through entity
+        provenance, so most of its hits are absent from the dense result set.
+        Without this, such chunks can only be constructed as stubs with empty
+        metadata, which makes ``build_record`` log ``"dataset": ""`` for them
+        and silently empties the per-dataset breakdown in the analysis.
+
+        Missing ids are omitted rather than raising. ``score`` is 0.0 here:
+        this is a hydration lookup, and the caller supplies the ranking.
+        """
+        if not chunk_ids:
+            return {}
+        result = self._collection.get(
+            ids=list(chunk_ids), include=["documents", "metadatas"]
+        )
+        return {
+            cid: RetrievedChunk(
+                chunk_id=cid, text=text or "", score=0.0,
+                metadata=meta or {}, score_kind="none",
+            )
+            for cid, text, meta in zip(
+                result["ids"], result["documents"], result["metadatas"]
+            )
+        }
+
     def get_chunks(
         self,
         where: dict | None = None,
@@ -275,7 +313,7 @@ class VectorStore:
             kwargs["where"] = where
         result = self._collection.get(**kwargs)
         return [
-            RetrievedChunk(chunk_id=cid, text=text, score=0.0, metadata=meta or {})
+            RetrievedChunk(chunk_id=cid, text=text, score=0.0, metadata=meta or {}, score_kind="none")
             for cid, text, meta in zip(result["ids"], result["documents"], result["metadatas"])
         ]
 
