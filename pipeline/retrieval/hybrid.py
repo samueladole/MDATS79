@@ -36,6 +36,7 @@ from rank_bm25 import BM25Okapi
 
 from config.settings import settings
 from pipeline.embeddings import EmbeddingGenerator, get_embedding_generator
+from pipeline.retrieval.base import BaseRetriever
 from pipeline.vectorstore import RetrievedChunk, VectorStore, get_vector_store
 from telemetry.timer import Timer
 
@@ -43,7 +44,7 @@ from telemetry.timer import Timer
 RRF_K = 60
 
 
-class HybridRetriever:
+class HybridRetriever(BaseRetriever):
     """
     Retrieves chunks by fusing BM25 and dense similarity rankings via RRF.
 
@@ -62,6 +63,10 @@ class HybridRetriever:
                           BM25 weight = 1 - dense_weight.
                           Defaults to ``settings.hybrid_dense_weight``.
     """
+
+    @property
+    def strategy_name(self) -> str:
+        return "hybrid"
 
     def __init__(
         self,

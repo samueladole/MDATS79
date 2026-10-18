@@ -18,6 +18,13 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+#: Canonical retrieval strategy names — the single source of truth.
+#: ``pipeline.retrieval.RETRIEVERS`` asserts its keys match this at import time,
+#: so the two cannot drift. Names must be single tokens: the experiment runner's
+#: ``--conditions`` parser splits labels on '_' and expects exactly two parts.
+RETRIEVAL_STRATEGIES: tuple[str, ...] = ("dense", "hybrid")
+
+
 class Settings(BaseSettings):
     """
     Project-wide settings loaded from the .env file.
@@ -127,9 +134,10 @@ class Settings(BaseSettings):
     @field_validator("retrieval_strategy")
     @classmethod
     def validate_retrieval_strategy(cls, v: str) -> str:
-        allowed = {"dense", "hybrid"}
-        if v not in allowed:
-            raise ValueError(f"retrieval_strategy must be one of {allowed}, got '{v}'")
+        if v not in RETRIEVAL_STRATEGIES:
+            raise ValueError(
+                f"retrieval_strategy must be one of {set(RETRIEVAL_STRATEGIES)}, got '{v}'"
+            )
         return v
 
     @field_validator("default_llm")

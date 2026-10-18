@@ -22,11 +22,12 @@ from loguru import logger
 
 from config.settings import settings
 from pipeline.embeddings import EmbeddingGenerator, get_embedding_generator
+from pipeline.retrieval.base import BaseRetriever
 from pipeline.vectorstore import RetrievedChunk, VectorStore, get_vector_store
 from telemetry.timer import Timer
 
 
-class DenseRetriever:
+class DenseRetriever(BaseRetriever):
     """
     Retrieves the top-k most semantically similar chunks for a given query.
 
@@ -36,6 +37,10 @@ class DenseRetriever:
     embedding_generator : EmbeddingGenerator instance. Defaults to the module singleton.
     top_k             : Number of chunks to retrieve. Defaults to ``settings.top_k``.
     """
+
+    @property
+    def strategy_name(self) -> str:
+        return "dense"
 
     def __init__(
         self,

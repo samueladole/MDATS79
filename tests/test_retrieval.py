@@ -293,3 +293,55 @@ class TestVectorStore:
             info = store.collection_info()
             assert info["chunk_count"] == 42_000
             assert info["collection_name"] == "ragscope_corpus"
+
+
+# ── Strategy registry ─────────────────────────────────────────────────────────
+
+
+class TestRetrieverRegistry:
+    """
+    Guards the dispatch path.
+
+    Regression: dispatch in ``RAGPipeline.__init__`` was previously
+    ``if strategy == "dense": ... else: <hybrid>``. Any unrecognised name —
+    including a typo or a not-yet-implemented strategy — silently ran hybrid
+    retrieval while ``build_record`` labelled the telemetry row with the name
+    that was requested. The run completed and produced plausible-looking
+    results, so the corruption was invisible in the output.
+    """
+
+    def test_unknown_strategy_raises(self):
+        from pipeline.retrieval import build_retriever
+
+        with pytest.raises(ValueError, match="Unknown retrieval strategy"):
+            build_retriever("graph")
+
+    def test_error_names_the_valid_strategies(self):
+        from pipeline.retrieval import build_retriever
+
+        with pytest.raises(ValueError, match="dense"):
+            build_retriever("nonsense")
+
+    def test_registry_matches_canonical_strategy_list(self):
+        """The validator and the registry must not drift apart."""
+        from config.settings import RETRIEVAL_STRATEGIES
+        from pipeline.retrieval import RETRIEVERS
+
+        assert set(RETRIEVERS) == set(RETRIEVAL_STRATEGIES)
+
+    def test_strategy_names_are_single_token(self):
+        """``--conditions`` splits on '_' and expects exactly 2 parts, so a
+        strategy name containing an underscore is silently dropped."""
+        from pipeline.retrieval import RETRIEVERS
+
+        for name in RETRIEVERS:
+            assert "_" not in name, f"strategy {name!r} would break condition parsing"
+
+    def test_retrievers_implement_the_base_interface(self):
+        from pipeline.retrieval import BaseRetriever
+        from pipeline.retrieval.dense import DenseRetriever
+        from pipeline.retrieval.hybrid import HybridRetriever
+
+        for cls, expected in ((DenseRetriever, "dense"), (HybridRetriever, "hybrid")):
+            assert issubclass(cls, BaseRetriever)
+            assert cls.__new__(cls).strategy_name == expected

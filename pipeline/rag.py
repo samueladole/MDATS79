@@ -40,9 +40,7 @@ from pipeline.embeddings import get_embedding_generator
 from pipeline.generation.llama3 import Llama3Client
 from pipeline.generation.llm_client import BaseLLMClient, GenerationResponse
 from pipeline.generation.mistral import MistralClient
-from pipeline.ingestion import load_bm25_corpus
-from pipeline.retrieval.dense import DenseRetriever
-from pipeline.retrieval.hybrid import HybridRetriever
+from pipeline.retrieval import BaseRetriever, build_retriever
 from pipeline.vectorstore import RetrievedChunk, get_vector_store
 from telemetry.logger import TelemetryLogger, build_record, get_telemetry_logger
 from telemetry.timer import Timer
@@ -186,22 +184,15 @@ class RAGPipeline:
         store = get_vector_store()
         embedder = get_embedding_generator()
 
-        if retrieval_strategy == "dense":
-            self._retriever = DenseRetriever(
-                vector_store=store,
-                embedding_generator=embedder,
-                top_k=self.top_k,
-            )
-        else:
-            hybrid = HybridRetriever(
-                vector_store=store,
-                embedding_generator=embedder,
-                top_k=self.top_k,
-            )
-            # Load the persisted BM25 corpus and build the index.
-            ids, texts = load_bm25_corpus()
-            hybrid.build_bm25_index(ids, texts)
-            self._retriever = hybrid
+        # build_retriever raises on an unknown strategy. The previous inline
+        # if/else fell through to hybrid for any name that was not "dense",
+        # which produced telemetry labelled with a strategy that never ran.
+        self._retriever: BaseRetriever = build_retriever(
+            retrieval_strategy,
+            store=store,
+            embedder=embedder,
+            top_k=self.top_k,
+        )
 
         logger.info(
             f"RAG pipeline ready — "
