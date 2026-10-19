@@ -3,10 +3,15 @@ RAGScope Dashboard — Page 5: Knowledge Base
 ===============================================
 Read-only view into the ChromaDB collection backing the RAG pipeline:
 collection stats, per-dataset composition, a metadata-filterable chunk
-browser, and a semantic search preview against the live index.
+browser, a semantic search preview against the live index, and the
+knowledge graph built over the corpus for graph retrieval.
 """
 
 from __future__ import annotations
+
+import json
+from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -202,3 +207,165 @@ if search_query:
         st.dataframe(pd.DataFrame(result_rows), width="stretch", hide_index=True)
     else:
         st.info("No results.")
+
+
+# ── Knowledge graph ───────────────────────────────────────────────────────────
+st.divider()
+st.subheader("Knowledge Graph")
+st.caption(
+    "Entities and relations extracted from the corpus, used by the `graph` "
+    "retrieval strategy to reach chunks through entity provenance rather than "
+    "vector similarity."
+)
+
+
+@st.cache_data(show_spinner=False)
+def _load_graph_summary(graph_path: str, nc_path: str, manifest_path: str) -> dict | None:
+    """Summarise the graph artefacts. Returns None if they haven't been built."""
+    gp, ncp = Path(graph_path), Path(nc_path)
+    if not gp.exists() or not ncp.exists():
+        return None
+    data = json.loads(gp.read_text())
+    node_chunks = json.loads(ncp.read_text())
+    manifest = {}
+    mp = Path(manifest_path)
+    if mp.exists():
+        manifest = json.loads(mp.read_text())
+
+    nodes = data.get("nodes", [])
+    links = data.get("edges", data.get("links", []))
+    is_doc = lambda n: str(n.get("id", "")).startswith("DOC::")  # noqa: E731
+    classes = Counter(
+        n.get("__class__", "?") for n in nodes if not is_doc(n)
+    )
+    labels = Counter(e.get("label", "?") for e in links)
+    ent_ids = {n["id"] for n in nodes if not is_doc(n)}
+    ent_ent = sum(
+        1 for e in links
+        if e.get("source") in ent_ids and e.get("target") in ent_ids
+    )
+    covered = {c for v in node_chunks.values() for c in v}
+    return {
+        "nodes": len(nodes),
+        "edges": len(links),
+        "entities": len(ent_ids),
+        "documents": len(nodes) - len(ent_ids),
+        "classes": dict(classes.most_common()),
+        "edge_labels": dict(labels.most_common()),
+        "entity_entity_edges": ent_ent,
+        "chunks_covered": len(covered),
+        "manifest": manifest,
+    }
+
+
+summary = _load_graph_summary(
+    str(settings.graph_path), str(settings.graph_node_chunks_path),
+    str(Path(settings.graph_path).parent / "manifest.json"),
+)
+
+if summary is None:
+    st.info(
+        f"No knowledge graph found at `{settings.graph_path}`. "
+        "Build one with `graph/spikes/build_subset.py` to enable the `graph` "
+        "retrieval strategy."
+    )
+else:
+    coverage = 100 * summary["chunks_covered"] / total_chunks if total_chunks else 0.0
+
+    g1, g2, g3, g4 = st.columns(4)
+    g1.metric("Entities", f"{summary['entities']:,}")
+    g2.metric("Relations", f"{summary['edges']:,}")
+    g3.metric("Chunks covered", f"{summary['chunks_covered']:,}")
+    g4.metric(
+        "Corpus coverage", f"{coverage:.1f}%",
+        help="Share of the indexed corpus the graph spans. The graph retrieval "
+             "strategy can only reach chunks inside this slice.",
+    )
+
+    # Coverage is the single most important caveat on anything the graph does,
+    # so it is stated here rather than left for a reader to infer.
+    if coverage < 50:
+        st.warning(
+            f"**The graph covers {coverage:.1f}% of the corpus** "
+            f"({summary['chunks_covered']:,} of {total_chunks:,} chunks). "
+            "Dense retrieval searches the whole corpus, so in the fused `graph` "
+            "strategy the dense leg will dominate: a chunk found only by the "
+            "graph cannot currently displace dense's top results. Treat graph "
+            "retrieval as a demonstration of the mechanism, not a quality "
+            "comparison, until coverage matches."
+        )
+
+    c_left, c_right = st.columns(2)
+    with c_left:
+        st.markdown("**Entity types**")
+        if summary["classes"]:
+            df_cls = pd.DataFrame(
+                [{"Type": k, "Count": v} for k, v in summary["classes"].items()]
+            )
+            st.plotly_chart(
+                px.bar(df_cls, x="Count", y="Type", orientation="h",
+                       color_discrete_sequence=["#2a78d6"]).update_layout(
+                    height=240, margin=dict(l=0, r=0, t=10, b=0), showlegend=False),
+                use_container_width=True,
+            )
+    with c_right:
+        st.markdown("**Relation types**")
+        if summary["edge_labels"]:
+            df_lbl = pd.DataFrame(
+                [{"Relation": k, "Count": v} for k, v in summary["edge_labels"].items()]
+            )
+            st.plotly_chart(
+                px.bar(df_lbl, x="Count", y="Relation", orientation="h",
+                       color_discrete_sequence=["#24a35a"]).update_layout(
+                    height=240, margin=dict(l=0, r=0, t=10, b=0), showlegend=False),
+                use_container_width=True,
+            )
+
+    # Entity-entity edges are the relational signal; edges to document nodes
+    # only encode co-occurrence, which dense retrieval already approximates.
+    ent_ent = summary["entity_entity_edges"]
+    st.caption(
+        f"Of {summary['edges']:,} relations, **{ent_ent:,} connect two entities** "
+        f"(true relational structure); the remaining "
+        f"{summary['edges'] - ent_ent:,} connect an entity to its source document "
+        f"(co-occurrence). Entities: {summary['entities']:,} across "
+        f"{summary['documents']:,} document nodes."
+    )
+
+    man = summary.get("manifest") or {}
+    if man:
+        with st.expander("Build provenance", icon=":material/history:"):
+            st.json({
+                "extractor": man.get("extractor"),
+                "chunks_attempted": man.get("chunks_attempted"),
+                "chunks_ok": man.get("chunks_ok"),
+                "failures": len(man.get("failures", []) or []),
+                "s_per_chunk": man.get("s_per_chunk"),
+                "dedup_ratio": man.get("dedup_ratio"),
+                "pct_nodes_cross_chunk": man.get("pct_nodes_cross_chunk"),
+            })
+
+    # ── Entity browser ────────────────────────────────────────────────────────
+    st.markdown("**Entity Browser**")
+    term = st.text_input(
+        "Filter entities", placeholder="e.g. aspirin, kinase, diabetes",
+        key="graph_entity_filter",
+    )
+    node_chunks = json.loads(Path(settings.graph_node_chunks_path).read_text())
+    graph_raw = json.loads(Path(settings.graph_path).read_text())
+    rows = []
+    for n in graph_raw.get("nodes", []):
+        nid = str(n.get("id", ""))
+        if nid.startswith("DOC::"):
+            continue
+        name = n.get("name") or n.get("label") or ""
+        if term and term.lower() not in str(name).lower():
+            continue
+        rows.append({
+            "Entity": name,
+            "Type": n.get("__class__", "?"),
+            "Chunks": len(node_chunks.get(nid, [])),
+        })
+    rows.sort(key=lambda r: (-r["Chunks"], str(r["Entity"])))
+    st.caption(f"{len(rows):,} entities" + (f" matching '{term}'" if term else ""))
+    st.dataframe(pd.DataFrame(rows[:200]), hide_index=True, use_container_width=True)

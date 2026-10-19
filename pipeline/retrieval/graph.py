@@ -98,6 +98,9 @@ class GraphRetriever(BaseRetriever):
     dense_weight    : RRF weight for the dense ranking; graph gets 1 - this.
     max_seeds       : Cap on seed entities per query.
     degree_cap      : Skip expansion through nodes above this degree.
+    fuse_dense      : Fuse with dense retrieval (default). Set False to return
+                      graph-only results, which is what demonstrates the
+                      traversal mechanism while graph coverage is partial.
     """
 
     score_kind = "rrf"
@@ -119,6 +122,7 @@ class GraphRetriever(BaseRetriever):
         max_seeds: int = 10,
         degree_cap: int = DEFAULT_DEGREE_CAP,
         seed_cos_threshold: float = 0.55,
+        fuse_dense: bool = True,
     ) -> None:
         super().__init__(top_k=top_k)
         self._store = vector_store or get_vector_store()
@@ -137,6 +141,14 @@ class GraphRetriever(BaseRetriever):
         self.max_seeds = max_seeds
         self.degree_cap = degree_cap
         self.seed_cos_threshold = seed_cos_threshold
+        # When False the dense leg is skipped and results come from graph
+        # traversal alone. Needed because RRF at weights 0.6/0.4 and k=60
+        # cannot promote a graph-only chunk into a small top-k: graph rank 1
+        # scores 0.4/61 = 0.00656 against dense rank 5 at 0.6/65 = 0.00923.
+        # Fused mode therefore lets the graph re-rank what dense already found
+        # but never introduce anything, which hides the mechanism entirely
+        # while graph coverage is below dense's.
+        self.fuse_dense = fuse_dense
 
         gp = Path(graph_path or settings.graph_path)
         ncp = Path(node_chunks_path or settings.graph_node_chunks_path)
@@ -280,7 +292,9 @@ class GraphRetriever(BaseRetriever):
         with Timer("embed_query") as embed_t:
             query_vec = self._embedder.embed_query(query)
         with Timer("dense_search") as dense_t:
-            dense_chunks, _ = self._dense.retrieve(query, top_k=self.dense_candidates)
+            dense_chunks = []
+            if self.fuse_dense:
+                dense_chunks, _ = self._dense.retrieve(query, top_k=self.dense_candidates)
         with Timer("graph_seed") as seed_t:
             seeds = self._seed(query, query_vec)
         with Timer("graph_traverse") as trav_t:
@@ -327,6 +341,7 @@ class GraphRetriever(BaseRetriever):
         telemetry = {
             "strategy": "graph",
             "score_kind": self.score_kind,
+            "fuse_dense": self.fuse_dense,
             "top_k": k,
             "dense_candidates": self.dense_candidates,
             "graph_candidates": self.graph_candidates,

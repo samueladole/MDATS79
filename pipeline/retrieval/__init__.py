@@ -67,10 +67,13 @@ def _build_graph(
     # networkx should not be imported by callers using another strategy.
     from pipeline.retrieval.graph import GraphRetriever
 
+    from config.settings import settings
+
     return GraphRetriever(
         vector_store=store,
         embedding_generator=embedder,
         top_k=top_k,
+        fuse_dense=settings.graph_fuse_dense,
     )
 
 

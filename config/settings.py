@@ -141,6 +141,15 @@ class Settings(BaseSettings):
         description="{node_id: [chunk_id, ...]} provenance index for the graph.",
     )
 
+    graph_fuse_dense: bool = Field(
+        default=True,
+        description=(
+            "Fuse graph retrieval with the dense leg. Set False to return "
+            "graph-only results — useful while graph coverage is below the "
+            "dense index's, where fusion cannot surface graph-only chunks."
+        ),
+    )
+
     @field_validator("retrieval_strategy")
     @classmethod
     def validate_retrieval_strategy(cls, v: str) -> str:
