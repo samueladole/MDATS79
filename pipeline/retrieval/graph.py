@@ -64,6 +64,21 @@ def _norm(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text.lower())
 
 
+def _dedupe_labels(seeds: list[dict]) -> list[dict]:
+    """One row per distinct surface form, keeping the best-scoring match.
+
+    The builder's alias merging is weak, so the same entity can exist as
+    several nodes with identical names. All of them are seeded (recall), but
+    reporting each label once keeps the provenance panel readable.
+    """
+    best: dict[str, dict] = {}
+    for s in seeds:
+        key = _norm(s["label"])
+        if key not in best or s["score"] > best[key]["score"]:
+            best[key] = {"label": s["label"], "matcher": s["matcher"], "score": s["score"]}
+    return sorted(best.values(), key=lambda h: -h["score"])
+
+
 class GraphRetriever(BaseRetriever):
     """
     Retrieves chunks by seeding entities from the query and traversing the
@@ -237,10 +252,13 @@ class GraphRetriever(BaseRetriever):
             else:
                 chunk_ids = self._node_chunks.get(nid, [])
             label = self._graph.nodes.get(node, {}).get("name", nid)
+            is_doc = nid.startswith(DOC_PREFIX)
             for cid in chunk_ids:
                 scores[cid] += mass
                 counts[cid] += 1
-                if len(contributors[cid]) < 5:
+                # Document nodes carry PageRank mass but are not entities, so
+                # they are excluded from the human-readable "reached via" trail.
+                if not is_doc and len(contributors[cid]) < 5:
                     contributors[cid].append({"node": label, "mass": round(mass, 5)})
         normalised = {
             cid: s / math.sqrt(counts[cid]) for cid, s in scores.items() if counts[cid]
@@ -325,10 +343,7 @@ class GraphRetriever(BaseRetriever):
             "top_score": results[0].score if results else 0.0,
             "mean_score": (sum(c.score for c in results) / len(results)) if results else 0.0,
             "graph_seeds_found": len(seeds),
-            "graph_seed_labels": [
-                {"label": s["label"], "matcher": s["matcher"], "score": s["score"]}
-                for s in seeds
-            ],
+            "graph_seed_labels": _dedupe_labels(seeds),
             "graph_empty_seed": not seeds,
             "graph_subgraph_nodes": sub.number_of_nodes(),
             "graph_subgraph_edges": sub.number_of_edges(),
