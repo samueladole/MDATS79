@@ -261,7 +261,6 @@ class VectorStore:
         return len(result["ids"])
 
     @_reconnect_on_stale_collection
-    @_reconnect_on_stale_collection
     def get_by_ids(self, chunk_ids: list[str]) -> dict[str, RetrievedChunk]:
         """
         Fetch specific chunks by id, returning ``{chunk_id: RetrievedChunk}``.
@@ -291,6 +290,7 @@ class VectorStore:
             )
         }
 
+    @_reconnect_on_stale_collection
     def get_chunks(
         self,
         where: dict | None = None,
