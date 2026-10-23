@@ -3,10 +3,13 @@ Knowledge-graph retrieval.
 
 Three stages: seed, traverse, hydrate-and-fuse.
 
-1. **Seed** — map the query onto graph entities. Uses the embedding already
-   computed for the dense leg (one extra HNSW-style lookup over node labels)
-   unioned with near-exact string matching, which covers gene symbols and
-   acronyms where a 384-dim sentence embedding is weak. Deliberately no LLM on
+1. **Seed** — map the query onto graph entities. Reuses the embedding already
+   computed for the dense leg and scores it against every node label by brute
+   force, unioned with near-exact string matching, which covers gene symbols
+   and acronyms where a 384-dim sentence embedding is weak. The brute-force
+   scan is linear in label count and fine at the current scale (~1,600
+   labels, ~13 ms); at full-corpus scale it would need an ANN index of its
+   own, which is why the cost is reported in ``graph_seed_ms``. Deliberately no LLM on
    this path: it would add hundreds of milliseconds and make it arguable that
    any gain came from LLM query understanding rather than from the graph.
 
@@ -158,9 +161,14 @@ class GraphRetriever(BaseRetriever):
                 f"graph/spikes/build_subset.py, or point GRAPH_PATH at an existing graph."
             )
 
-        self._graph: nx.Graph = nx.node_link_graph(
+        # Both orientations are kept. Traversal runs on the undirected view, so a
+        # relation can be followed against its direction (a protein reaches the
+        # drug that inhibits it). The directed original is retained only so the
+        # path graph can report each relation the right way round.
+        self._digraph: nx.DiGraph = nx.node_link_graph(
             json.loads(gp.read_text()), edges="edges"
-        ).to_undirected()
+        )
+        self._graph: nx.Graph = self._digraph.to_undirected()
         self._node_chunks: dict[str, list[str]] = json.loads(ncp.read_text())
 
         # Entity label index, built once. Document roots are excluded: they are
@@ -192,7 +200,9 @@ class GraphRetriever(BaseRetriever):
         hits: dict[str, dict] = {}
         if self._label_vecs is not None and len(self._label_vecs):
             sims = [
-                sum(a * b for a, b in zip(query_vec, vec))
+                # strict: a dimension mismatch means the label index was built
+                # with a different embedder, and must fail rather than truncate.
+                sum(a * b for a, b in zip(query_vec, vec, strict=True))
                 for vec in self._label_vecs
             ]
             order = sorted(range(len(sims)), key=sims.__getitem__, reverse=True)
@@ -238,7 +248,15 @@ class GraphRetriever(BaseRetriever):
         if not personalisation:
             return {}, sub
         try:
-            ppr = nx.pagerank(sub, personalization=personalisation, alpha=0.85, max_iter=60)
+            # max_iter must comfortably exceed ~85. These subgraphs are largely
+            # bipartite (entity <-> document), which makes the power iteration
+            # oscillate and converge at roughly the damping rate, 0.85 per
+            # step; reaching NetworkX's tolerance from there takes ~85 steps.
+            # At the previous max_iter=60, 9 of 74 seeded benchmark queries
+            # failed to converge and silently fell back to raw seed scores, so
+            # every non-seed node received zero probability. The subgraphs are
+            # a few dozen nodes, so the extra iterations cost microseconds.
+            ppr = nx.pagerank(sub, personalization=personalisation, alpha=0.85, max_iter=200)
         except nx.PowerIterationFailedConvergence:
             logger.warning("PageRank did not converge; falling back to seed scores.")
             ppr = personalisation
@@ -246,17 +264,24 @@ class GraphRetriever(BaseRetriever):
 
     # ── Stage 3: node scores -> chunk ranking ─────────────────────────────────
 
-    def _rank_chunks(self, ppr: dict[str, float]) -> tuple[list[tuple[str, float]], dict]:
+    def _rank_chunks(
+        self, ppr: dict[str, float]
+    ) -> tuple[list[tuple[str, float]], dict, dict[str, list[tuple[str, float]]]]:
         """Aggregate node PageRank mass onto the chunks those nodes came from.
 
         Summed rather than maxed: a chunk mentioning several highly-ranked
         entities is more likely to answer a multi-entity question, which is the
         hypothesis the strategy exists to test. Divided by sqrt(node count) so
         entity-dense chunks cannot win on volume alone.
+
+        Returns the ranking, a human-readable contributor trail per chunk, and
+        the contributing node ids with their mass (document nodes included),
+        which is what the path graph is built from.
         """
         scores: dict[str, float] = defaultdict(float)
         counts: dict[str, int] = defaultdict(int)
         contributors: dict[str, list] = defaultdict(list)
+        contributor_ids: dict[str, list[tuple[str, float]]] = defaultdict(list)
         for node, mass in ppr.items():
             nid = str(node)
             if nid.startswith(DOC_PREFIX):
@@ -268,6 +293,7 @@ class GraphRetriever(BaseRetriever):
             for cid in chunk_ids:
                 scores[cid] += mass
                 counts[cid] += 1
+                contributor_ids[cid].append((nid, mass))
                 # Document nodes carry PageRank mass but are not entities, so
                 # they are excluded from the human-readable "reached via" trail.
                 if not is_doc and len(contributors[cid]) < 5:
@@ -276,7 +302,216 @@ class GraphRetriever(BaseRetriever):
             cid: s / math.sqrt(counts[cid]) for cid, s in scores.items() if counts[cid]
         }
         ranked = sorted(normalised.items(), key=lambda kv: -kv[1])[: self.graph_candidates]
-        return ranked, contributors
+        return ranked, contributors, contributor_ids
+
+    # ── Path graph (display only) ─────────────────────────────────────────────
+
+    #: Context entities shown beside the retrieval paths, by PageRank mass.
+    PATH_CONTEXT_NODES = 8
+
+    def _relation(self, u: str, v: str) -> tuple[str, str]:
+        """The relation between two nodes in its TRUE direction.
+
+        Traversal is undirected, so a path may run against a relation. This
+        looks the edge up in the directed graph and reports it as stored, e.g.
+        ("INHIBITS", "Cinryze —INHIBITS→ C1-INH") even when the walk went from
+        C1-INH to Cinryze.
+        """
+        name = lambda n: self._display_name(n)  # noqa: E731
+        if self._digraph.has_edge(u, v):
+            lbl = str(self._digraph.edges[u, v].get("label", "RELATED_TO"))
+            return lbl, f"{name(u)} —{lbl}→ {name(v)}"
+        if self._digraph.has_edge(v, u):
+            lbl = str(self._digraph.edges[v, u].get("label", "RELATED_TO"))
+            return lbl, f"{name(v)} —{lbl}→ {name(u)}"
+        # No stored edge: the hop is the provenance link from an entity to the
+        # chunk it was extracted from (e.g. a protein nested under a drug).
+        return "EXTRACTED_FROM", f"{name(u)} was extracted from {name(v)}"
+
+    def _display_name(self, nid: str) -> str:
+        nid = str(nid)
+        if nid.startswith(DOC_PREFIX):
+            return nid[len(DOC_PREFIX):]
+        data = self._digraph.nodes.get(nid, {}) if nid in self._digraph else {}
+        return str(data.get("name") or data.get("label") or nid)
+
+    def _build_path_graph(
+        self,
+        query: str,
+        seeds: list[dict],
+        ppr: dict[str, float],
+        sub: nx.Graph,
+        results: list[RetrievedChunk],
+        graph_ranked: list[tuple[str, float]],
+        contributor_ids: dict[str, list[tuple[str, float]]],
+    ) -> dict | None:
+        """Compact, serialisable graph explaining how each chunk was reached.
+
+        For every result the graph retrieved, the shortest path from any seed
+        entity to that chunk is extracted. Nodes are layered by hop distance
+        from the seeds and every path edge points outward, so the path edges
+        form a directed acyclic graph by construction: hop distance strictly
+        increases along a shortest path. A few high-probability context
+        entities are added for orientation and flagged as off-path.
+
+        Display only. It is built after the retrieval timers stop, so it never
+        contributes to the reported retrieval latency.
+        """
+        seed_ids = list(dict.fromkeys(s["node"] for s in seeds if s["node"] in sub))
+        if not seed_ids:
+            return None
+
+        dist = nx.multi_source_dijkstra_path_length(sub, seed_ids)
+        graph_scores = dict(graph_ranked)
+        seed_info = {s["node"]: s for s in seeds}
+
+        nodes: dict[str, dict] = {}
+        edges: dict[tuple[str, str], dict] = {}
+        paths: list[dict] = []
+
+        def add_node(nid: str, layer: int) -> None:
+            if nid in nodes:
+                nodes[nid]["layer"] = min(nodes[nid]["layer"], layer)
+                return
+            is_doc = nid.startswith(DOC_PREFIX)
+            data = self._digraph.nodes.get(nid, {}) if nid in self._digraph else {}
+            node = {
+                "id": nid,
+                "label": self._display_name(nid),
+                "kind": "document" if is_doc else ("seed" if nid in seed_info else "entity"),
+                "type": "Document" if is_doc else str(data.get("__class__", "Entity")),
+                "layer": layer,
+                "ppr": round(float(ppr.get(nid, 0.0)), 6),
+                "on_path": False,
+            }
+            if not is_doc:
+                node["n_chunks"] = len(self._node_chunks.get(nid, []))
+            if nid in seed_info:
+                node["matcher"] = seed_info[nid]["matcher"]
+                node["match_score"] = round(float(seed_info[nid]["score"]), 4)
+            nodes[nid] = node
+
+        def add_edge(u: str, v: str, on_path: bool) -> None:
+            key = (u, v)
+            if (v, u) in edges:  # already drawn the other way round
+                edges[(v, u)]["on_path"] = edges[(v, u)]["on_path"] or on_path
+                return
+            if key in edges:
+                edges[key]["on_path"] = edges[key]["on_path"] or on_path
+                return
+            label, relation = self._relation(u, v)
+            edges[key] = {"source": u, "target": v, "label": label,
+                          "relation": relation, "on_path": on_path,
+                          # True when the walk ran against the stored relation
+                          # (e.g. reached a drug from the protein it inhibits),
+                          # so the view can phrase it "inhibited by".
+                          "reversed": self._digraph.has_edge(v, u)
+                                      and not self._digraph.has_edge(u, v)}
+
+        # Layer 0: the query itself, linked to each seed by how it matched.
+        nodes["__query__"] = {
+            "id": "__query__", "label": query, "kind": "query", "type": "Query",
+            "layer": 0, "ppr": 0.0, "on_path": True,
+        }
+        for sid in seed_ids:
+            add_node(sid, 1)
+            nodes[sid]["on_path"] = True
+            s = seed_info[sid]
+            edges[("__query__", sid)] = {
+                "source": "__query__", "target": sid, "label": "SEED",
+                "relation": f"query matched '{s['label']}' ({s['matcher']}, {float(s['score']):.3f})",
+                "on_path": True,
+                "reversed": False,
+            }
+
+        # One shortest path per graph-reached result chunk.
+        for rank, chunk in enumerate(results, start=1):
+            g_meta = chunk.metadata.get("graph")
+            if not g_meta:
+                continue  # found by the dense leg only; no graph path exists
+            cid = chunk.chunk_id
+            doc = f"{DOC_PREFIX}{cid}"
+            if doc in dist:
+                # The chunk's own document node is in the subgraph: walk to it.
+                target, tail = doc, []
+            else:
+                # Otherwise walk to its highest-probability contributing entity,
+                # then take the provenance hop into the chunk.
+                reachable = [(n, m) for n, m in contributor_ids.get(cid, []) if n in dist]
+                if not reachable:
+                    continue
+                target = max(reachable, key=lambda nm: nm[1])[0]
+                tail = [doc]
+            _, path = nx.multi_source_dijkstra(sub, seed_ids, target=target)
+            path = list(path) + tail
+
+            for i, nid in enumerate(path):
+                layer = dist[nid] + 1 if nid in dist else nodes[path[i - 1]]["layer"] + 1
+                add_node(nid, layer)
+                nodes[nid]["on_path"] = True
+            for u, v in zip(path, path[1:], strict=False):
+                add_edge(u, v, on_path=True)
+
+            chunk_node = nodes[doc]
+            chunk_node.update({
+                "kind": "chunk",
+                "type": "Retrieved chunk",
+                "chunk_id": cid,
+                "result_rank": rank,
+                "graph_rank": g_meta.get("graph_rank"),
+                "graph_score": round(float(graph_scores.get(cid, 0.0)), 6),
+                "rrf_score": round(float(chunk.score), 6),
+                "from_graph_leg": bool(g_meta.get("from_graph_leg")),
+            })
+            contributor = path[-2] if len(path) > 1 else path[-1]
+            paths.append({
+                "chunk_id": cid,
+                "result_rank": rank,
+                "graph_rank": g_meta.get("graph_rank"),
+                "nodes": path,
+                "labels": [self._display_name(n) for n in path],
+                "hops": len(path) - 1,
+                "graph_score": round(float(graph_scores.get(cid, 0.0)), 6),
+                "contributor": self._display_name(contributor),
+                "contributor_ppr": round(float(ppr.get(contributor, 0.0)), 6),
+                "from_graph_leg": bool(g_meta.get("from_graph_leg")),
+            })
+
+        # Context: the highest-probability entities that touch the drawn graph.
+        on_graph = set(nodes)
+        context = sorted(
+            (n for n in sub if n not in on_graph and not str(n).startswith(DOC_PREFIX)
+             and any(nb in on_graph for nb in sub.neighbors(n))),
+            key=lambda n: -ppr.get(n, 0.0),
+        )[: self.PATH_CONTEXT_NODES]
+        for n in context:
+            add_node(n, dist.get(n, 0) + 1)
+
+        # Any remaining subgraph edges between drawn nodes are context, oriented
+        # outward by layer so the drawing stays acyclic. Same-layer edges are
+        # kept but marked so the view can draw them without an arrowhead.
+        drawn = set(nodes) - {"__query__"}
+        for u, v in sub.edges():
+            if u in drawn and v in drawn:
+                lu, lv = nodes[u]["layer"], nodes[v]["layer"]
+                a, b = (u, v) if lu <= lv else (v, u)
+                add_edge(a, b, on_path=False)
+        for e in edges.values():
+            e["same_layer"] = nodes[e["source"]]["layer"] == nodes[e["target"]]["layer"]
+
+        return {
+            "query": query,
+            "nodes": list(nodes.values()),
+            "edges": list(edges.values()),
+            "paths": paths,
+            "subgraph_nodes": sub.number_of_nodes(),
+            "probability_note": (
+                "Node probability is Personalized PageRank mass within the "
+                "query's ego subgraph: the share of time a random walk that "
+                "restarts at the seed entities spends at that node. It sums to 1 "
+                "across the subgraph, not across the whole graph."
+            ),
+        }
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -300,7 +535,7 @@ class GraphRetriever(BaseRetriever):
         with Timer("graph_traverse") as trav_t:
             ppr, sub = self._traverse(seeds)
         with Timer("graph_score") as score_t:
-            graph_ranked, contributors = self._rank_chunks(ppr)
+            graph_ranked, contributors, contributor_ids = self._rank_chunks(ppr)
 
         with Timer("rrf_fusion") as fuse_t:
             rrf: dict[str, float] = defaultdict(float)
@@ -338,6 +573,13 @@ class GraphRetriever(BaseRetriever):
 
         retrieval_ms = sum(t.elapsed_ms for t in
                            (embed_t, dense_t, seed_t, trav_t, score_t, fuse_t))
+
+        # Built after the retrieval timers have stopped, and timed on its own,
+        # so the visualisation never inflates reported retrieval latency.
+        with Timer("graph_path") as path_t:
+            path_graph = self._build_path_graph(
+                query, seeds, ppr, sub, results, graph_ranked, contributor_ids,
+            )
         telemetry = {
             "strategy": "graph",
             "score_kind": self.score_kind,
@@ -369,6 +611,10 @@ class GraphRetriever(BaseRetriever):
             "graph_chunks_from_graph_leg": sum(
                 1 for c in results if c.metadata.get("graph", {}).get("from_graph_leg")
             ),
+            # Serialisable explanation of how each chunk was reached, rendered
+            # as an interactive graph by the dashboard. None when nothing seeded.
+            "graph_path": path_graph,
+            "graph_path_ms": path_t.elapsed_ms,
         }
         logger.debug(
             f"Graph retrieval: {len(seeds)} seeds -> {sub.number_of_nodes()} subgraph nodes "

@@ -7,11 +7,14 @@ real-time RAGAS scores, telemetry, and retrieved chunks.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import UTC, datetime
 
 import pandas as pd
 import streamlit as st
 
+from dashboard.components.graph_view import render_retrieval_graph
 from dashboard.components.latency_chart import latency_time_series, pipeline_flow_sankey
 from dashboard.components.metric_cards import (
     ragas_scorecard,
@@ -144,41 +147,36 @@ def _render_graph_panel(telemetry: dict, chunks: list) -> None:
         )
         return
 
-    st.markdown("**Query matched these entities**")
-    st.dataframe(
-        pd.DataFrame([
-            {"Entity": s.get("label", ""),
-             "Matched by": s.get("matcher", ""),
-             "Score": round(float(s.get("score", 0.0)), 4)}
-            for s in seeds
-        ]),
-        hide_index=True, use_container_width=True,
+    graph_path = telemetry.get("graph_path")
+    # Keyed on the specific result so a new query never inherits the previous
+    # query's highlight or selection state.
+    fingerprint = hashlib.md5(
+        json.dumps(graph_path or {}, sort_keys=True, default=str).encode()
+    ).hexdigest()[:10]
+    render_retrieval_graph(
+        graph_path,
+        chunk_texts={c.chunk_id: c.text for c in chunks},
+        key=f"live_graph_{fingerprint}",
     )
 
-    graph_chunks = [c for c in chunks if "graph" in (c.metadata or {})]
-    if graph_chunks:
-        st.markdown("**How the graph reached each chunk**")
-        for chunk in graph_chunks:
-            info = chunk.metadata["graph"]
-            via = info.get("via", []) or []
-            origin = "graph only" if info.get("from_graph_leg") else "graph + dense"
-            label = f"`{chunk.chunk_id}` — graph rank {info.get('graph_rank', '?')} ({origin})"
-            with st.expander(label):
-                if via:
-                    st.dataframe(
-                        pd.DataFrame([
-                            {"Contributing entity": v.get("node", ""),
-                             "PageRank mass": v.get("mass", 0.0)} for v in via
-                        ]),
-                        hide_index=True, use_container_width=True,
-                    )
-                else:
-                    st.caption("Reached via the document node rather than a named entity.")
-                st.text(chunk.text[:600] + ("..." if len(chunk.text) > 600 else ""))
-    elif from_graph == 0:
+    with st.expander("Seed entity matches", icon=":material/target:"):
+        st.dataframe(
+            pd.DataFrame([
+                {"Entity": s.get("label", ""),
+                 "Matched by": s.get("matcher", ""),
+                 "Score": round(float(s.get("score", 0.0)), 4)}
+                for s in seeds
+            ]),
+            hide_index=True, width="stretch",
+        )
+
+    if from_graph == 0 and telemetry.get("fuse_dense", True):
         st.info(
-            "The graph found seeds but surfaced no chunks the dense leg had missed. "
-            "For this query the two legs agreed."
+            "No result here was found *only* by the graph. In fused mode the dense "
+            "leg searches the whole corpus while the graph covers a small subset, "
+            "and Reciprocal Rank Fusion cannot promote a graph-only chunk above "
+            "dense's top results at current coverage. Set `GRAPH_FUSE_DENSE=false` "
+            "to see graph-only retrieval."
         )
 
 

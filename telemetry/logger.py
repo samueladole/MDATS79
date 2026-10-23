@@ -131,6 +131,19 @@ def build_record(
         "graph_seed_labels": retrieval_telemetry.get("graph_seed_labels", []),
         "graph_subgraph_nodes": retrieval_telemetry.get("graph_subgraph_nodes", 0),
         "graph_subgraph_edges": retrieval_telemetry.get("graph_subgraph_edges", 0),
+        # The path graph behind the interactive retrieval view. Persisted so a
+        # past graph query can be redrawn in Query Explorer, not just live.
+        # Bounded in size: seeds, one shortest path per result chunk, and a
+        # handful of context entities — typically a few kilobytes.
+        "graph_path": retrieval_telemetry.get("graph_path"),
+        "graph_path_ms": round(retrieval_telemetry.get("graph_path_ms", 0.0), 2),
+        "graph_empty_seed": retrieval_telemetry.get("graph_empty_seed", False),
+        "graph_candidate_chunks": retrieval_telemetry.get("graph_candidate_chunks", 0),
+        # Fusion configuration, needed to interpret any graph record: the same
+        # query yields different results under fuse_dense true vs false.
+        "fuse_dense": retrieval_telemetry.get("fuse_dense"),
+        "dense_weight": retrieval_telemetry.get("dense_weight"),
+        "graph_weight": retrieval_telemetry.get("graph_weight"),
         "graph_chunks_from_graph_leg": retrieval_telemetry.get(
             "graph_chunks_from_graph_leg", 0),
         "score_kind": retrieval_telemetry.get("score_kind", ""),

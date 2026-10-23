@@ -13,6 +13,7 @@ import streamlit as st
 st.title(":material/manage_search: Query Explorer")
 st.caption("Select any logged query to inspect its full telemetry trace.")
 
+from dashboard.components.graph_view import render_retrieval_graph
 from dashboard.components.latency_chart import pipeline_flow_sankey
 from dashboard.components.metric_cards import (
     ragas_scorecard,
@@ -117,6 +118,30 @@ if record.get("evaluation_ms", 0.0) == 0.0 and record.get("context_relevance") i
     )
 st.divider()
 
+# ── Graph retrieval path ──────────────────────────────────────────────────────
+# Redraws the walk from the persisted record, so a past graph query can be
+# inspected exactly as it ran, not only at the moment it was submitted.
+if record.get("retrieval_strategy") == "graph":
+    st.subheader(":material/hub: Graph Retrieval Path")
+    if record.get("graph_path"):
+        render_retrieval_graph(
+            record["graph_path"],
+            chunk_texts={
+                c.get("chunk_id", ""): c.get("text", "")
+                for c in record.get("retrieved_chunks", [])
+            },
+            key=f"qe_graph_{record.get('record_id', selected_label)}",
+        )
+    elif record.get("graph_seeds_found", 0) == 0:
+        st.info("No entity in this query matched the knowledge graph, so there was no walk to draw.")
+    else:
+        st.info(
+            "This record predates path capture: the graph was traversed, but the "
+            "path itself was not persisted. Re-run the query in Live Monitor to "
+            "record one."
+        )
+    st.divider()
+
 # ── Retrieved Chunks ──────────────────────────────────────────────────────────
 chunks = record.get("retrieved_chunks", [])
 st.subheader(f"Retrieved Chunks ({len(chunks)})")
@@ -141,7 +166,7 @@ for i, chunk in enumerate(chunks, 1):
                 st.dataframe(
                     [{"Entity": v.get("node", ""), "PageRank mass": v.get("mass", 0.0)}
                      for v in via],
-                    hide_index=True, use_container_width=True,
+                    hide_index=True, width="stretch",
                 )
             else:
                 st.caption("Reached via the document node rather than a named entity.")

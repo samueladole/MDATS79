@@ -306,7 +306,7 @@ else:
                 px.bar(df_cls, x="Count", y="Type", orientation="h",
                        color_discrete_sequence=["#2a78d6"]).update_layout(
                     height=240, margin=dict(l=0, r=0, t=10, b=0), showlegend=False),
-                use_container_width=True,
+                width="stretch",
             )
     with c_right:
         st.markdown("**Relation types**")
@@ -318,7 +318,7 @@ else:
                 px.bar(df_lbl, x="Count", y="Relation", orientation="h",
                        color_discrete_sequence=["#24a35a"]).update_layout(
                     height=240, margin=dict(l=0, r=0, t=10, b=0), showlegend=False),
-                use_container_width=True,
+                width="stretch",
             )
 
     # Entity-entity edges are the relational signal; edges to document nodes
@@ -368,4 +368,4 @@ else:
         })
     rows.sort(key=lambda r: (-r["Chunks"], str(r["Entity"])))
     st.caption(f"{len(rows):,} entities" + (f" matching '{term}'" if term else ""))
-    st.dataframe(pd.DataFrame(rows[:200]), hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(rows[:200]), hide_index=True, width="stretch")
