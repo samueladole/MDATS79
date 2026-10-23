@@ -345,3 +345,51 @@ class TestRetrieverRegistry:
         for cls, expected in ((DenseRetriever, "dense"), (HybridRetriever, "hybrid")):
             assert issubclass(cls, BaseRetriever)
             assert cls.__new__(cls).strategy_name == expected
+
+
+# ── Score-scale labelling ─────────────────────────────────────────────────────
+
+
+class TestScoreKindLabelling:
+    """
+    ``RetrievedChunk.score`` carries a different scale per strategy — cosine
+    (~0.80) for dense, Reciprocal Rank Fusion (~0.015) for hybrid and graph.
+    ``score_kind`` is what stops downstream analysis comparing them. These
+    guard the two ways it has already been got wrong.
+    """
+
+    def test_hybrid_reports_rrf_not_the_cosine_default(self):
+        """Regression: _fuse built RetrievedChunk without score_kind, so hybrid
+        emitted RRF values carrying the dataclass default of "cosine"."""
+        import inspect
+
+        from pipeline.retrieval.hybrid import HybridRetriever
+
+        src = inspect.getsource(HybridRetriever._fuse)
+        assert 'score_kind="rrf"' in src, (
+            "HybridRetriever._fuse must set score_kind explicitly, or its RRF "
+            "scores are labelled as cosine similarities"
+        )
+
+    def test_get_chunks_keeps_its_stale_collection_decorator(self):
+        """Regression: inserting get_by_ids above get_chunks double-applied the
+        reconnect decorator to the former and left the latter with none."""
+        import inspect
+
+        from pipeline.vectorstore import VectorStore
+
+        src = inspect.getsource(VectorStore)
+        for name in ("get_by_ids", "get_chunks"):
+            idx = src.index(f"def {name}(")
+            preceding = src[:idx]
+            # the decorator must appear in the lines immediately above the def
+            tail = preceding.rsplit("\n", 3)[-3:]
+            assert any("_reconnect_on_stale_collection" in line for line in tail), (
+                f"VectorStore.{name} lost its @_reconnect_on_stale_collection"
+            )
+        # and get_by_ids must not carry it twice
+        gbi = src.index("def get_by_ids(")
+        head = src[:gbi].rsplit("\n", 4)[-4:]
+        assert sum("_reconnect_on_stale_collection" in l for l in head) == 1, (
+            "get_by_ids is double-decorated"
+        )

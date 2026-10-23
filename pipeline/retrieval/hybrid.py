@@ -242,13 +242,17 @@ class HybridRetriever(BaseRetriever):
         result = []
         for cid in ranked_ids:
             chunk = chunk_store[cid]
-            # Replace score with the RRF score for transparent telemetry
+            # Replace score with the RRF score for transparent telemetry.
+            # score_kind must be set explicitly: the dataclass defaults to
+            # "cosine", so omitting it labels an RRF value (~0.015) as a cosine
+            # similarity (~0.80) and invites a cross-scale comparison.
             result.append(
                 RetrievedChunk(
                     chunk_id=chunk.chunk_id,
                     text=chunk.text,
                     score=round(rrf_scores[cid], 6),
                     metadata=chunk.metadata,
+                    score_kind="rrf",
                 )
             )
         return result
