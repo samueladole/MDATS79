@@ -64,11 +64,40 @@ query_text = st.text_area(
     "Enter your question",
     height=100,
     placeholder="e.g. What are the main causes of hallucination in large language models?",
+    key="query_text",
 )
 
-run_btn = st.button("Run Query", icon=":material/play_arrow:", type="primary", width="stretch")
+# The Run Query button is disabled for as long as a pipeline run is in
+# progress, to prevent accidental double-submission. A run takes 35-60 s,
+# almost all of it the RAGAS judge, which is ample time to click twice.
+#
+# ``pipeline_running`` means exactly "a run is in progress": the click sets it,
+# and it is cleared when the run ends, however it ends. It must not be derived
+# from whether a previous result exists — that leaves the first query
+# unprotected and locks the button permanently after it.
+st.session_state.setdefault("pipeline_running", False)
 
-if run_btn and query_text.strip():
+
+def _start_run() -> None:
+    """Arm a run. on_click callbacks execute before the rerun the click
+    triggers, so the button below is already rendered disabled by the time the
+    pipeline starts. An empty query is not armed, so it cannot leave the
+    button disabled."""
+    if st.session_state.get("query_text", "").strip():
+        st.session_state.pipeline_running = True
+
+
+run_btn = st.button(
+    "Run Query",
+    icon=":material/play_arrow:",
+    type="primary",
+    width="stretch",
+    key="run_query_btn",
+    on_click=_start_run,
+    disabled=st.session_state.pipeline_running,
+)
+
+if st.session_state.pipeline_running:
     from pipeline.rag import RAGPipeline
 
     try:
@@ -84,30 +113,44 @@ if run_btn and query_text.strip():
                 ground_truth=ground_truth.strip() or None,
                 query_type=query_type_choice,
             )
-    except Exception as exc:
-        st.error(f"Pipeline error: {exc}")
-        st.stop()
-
-    st.session_state.last_result = {
-        "result": result,
-        "query_text": query_text,
-        "llm_choice": llm_choice,
-        "retrieval_choice": retrieval_choice,
-        "query_type_choice": query_type_choice,
-        "top_k": top_k,
-        "run_eval": run_eval,
-    }
-    st.session_state.session_history.append(
-        {
-            "timestamp_utc": datetime.now(UTC).isoformat(),
-            "retrieval_ms": result.retrieval_telemetry.get("retrieval_ms", 0),
-            "generation_ms": result.generation_response.generation_ms,
-            "e2e_ms": result.e2e_ms,
+        st.session_state.last_result = {
+            "result": result,
+            "query_text": query_text,
+            "llm_choice": llm_choice,
+            "retrieval_choice": retrieval_choice,
+            "query_type_choice": query_type_choice,
+            "top_k": top_k,
+            "run_eval": run_eval,
         }
-    )
-    st.success("Query complete.")
+        st.session_state.session_history.append(
+            {
+                "timestamp_utc": datetime.now(UTC).isoformat(),
+                "retrieval_ms": result.retrieval_telemetry.get("retrieval_ms", 0),
+                "generation_ms": result.generation_response.generation_ms,
+                "e2e_ms": result.e2e_ms,
+            }
+        )
+        st.session_state.pipeline_notice = "Query complete."
+    except Exception as exc:
+        st.session_state.pipeline_error = str(exc)
+    finally:
+        # Re-enable on every exit path: success, pipeline error, or a run
+        # interrupted by Streamlit (a rerun or stop raised mid-script).
+        st.session_state.pipeline_running = False
+    # Rerun so the button redraws enabled. Outside the try: st.rerun() works by
+    # raising, and must not be swallowed by the except above.
+    st.rerun()
 elif run_btn:
     st.warning("Please enter a query before running.")
+
+# One-shot messages from the run that just finished, shown after the rerun.
+if notice := st.session_state.pop("pipeline_notice", None):
+    st.success(notice)
+if error := st.session_state.pop("pipeline_error", None):
+    st.error(f"Pipeline error: {error}")
+    # As before: on failure, render nothing below the error, rather than the
+    # previous query's result appearing as though it were this one's.
+    st.stop()
 
 
 # ── Graph retrieval panel ─────────────────────────────────────────────────────

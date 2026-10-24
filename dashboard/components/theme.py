@@ -87,17 +87,36 @@ def apply_theme() -> None:
             transition: transform 0.06s ease, box-shadow 0.15s ease;
             font-weight: 600;
         }
-        .stButton > button:hover {
+        /* The lift, the purple and its hover shade all exclude :disabled.
+           Without that, a disabled primary button kept the purple background
+           (in its hover shade, under the cursor) while Streamlit switched the
+           text to its faded "disabled" colour — dark text on purple, nearly
+           unreadable, and still lifting on hover as though clickable. */
+        .stButton > button:not(:disabled):hover {
             transform: translateY(-1px);
             box-shadow: 0 4px 10px rgba(0,0,0,0.12);
         }
-        .stButton > button[kind="primary"] {
+        .stButton > button[kind="primary"]:not(:disabled) {
             background: #522D80;
             border-color: #522D80;
         }
-        .stButton > button[kind="primary"]:hover {
+        .stButton > button[kind="primary"]:not(:disabled):hover {
             background: #603699;
             border-color: #603699;
+        }
+        /* Disabled: explicitly greyed. Mid-grey at partial opacity reads as
+           inactive on both the light and the dark theme, so one rule serves
+           both. Applies to every button, so all disabled buttons match.
+           !important is needed here: Streamlit's own disabled styles outrank
+           this selector, and without it the button only goes transparent. */
+        .stButton > button:disabled,
+        .stButton > button:disabled:hover {
+            background: rgba(127,127,127,0.14) !important;
+            border-color: rgba(127,127,127,0.30) !important;
+            color: rgba(127,127,127,0.85) !important;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
         }
 
         /* ── Metrics: bigger value, calmer label ─────────────────────────── */
