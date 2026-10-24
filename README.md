@@ -494,14 +494,14 @@ Run a single query through the full pipeline (retrieval + generation + telemetry
 ```bash
 # Docker
 docker compose exec ragscope uv run python pipeline/rag.py \
-  "What are the main causes of hallucination in large language models?" \
+  "Which protein does empagliflozin inhibit?" \
   --llm llama3 \
   --retrieval hybrid \
   --top-k 5
 
 # Local
 uv run python pipeline/rag.py \
-  "What are the main causes of hallucination in large language models?" \
+  "Which protein does empagliflozin inhibit?" \
   --llm llama3 \
   --retrieval hybrid \
   --top-k 5
@@ -512,34 +512,36 @@ uv run python pipeline/rag.py \
 **Sample output:**
 
 ```
-────────────────────────────────────────────────────
- Query: What are the main causes of hallucination...
-────────────────────────────────────────────────────
- Retrieved Chunks (top 5, hybrid):
-   [1] similarity=0.87 | "Hallucinations in LLMs arise from..."
-   [2] similarity=0.83 | "Training data biases contribute to..."
-   ...
+────────────────────────────────────────────────────────
+ Query : Which protein does empagliflozin inhibit?
+────────────────────────────────────────────────────────
+ Retrieved chunks : 5 (strategy: hybrid)
+   [1] score=0.016 | empagliflozin reduces HG induced inflammatory and fibrotic markers by blocking…
+   [2] score=0.016 | 0.80 - 1.01). Empagliflozin was well tolerated under fed and fasting condition…
+   [3] score=0.016 | OBJECTIVES: Empagliflozin is an orally available, potent and highly selective i…
 
- Answer: Hallucination in large language models primarily stems from...
+ Answer : According to Passage 3, empagliflozin is an orally available, potent and highly selective inhibitor of the sodium glucose cotransporter 2 (SGLT2).
 
  ── Telemetry ──────────────────────────────────────
-  Retrieval latency:    0.34s
-  Generation latency:   3.21s
-  Evaluation latency:   4.87s
-  Total latency:        8.42s
-  Prompt tokens:        847
-  Completion tokens:    312
-  Estimated cost:       $0.000 (local inference)
+  Retrieval latency  : 328.9 ms
+  Generation latency : 6857.2 ms
+  Evaluation latency : 20534.3 ms
+  End-to-end latency : 27725.0 ms
+  Prompt tokens      : 1520
+  Completion tokens  : 37
+  Estimated cost     : $0.000000
 
  ── RAGAS Evaluation ───────────────────────────────
-  Context Relevance:    0.81
-  Answer Faithfulness:  0.74
-  Answer Correctness:   0.69
-  Hallucination Risk:   LOW  (0.26)
-────────────────────────────────────────────────────
- Telemetry logged → telemetry/store/a3f9c2e1-...-9b7d.json
-────────────────────────────────────────────────────
+  Context Relevance  : 0.7500
+  Answer Faithfulness: 1.0000
+  Answer Correctness : N/A (no ground truth)
+  Hallucination Risk : LOW  (0.1000)
+────────────────────────────────────────────────────────
+ Telemetry → telemetry/store/ee89ca0c-83de-489c-ab93-e4f865dae4ad.json
+────────────────────────────────────────────────────────
 ```
+
+> Hybrid scores are Reciprocal Rank Fusion values (around 0.016), not cosine similarities. Answer correctness needs a reference answer, so it shows `N/A` for an ad-hoc question.
 
 ### Launching the Dashboard
 
@@ -604,7 +606,7 @@ This produces a Markdown report including descriptive statistics, Cohen's d effe
 
 ### Building the Knowledge Graph (Graph Retrieval)
 
-The `graph` retrieval strategy reads a knowledge graph that is built offline. The graph is not committed (`data/graph/` is git-ignored), so build it once before selecting `graph`. Dense and hybrid retrieval do not need it.
+The `graph` retrieval strategy reads a knowledge graph that is built offline. Build it once before selecting `graph`. Dense and hybrid retrieval do not need it.
 
 The builder uses [docling-graph](https://github.com/docling-project/docling-graph) 1.9.1 with a local Ollama model to extract biomedical entities (diseases, genes/proteins, chemicals/drugs) and their relations from each chunk. docling-graph is a normal project dependency, so `uv sync` installs it and the builder runs in the same environment as everything else. The commands below run from the repository root on the host, like the *Local* variants above.
 
@@ -788,12 +790,23 @@ The core experiment follows a **2 × 2 fully factorial design**:
 
 ## Results
 
-> 🔬 *Results will be populated upon completion of the benchmark evaluation (target: August 2026).*
+The 2 × 2 benchmark produced 800 query-result records (200 queries × 4 conditions). 797 of them (99.6%) received complete RAGAS scores; the other three failed evaluation and were kept for the latency analysis only.
 
-Preliminary findings and the full analysis report will be available in:
-- `experiments/results/analysis_report.md`
-- `notebooks/03_hallucination_analysis.ipynb`
+| Research question | Finding |
+|---|---|
+| **RQ1 — Metric calibration** | The hallucination risk score works as a coarse safe/unsafe filter but does not estimate correctness finely. LOW-risk answers scored a mean correctness of 0.516, nearly double the MEDIUM (0.270) and HIGH (0.290) bands, but the score did not separate MEDIUM from HIGH. |
+| **RQ2 — Fault localisation** | Stage-level telemetry exposed the main bottleneck: RAGAS evaluation took **85.7%** of end-to-end latency, against 14.1% for generation and 0.2% for retrieval. It also showed that Llama 3 generated faster than Mistral, although its end-to-end latency was slightly higher. |
+| **RQ3 — Configuration trade-offs** | Hybrid retrieval gave no meaningful gain over dense: every pooled effect was negligible (context relevance *d* = +0.036, faithfulness *d* = −0.063). The LLM mattered more: Llama 3 was more faithful than Mistral (*d* = +0.190) with lower hallucination risk (*d* = −0.131), with no advantage in answer correctness (*d* = −0.046). No configuration won on every dimension. |
+
+Cohen's *d* thresholds: |*d*| < 0.20 negligible, 0.20–0.49 small, 0.50–0.79 medium, ≥ 0.80 large.
+
+**Graph retrieval (proof of concept).** Graph retrieval was added after the benchmark, as a platform extension, and is not one of the four experimental conditions; no quality comparison has been run. Over a 298-chunk graph, it found starting entities for 74 of the 200 benchmark queries, and graph-only retrieval took a median of 19.9 ms. See [Building the Knowledge Graph](#building-the-knowledge-graph-graph-retrieval).
+
+Full results and analysis:
+
 - Chapter 4 of the dissertation (submitted September 2026)
+- `notebooks/03_hallucination_analysis.ipynb`
+- `experiments/results/`: the benchmark CSV, the analysis report and the figures. This folder is git-ignored; [Running the Benchmark Evaluation](#running-the-benchmark-evaluation) regenerates it.
 
 ---
 
@@ -813,11 +826,12 @@ The following limitations are acknowledged and discussed in full in the disserta
 | Output | Status | Location |
 |---|---|---|
 | MSc Research Proposal | ✅ Complete | Submitted separately — not tracked in this repository |
-| Literature Review | 🔄 In progress | Submitted separately — not tracked in this repository |
+| Literature Review | ✅ Complete | Submitted separately — not tracked in this repository |
 | System Architecture | ✅ Complete | `docs/architecture.md`, `docs/images/ragscope_system_architecture.svg` |
 | Platform Implementation | ✅ Complete | `pipeline/`, `evaluation/`, `dashboard/` |
-| Benchmark Experiment | 🔄 In progress | `experiments/results/` |
-| Dissertation | ⏳ Submission Sep 2026 | — |
+| Benchmark Experiment | ✅ Complete | `experiments/results/` |
+| Dissertation | ✅ Complete | — |
+| Publication | 🔄 In progress | — |
 
 ---
 
@@ -862,7 +876,7 @@ The dataset used in this research is subject to its own licence:
 
 This project was developed as part of an MSc Data Science dissertation at **Leeds Beckett University**, School of Built Environment, Engineering and Computing.
 
-Thanks to the open-source communities behind [RAGAS](https://github.com/explodinggradients/ragas), [ChromaDB](https://github.com/chroma-core/chroma), [Ollama](https://github.com/ollama/ollama), [Streamlit](https://github.com/streamlit/streamlit), [uv / Astral](https://github.com/astral-sh/uv), and [Docker](https://github.com/docker), whose tools make research like this tractable.
+Thanks to the open-source communities behind [RAGAS](https://github.com/explodinggradients/ragas), [ChromaDB](https://github.com/chroma-core/chroma), [Ollama](https://github.com/ollama/ollama), [Streamlit](https://github.com/streamlit/streamlit), [docling-graph](https://github.com/docling-project/docling-graph), [uv / Astral](https://github.com/astral-sh/uv), and [Docker](https://github.com/docker), whose tools make research like this tractable.
 
 ---
 
