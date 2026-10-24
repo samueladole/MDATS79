@@ -30,7 +30,13 @@ import re  # noqa: E402
 import networkx as nx  # noqa: E402
 
 from docling_graph import run_pipeline  # noqa: E402
-from pipeline_config import build_config  # noqa: E402
+from pipeline_config import (  # noqa: E402
+    GRAPH_PATH,
+    MANIFEST_PATH,
+    NODE_CHUNKS_PATH,
+    SAMPLE_DIR,
+    build_config,
+)
 
 # Entity names the extractor emits when it finds nothing. Left in, these merge
 # into a junk hub that dominates PageRank — in spike S3 the top traversal hits
@@ -72,10 +78,6 @@ def normalise(g: nx.DiGraph, chunk_id: str) -> nx.DiGraph:
             out.add_edge(remap[u], remap[v], **data)
     return out
 
-HERE = Path(__file__).parent
-DOCS = HERE / "docs"
-OUT = HERE / "out"
-
 
 def chunk_id_from_stem(stem: str) -> str:
     """'9797__chunk_0' -> '9797::chunk_0' (the id used by Chroma and BM25)."""
@@ -93,7 +95,9 @@ def extract_one(path: Path) -> tuple[str, nx.DiGraph | None, float, str | None]:
 
 
 def main(concurrency: int = 8) -> None:
-    docs = sorted(DOCS.glob("*.md"))
+    docs = sorted(SAMPLE_DIR.glob("*.md"))
+    if not docs:
+        sys.exit(f"no chunks in {SAMPLE_DIR} — run make_sample.py first")
     print(f"building over {len(docs)} chunks, concurrency={concurrency}", flush=True)
 
     merged = nx.DiGraph()
@@ -123,10 +127,13 @@ def main(concurrency: int = 8) -> None:
                       f"edges={merged.number_of_edges()}  ({time.time()-t0:.0f}s)", flush=True)
 
     wall = time.time() - t0
-    OUT.mkdir(exist_ok=True)
-    (OUT / "graph.json").write_text(
+    # Written straight to where the retriever reads, so the new graph is live
+    # as soon as the build finishes. Nothing is written until extraction is
+    # done, so an interrupted build leaves the previous graph intact.
+    GRAPH_PATH.parent.mkdir(parents=True, exist_ok=True)
+    GRAPH_PATH.write_text(
         json.dumps(nx.node_link_data(merged, edges="edges"), indent=2, default=str))
-    (OUT / "node_to_chunks.json").write_text(
+    NODE_CHUNKS_PATH.write_text(
         json.dumps({k: sorted(v) for k, v in node_to_chunks.items()}, indent=2))
 
     # The decisive number: do entities merge across chunks?
@@ -156,7 +163,7 @@ def main(concurrency: int = 8) -> None:
             if merged.nodes[u].get("__class__") != ROOT_CLASS
             and merged.nodes[v].get("__class__") != ROOT_CLASS),
     }
-    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2))
     print("\n=== BUILD COMPLETE ===")
     print(json.dumps(manifest, indent=2))
 

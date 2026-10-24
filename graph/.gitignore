@@ -1,9 +1,0 @@
-# Builder virtualenv — docling-graph pulls ~2GB (torch, transformers).
-# Kept out of the main environment so resolving it cannot move transformers/
-# torch underneath sentence-transformers and invalidate the frozen Chroma index.
-.venv/
-# Spike scratch output
-spikes/out/
-spikes/docs/
-install.log
-s2_results.json

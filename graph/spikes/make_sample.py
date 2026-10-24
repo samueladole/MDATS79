@@ -8,10 +8,12 @@ import json
 import pathlib
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from pipeline_config import CORPUS_PATH as SRC  # noqa: E402
+from pipeline_config import SAMPLE_DIR as OUT  # noqa: E402
+
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 24
-SRC = pathlib.Path("/Users/samuel/Documents/GitHub/MDATS79/data/bm25_corpus.jsonl")
-OUT = pathlib.Path(__file__).parent / "docs"
-OUT.mkdir(exist_ok=True)
+OUT.mkdir(parents=True, exist_ok=True)
 for f in OUT.glob("*.md"):
     f.unlink()
 

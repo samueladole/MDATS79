@@ -22,10 +22,10 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).parent))
 
 from docling_graph import run_pipeline  # noqa: E402
-from pipeline_config import build_config  # noqa: E402
+from pipeline_config import GRAPH_DIR, build_config  # noqa: E402
+from pipeline_config import SAMPLE_DIR as DOCS_DIR  # noqa: E402
 
 CORPUS_TOTAL = 30_850
-DOCS_DIR = Path(__file__).parent / "docs"
 
 
 def extract_one(path: Path) -> dict:
@@ -72,4 +72,4 @@ if __name__ == "__main__":
         r = run(c, docs)
         out.append(r)
         print(json.dumps(r), flush=True)
-    Path(__file__).parent.joinpath("s2_results.json").write_text(json.dumps(out, indent=2))
+    GRAPH_DIR.joinpath("s2_results.json").write_text(json.dumps(out, indent=2))

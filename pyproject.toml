@@ -65,6 +65,11 @@ dependencies = [
     "loguru>=0.7.2", # Structured logging # Fast JSON serialisation (telemetry)
     "orjson>=3.10.0",
     "statsmodels>=0.14.6",
+    # ── Knowledge graph ───────────────────────────────────────────────────────
+    # Offline graph builder (graph/spikes/build_subset.py). Pinned exactly: the
+    # extraction settings in graph/spikes/pipeline_config.py were worked out
+    # against 1.9.1, and several of its failure modes are silent.
+    "docling-graph==1.9.1",
 ]
 
 # ── Optional / extras ─────────────────────────────────────────────────────────

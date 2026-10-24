@@ -40,6 +40,7 @@
   - [Running the RAG Pipeline](#running-the-rag-pipeline)
   - [Launching the Dashboard](#launching-the-dashboard)
   - [Running the Benchmark Evaluation](#running-the-benchmark-evaluation)
+  - [Building the Knowledge Graph (Graph Retrieval)](#building-the-knowledge-graph-graph-retrieval)
 - [Docker Reference](#docker-reference)
 - [Evaluation Metrics](#evaluation-metrics)
 - [Experimental Design](#experimental-design)
@@ -600,6 +601,68 @@ uv run python experiments/analyse_results.py \
 ```
 
 This produces a Markdown report including descriptive statistics, Cohen's d effect sizes for all pairwise metric comparisons, and Pearson correlation coefficients between latency and RAGAS scores.
+
+### Building the Knowledge Graph (Graph Retrieval)
+
+The `graph` retrieval strategy reads a knowledge graph that is built offline. The graph is not committed (`data/graph/` is git-ignored), so build it once before selecting `graph`. Dense and hybrid retrieval do not need it.
+
+The builder uses [docling-graph](https://github.com/docling-project/docling-graph) 1.9.1 with a local Ollama model to extract biomedical entities (diseases, genes/proteins, chemicals/drugs) and their relations from each chunk. docling-graph is a normal project dependency, so `uv sync` installs it and the builder runs in the same environment as everything else. The commands below run from the repository root on the host, like the *Local* variants above.
+
+**Before you start**
+
+- `data/bm25_corpus.jsonl` must exist. The ingestion step writes it. On the Docker path it is written inside the container, so copy it out first:
+
+  ```bash
+  docker compose cp ragscope:/app/data/bm25_corpus.jsonl data/bm25_corpus.jsonl
+  ```
+
+- Ollama must be running on the host, with the extractor model pulled:
+
+  ```bash
+  ollama pull llama3.2           # ~2 GB
+  ```
+
+The builder uses the Ollama address from `.env` (`OLLAMA_BASE_URL`), like the rest of the pipeline.
+
+**1. Sample the chunks to extract**
+
+```bash
+uv run python graph/spikes/make_sample.py 300
+```
+
+This writes one Markdown file per chunk into `data/graph/sample/`, replacing any previous sample. Chunks are picked at an even stride across the whole corpus, with no reference to the benchmark queries, so the graph is not biased towards the questions it will be tested on. The shipped graph uses 300 chunks, and this command reproduces exactly that sample.
+
+**2. Run the extraction**
+
+```bash
+uv run python graph/spikes/build_subset.py 8     # argument: concurrent requests (default 8)
+```
+
+Progress is printed every 25 chunks. When extraction finishes, the builder writes its output to `data/graph/`, which is where the retriever reads from, so there is nothing to copy:
+
+| File | Contents |
+|---|---|
+| `graph.json` | The graph, as NetworkX node-link JSON |
+| `node_to_chunks.json` | For each node, the chunk IDs it was extracted from. This is how retrieval maps graph hits back to passages. |
+| `manifest.json` | Build statistics: chunks attempted and succeeded, failures, timing, node and edge counts |
+
+A finished build **replaces the current graph**. Nothing is written until extraction completes, so an interrupted build leaves the existing graph untouched. To build somewhere else, set `GRAPH_PATH` and `GRAPH_NODE_CHUNKS_PATH` in `.env` (or the shell). The builder and the retriever both read those settings, and the sample folder sits next to `GRAPH_PATH`.
+
+> ⏱️ **Expected runtime:** about 1 hour for 300 chunks (11.8 s per chunk on average on an Apple M5 with `llama3.2` on the GPU). Individual chunks vary widely; some take over a minute. Above about 2 concurrent requests, raising the concurrency makes little difference, because a single request already keeps the GPU busy. A chunk that fails extraction is skipped and listed under `failures` in the manifest (2 of 300 in the shipped build). Extraction runs at temperature 0 with a fixed seed, so the same sample gives the same graph. Building over the full corpus is not practical on a laptop; it projects to roughly 100 hours.
+
+**3. Use it**
+
+```bash
+uv run python pipeline/rag.py "Which protein does empagliflozin inhibit?" --retrieval graph
+```
+
+In the dashboard, choose **graph** under *Retrieval Strategy* in the Live Monitor sidebar. The retriever loads the graph on every run, but restart the dashboard so the Knowledge Base page picks up the new graph.
+
+- **Local:** nothing else to do.
+- **Docker (dev override):** the source directory is mounted, so the container sees `data/graph/` straight away.
+- **Docker (production compose):** the graph is copied into the image at build time, so rebuild: `docker compose build ragscope && docker compose up -d`.
+
+> By default, graph results are fused with dense retrieval (`GRAPH_FUSE_DENSE=true`). While the graph covers only a small part of the corpus, fusion can reorder what dense retrieval found but can't bring in a passage that only the graph found. Set `GRAPH_FUSE_DENSE=false` to see graph-only results.
 
 ---
 

@@ -1,9 +1,8 @@
 """
 Spike S3 — graph quality and entity-seeding viability.
 
-Runs in the MAIN project venv (not the builder venv) because the seeder will
-eventually live there and must use the same all-MiniLM-L6-v2 embedder as the
-dense retriever.
+Uses the same all-MiniLM-L6-v2 embedder as the dense retriever, because the
+seeder must match queries in the same embedding space.
 
 Two separate questions, deliberately not conflated:
 
@@ -29,9 +28,11 @@ from pathlib import Path
 
 import networkx as nx
 
-HERE = Path(__file__).parent
-OUT = HERE / "out"
-BENCH = Path("/Users/samuel/Documents/GitHub/MDATS79/experiments/results/benchmark_20260813_033105.csv")
+sys.path.insert(0, str(Path(__file__).parent))
+from pipeline_config import GRAPH_DIR as OUT  # noqa: E402
+from pipeline_config import REPO_ROOT, SAMPLE_DIR  # noqa: E402
+
+BENCH = REPO_ROOT / "experiments/results/benchmark_20260813_033105.csv"
 
 
 def load_graph() -> tuple[nx.DiGraph, dict]:
@@ -133,7 +134,7 @@ def main() -> None:
     try:
         import pathlib as _pl
         from data.loaders import bioasq as _bq
-        subset_docs = {q.stem.split("__chunk_")[0] for q in (HERE / "docs").glob("*.md")}
+        subset_docs = {q.stem.split("__chunk_")[0] for q in SAMPLE_DIR.glob("*.md")}
         allq = (_bq.load_phase_a_queries() + _bq.load_factoid_queries()
                 + _bq.load_summary_queries())
         cov = sum(1 for r in allq

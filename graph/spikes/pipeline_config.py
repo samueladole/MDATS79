@@ -3,8 +3,37 @@ The working docling-graph configuration, established by spike S1.
 
 Each setting below is load-bearing; the comments record what goes wrong without
 it, because several failure modes are silent.
+
+It also holds every path the graph scripts use. They all come from the project
+settings, so the builder writes exactly where the retriever reads.
 """
+import os
+import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from config.settings import settings  # noqa: E402
+
+
+def _in_repo(path: Path) -> Path:
+    return path if path.is_absolute() else REPO_ROOT / path
+
+
+GRAPH_PATH = _in_repo(settings.graph_path)                    # data/graph/graph.json
+NODE_CHUNKS_PATH = _in_repo(settings.graph_node_chunks_path)  # data/graph/node_to_chunks.json
+GRAPH_DIR = GRAPH_PATH.parent
+MANIFEST_PATH = GRAPH_DIR / "manifest.json"
+SAMPLE_DIR = GRAPH_DIR / "sample"                 # one .md file per sampled chunk
+CORPUS_PATH = REPO_ROOT / "data" / "bm25_corpus.jsonl"
+
+# docling-graph reads the Ollama address from the environment rather than from
+# our settings, so pass the project's value through. A value already set in the
+# shell still wins.
+os.environ.setdefault("OLLAMA_BASE_URL", settings.ollama_base_url)
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 EXTRACTOR_MODEL = "llama3.2:latest"
 
@@ -49,6 +78,7 @@ def build_config(source_file: Path, *, model: str = EXTRACTOR_MODEL,
             "generation": {"temperature": 0.0, "seed": 42},
         },
         "parallel_workers": 1,
-        "output_dir": str(output_dir) if output_dir else "out",
+        # Only written to when dump=True.
+        "output_dir": str(output_dir or GRAPH_DIR / "docling_dump"),
         "dump_to_disk": dump,
     }
