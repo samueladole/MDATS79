@@ -6,9 +6,14 @@ Wraps ChromaDB to provide a clean, typed interface for:
     * Performing similarity search (dense retrieval)
     * Inspecting collection statistics (telemetry / dashboard)
 
-ChromaDB is run as a standalone HTTP service (see docker-compose.yml).
-The client connects via the HTTP API so the store persists independently
-of the Python process lifecycle.
+ChromaDB runs in one of two modes, chosen by ``CHROMA_MODE``:
+
+* ``embedded`` — inside this Python process, reading and writing the index
+  under ``CHROMA_PATH``. No database server to install or start.
+* ``http`` — as a separate server (see docker-compose.yml), reached over its
+  HTTP API, so several processes can share one store.
+
+Both use the same collection layout and cosine HNSW index.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from __future__ import annotations
 import functools
 import random
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -101,8 +107,10 @@ class VectorStore:
     Parameters
     ----------
     collection_name : ChromaDB collection name. Defaults to ``settings.chroma_collection``.
-    host            : ChromaDB server host. Defaults to ``settings.chroma_host``.
-    port            : ChromaDB server port. Defaults to ``settings.chroma_port``.
+    host            : ChromaDB server host (http mode). Defaults to ``settings.chroma_host``.
+    port            : ChromaDB server port (http mode). Defaults to ``settings.chroma_port``.
+    mode            : ``"embedded"`` or ``"http"``. Defaults to ``settings.chroma_mode``.
+    path            : Index directory (embedded mode). Defaults to ``settings.chroma_path``.
     """
 
     def __init__(
@@ -110,27 +118,41 @@ class VectorStore:
         collection_name: str | None = None,
         host: str | None = None,
         port: int | None = None,
+        mode: str | None = None,
+        path: str | Path | None = None,
     ) -> None:
         self.collection_name = collection_name or settings.chroma_collection
-        host = host or settings.chroma_host
-        port = port or settings.chroma_port
+        mode = mode or settings.chroma_mode
+        chroma_settings = ChromaSettings(anonymized_telemetry=False)
 
-        logger.info(f"Connecting to ChromaDB at {host}:{port} …")
-        self._client = chromadb.HttpClient(
-            host=host,
-            port=port,
-            settings=ChromaSettings(anonymized_telemetry=False),
-        )
+        if mode == "embedded":
+            path = Path(path or settings.chroma_path)
+            path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Opening embedded ChromaDB at {path} …")
+            self._client = chromadb.PersistentClient(path=str(path), settings=chroma_settings)
+        else:
+            host = host or settings.chroma_host
+            port = port or settings.chroma_port
+            logger.info(f"Connecting to ChromaDB at {host}:{port} …")
+            self._client = chromadb.HttpClient(host=host, port=port, settings=chroma_settings)
 
         # get_or_create ensures idempotent initialisation across restarts.
         self._collection = self._client.get_or_create_collection(
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"},  # cosine distance for all-MiniLM
         )
+        count = self._collection.count()
         logger.info(
             f"ChromaDB collection '{self.collection_name}' ready. "
-            f"Current count: {self._collection.count():,} chunks."
+            f"Current count: {count:,} chunks."
         )
+        if count == 0:
+            logger.warning(
+                f"Collection '{self.collection_name}' is empty. Retrieval will return "
+                "nothing until it is filled: run `uv run python scripts/fetch_index.py` "
+                "for the prebuilt index, or `uv run python pipeline/ingestion.py` to "
+                "build it from source."
+            )
 
     # ── Ingestion ──────────────────────────────────────────────────────────────
 

@@ -39,7 +39,10 @@ services:
 
   # ── ChromaDB ───────────────────────────────────────────────────────────────
   chromadb:
-    image: chromadb/chroma:latest
+    # Pinned: the server owns the on-disk index format, so a floating tag can
+    # change it under an existing volume. 1.5.9 is the image (digest 1e0b73a1…)
+    # that served the published index.
+    image: chromadb/chroma:1.5.9
     container_name: ragscope_chromadb
     restart: unless-stopped
     networks:
@@ -91,6 +94,7 @@ services:
       - .env
     environment:
       OLLAMA_BASE_URL: http://host.docker.internal:11434
+      CHROMA_MODE: http       # containers use the chromadb service, whatever .env says
       CHROMA_HOST: chromadb
     depends_on:
       chromadb:

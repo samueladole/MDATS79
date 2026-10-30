@@ -64,6 +64,7 @@ services:
       - .env
     environment:
       OLLAMA_BASE_URL: http://host.docker.internal:11434
+      CHROMA_MODE: http       # containers use the chromadb service, whatever .env says
       CHROMA_HOST: chromadb
     # jupyterlab/matplotlib/seaborn/ipywidgets are already installed in this
     # image (built from the `jupyter` Dockerfile target) — nothing to install

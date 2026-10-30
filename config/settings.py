@@ -77,6 +77,18 @@ class Settings(BaseSettings):
     )
 
     # ── ChromaDB ───────────────────────────────────────────────────────────────
+    chroma_mode: str = Field(
+        default="http",
+        description=(
+            "'embedded' runs ChromaDB inside the application, storing the index "
+            "under CHROMA_PATH, so no database server is needed. 'http' connects "
+            "to a ChromaDB server at CHROMA_HOST:CHROMA_PORT (the Docker setup)."
+        ),
+    )
+    chroma_path: Path = Field(
+        default=Path("data/chroma_store"),
+        description="Index directory used when CHROMA_MODE=embedded.",
+    )
     chroma_host: str = Field(default="localhost")
     chroma_port: int = Field(default=8000)
     chroma_collection: str = Field(default="ragscope_corpus")
@@ -165,6 +177,14 @@ class Settings(BaseSettings):
         allowed = {"llama3", "mistral"}
         if v not in allowed:
             raise ValueError(f"default_llm must be one of {allowed}, got '{v}'")
+        return v
+
+    @field_validator("chroma_mode")
+    @classmethod
+    def validate_chroma_mode(cls, v: str) -> str:
+        allowed = {"embedded", "http"}
+        if v not in allowed:
+            raise ValueError(f"chroma_mode must be one of {allowed}, got '{v}'")
         return v
 
     @field_validator("embedding_device")
