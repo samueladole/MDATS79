@@ -36,6 +36,7 @@ import json
 import math
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 import networkx as nx
@@ -80,6 +81,74 @@ def _dedupe_labels(seeds: list[dict]) -> list[dict]:
         if key not in best or s["score"] > best[key]["score"]:
             best[key] = {"label": s["label"], "matcher": s["matcher"], "score": s["score"]}
     return sorted(best.values(), key=lambda h: -h["score"])
+
+
+@dataclass(frozen=True)
+class _GraphIndex:
+    """Everything loaded from the graph artefacts. Read-only after loading."""
+
+    digraph: nx.DiGraph
+    graph: nx.Graph
+    node_chunks: dict[str, list[str]]
+    labels: list[str]
+    label_nodes: list[str]
+    label_norms: list[str]
+    label_vecs: object
+    degree: dict
+
+
+#: One loaded index per artefact path. A rebuilt graph has a new mtime or size,
+#: so it is reloaded instead of served stale.
+_GRAPH_CACHE: dict[tuple, tuple[tuple, _GraphIndex]] = {}
+
+
+def _file_stamp(path: Path) -> tuple[int, int]:
+    st = path.stat()
+    return st.st_mtime_ns, st.st_size
+
+
+def _load_graph_index(gp: Path, ncp: Path, embedder) -> _GraphIndex:
+    # Keyed on the embedder's model too: label vectors from one model are
+    # meaningless against query vectors from another.
+    key = (str(gp.resolve()), str(ncp.resolve()),
+           getattr(embedder, "model_name", type(embedder).__qualname__))
+    stamp = (_file_stamp(gp), _file_stamp(ncp))
+    cached = _GRAPH_CACHE.get(key)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+
+    # Both orientations are kept. Traversal runs on the undirected view, so a
+    # relation can be followed against its direction (a protein reaches the
+    # drug that inhibits it). The directed original is retained only so the
+    # path graph can report each relation the right way round.
+    digraph: nx.DiGraph = nx.node_link_graph(json.loads(gp.read_text()), edges="edges")
+    graph: nx.Graph = digraph.to_undirected()
+    node_chunks: dict[str, list[str]] = json.loads(ncp.read_text())
+
+    # Entity label index. Document roots are excluded: they are chunks, not
+    # entities, and must never be returned as seeds.
+    labels: list[str] = []
+    label_nodes: list[str] = []
+    for nid, data in graph.nodes(data=True):
+        if str(nid).startswith(DOC_PREFIX):
+            continue
+        name = data.get("name") or data.get("label")
+        if isinstance(name, str) and name.strip():
+            labels.append(name.strip())
+            label_nodes.append(nid)
+
+    index = _GraphIndex(
+        digraph=digraph,
+        graph=graph,
+        node_chunks=node_chunks,
+        labels=labels,
+        label_nodes=label_nodes,
+        label_norms=[_norm(x) for x in labels],
+        label_vecs=embedder.embed_batch(labels) if labels else [],
+        degree=dict(graph.degree()),
+    )
+    _GRAPH_CACHE[key] = (stamp, index)
+    return index
 
 
 class GraphRetriever(BaseRetriever):
@@ -161,32 +230,17 @@ class GraphRetriever(BaseRetriever):
                 f"graph/build_graph.py, or point GRAPH_PATH at an existing graph."
             )
 
-        # Both orientations are kept. Traversal runs on the undirected view, so a
-        # relation can be followed against its direction (a protein reaches the
-        # drug that inhibits it). The directed original is retained only so the
-        # path graph can report each relation the right way round.
-        self._digraph: nx.DiGraph = nx.node_link_graph(
-            json.loads(gp.read_text()), edges="edges"
-        )
-        self._graph: nx.Graph = self._digraph.to_undirected()
-        self._node_chunks: dict[str, list[str]] = json.loads(ncp.read_text())
-
-        # Entity label index, built once. Document roots are excluded: they are
-        # chunks, not entities, and must never be returned as seeds.
-        self._labels: list[str] = []
-        self._label_nodes: list[str] = []
-        for nid, data in self._graph.nodes(data=True):
-            if str(nid).startswith(DOC_PREFIX):
-                continue
-            name = data.get("name") or data.get("label")
-            if isinstance(name, str) and name.strip():
-                self._labels.append(name.strip())
-                self._label_nodes.append(nid)
-        self._label_norms = [_norm(x) for x in self._labels]
-        self._label_vecs = (
-            self._embedder.embed_batch(self._labels) if self._labels else []
-        )
-        self._degree = dict(self._graph.degree())
+        # Loading the graph and embedding every label costs ~0.65 s, and the
+        # dashboard builds a new retriever per query, so the result is shared.
+        index = _load_graph_index(gp, ncp, self._embedder)
+        self._digraph = index.digraph
+        self._graph = index.graph
+        self._node_chunks = index.node_chunks
+        self._labels = index.labels
+        self._label_nodes = index.label_nodes
+        self._label_norms = index.label_norms
+        self._label_vecs = index.label_vecs
+        self._degree = index.degree
 
         logger.info(
             f"GraphRetriever ready — {self._graph.number_of_nodes()} nodes, "

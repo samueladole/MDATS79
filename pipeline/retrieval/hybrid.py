@@ -110,13 +110,21 @@ class HybridRetriever(BaseRetriever):
         corpus_ids   : List of chunk IDs matching the ChromaDB collection.
         corpus_texts : Corresponding text strings.
         """
-        logger.info(f"Building BM25 index over {len(corpus_texts):,} chunks …")
-        with Timer("bm25_index_build") as t:
-            tokenised = [_tokenise(text) for text in corpus_texts]
-            self._bm25 = BM25Okapi(tokenised)
-            self._corpus_ids = corpus_ids
-            self._corpus_texts = corpus_texts
-        logger.info(f"BM25 index built in {t.elapsed_ms:.0f} ms.")
+        self.attach_bm25_index(build_bm25(corpus_texts), corpus_ids, corpus_texts)
+
+    def attach_bm25_index(
+        self,
+        index: BM25Okapi,
+        corpus_ids: list[str],
+        corpus_texts: list[str],
+    ) -> None:
+        """Use an index already built by ``build_bm25``.
+
+        The index is only read at query time, so instances can share one.
+        """
+        self._bm25 = index
+        self._corpus_ids = corpus_ids
+        self._corpus_texts = corpus_texts
 
     # ── Retrieval ──────────────────────────────────────────────────────────────
 
@@ -256,6 +264,15 @@ class HybridRetriever(BaseRetriever):
                 )
             )
         return result
+
+
+def build_bm25(corpus_texts: list[str]) -> BM25Okapi:
+    """Tokenise ``corpus_texts`` and build a BM25 index over them."""
+    logger.info(f"Building BM25 index over {len(corpus_texts):,} chunks …")
+    with Timer("bm25_index_build") as t:
+        index = BM25Okapi([_tokenise(text) for text in corpus_texts])
+    logger.info(f"BM25 index built in {t.elapsed_ms:.0f} ms.")
+    return index
 
 
 def _tokenise(text: str) -> list[str]:

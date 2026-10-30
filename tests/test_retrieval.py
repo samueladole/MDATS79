@@ -393,3 +393,37 @@ class TestScoreKindLabelling:
         assert sum("_reconnect_on_stale_collection" in l for l in head) == 1, (
             "get_by_ids is double-decorated"
         )
+
+
+class TestBM25IndexCache:
+    """The dashboard builds a retriever per query; BM25 must index once."""
+
+    def _write(self, path, rows):
+        import orjson
+
+        path.write_bytes(b"\n".join(orjson.dumps({"id": i, "text": t}) for i, t in rows))
+
+    def test_index_is_built_once_per_corpus_file(self, tmp_path):
+        from pipeline.retrieval import _bm25_index
+
+        corpus = tmp_path / "bm25.jsonl"
+        self._write(corpus, [("a", "aspirin treats headache"), ("b", "ibuprofen")])
+        first = _bm25_index(corpus)
+        assert _bm25_index(corpus) is first
+
+    def test_changed_corpus_file_is_reindexed(self, tmp_path):
+        from pipeline.retrieval import _bm25_index
+
+        corpus = tmp_path / "bm25.jsonl"
+        self._write(corpus, [("a", "aspirin")])
+        first = _bm25_index(corpus)
+        self._write(corpus, [("a", "aspirin"), ("b", "ibuprofen relieves pain")])
+        second = _bm25_index(corpus)
+        assert second is not first
+        assert second[1] == ["a", "b"]
+
+    def test_missing_corpus_explains_how_to_build_it(self, tmp_path):
+        from pipeline.retrieval import _bm25_index
+
+        with pytest.raises(FileNotFoundError, match="BM25 corpus not found"):
+            _bm25_index(tmp_path / "missing.jsonl")

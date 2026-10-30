@@ -268,3 +268,39 @@ class TestPathGraph:
                                    total_tokens=2, estimated_cost_usd=0.0),
         )
         assert record["graph_path"] == tel["graph_path"]
+
+
+class TestGraphIndexCache:
+    """The dashboard builds a retriever per query; the graph must load once."""
+
+    def test_second_retriever_reuses_the_loaded_graph(self, graph_artefacts, monkeypatch):
+        calls = []
+
+        class _CountingEmbedder(_FakeEmbedder):
+            def embed_batch(self, texts):
+                calls.append(len(texts))
+                return super().embed_batch(texts)
+
+        from pipeline.retrieval import graph as graph_mod
+
+        gp, ncp = graph_artefacts
+        monkeypatch.setattr(graph_mod, "DenseRetriever", lambda *a, **k: None)
+        a = graph_mod.GraphRetriever(graph_path=gp, node_chunks_path=ncp,
+                                     vector_store=_FakeStore(),
+                                     embedding_generator=_CountingEmbedder())
+        b = graph_mod.GraphRetriever(graph_path=gp, node_chunks_path=ncp,
+                                     vector_store=_FakeStore(),
+                                     embedding_generator=_CountingEmbedder())
+        assert len(calls) == 1
+        assert a._graph is b._graph
+
+    def test_rebuilt_graph_is_reloaded(self, graph_artefacts, monkeypatch):
+        gp, ncp = graph_artefacts
+        first = _build(graph_artefacts, monkeypatch)
+        data = json.loads(gp.read_text())
+        data["nodes"].append({"id": "Drug_naproxen", "name": "naproxen",
+                              "__class__": "ChemicalOrDrug"})
+        gp.write_text(json.dumps(data))
+        second = _build(graph_artefacts, monkeypatch)
+        assert "naproxen" in second._labels
+        assert "naproxen" not in first._labels

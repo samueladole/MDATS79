@@ -270,9 +270,11 @@ def ingest_corpus(
     return summary
 
 
-def load_bm25_corpus() -> tuple[list[str], list[str]]:
+def load_bm25_corpus(path: Path | None = None) -> tuple[list[str], list[str]]:
     """
     Load the persisted BM25 corpus from disk.
+
+    ``path`` defaults to the BioASQ corpus file, ``BM25_CORPUS_PATH``.
 
     The corpus is stored as JSONL — one ``{"id": "...", "text": "..."}`` object
     per line — which allows streaming reads on large files without loading the
@@ -289,19 +291,23 @@ def load_bm25_corpus() -> tuple[list[str], list[str]]:
     FileNotFoundError
         If ingestion has not been run yet.
     """
-    if not BM25_CORPUS_PATH.exists():
-        raise FileNotFoundError(
-            f"BM25 corpus not found at '{BM25_CORPUS_PATH}'.\n"
-            "Run ingestion before starting the pipeline:\n"
-            "  uv run python pipeline/ingestion.py --corpus all\n"
-            "  # Docker:\n"
-            "  docker compose exec ragscope uv run python pipeline/ingestion.py --corpus all"
-        )
+    path = Path(path) if path is not None else BM25_CORPUS_PATH
+    if not path.exists():
+        if path.name == "bm25_documents.jsonl":
+            how = ("Add files on the dashboard's Knowledge Base page, or run:\n"
+                   "  uv run python pipeline/ingestion.py --corpus documents")
+        else:
+            how = ("Fetch the prebuilt index, or run ingestion:\n"
+                   "  uv run python scripts/fetch_index.py\n"
+                   "  uv run python pipeline/ingestion.py --corpus all\n"
+                   "  # Docker:\n"
+                   "  docker compose exec ragscope uv run python pipeline/ingestion.py --corpus all")
+        raise FileNotFoundError(f"BM25 corpus not found at '{path}'.\n{how}")
 
     ids: list[str] = []
     texts: list[str] = []
 
-    with BM25_CORPUS_PATH.open("rb") as fh:
+    with path.open("rb") as fh:
         for raw_line in fh:
             raw_line = raw_line.strip()
             if not raw_line:
