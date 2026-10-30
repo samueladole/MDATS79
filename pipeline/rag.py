@@ -5,9 +5,9 @@ The central orchestrator for a single end-to-end RAG query execution.
 
 Execution flow
 --------------
-  1. Retrieve top-k chunks (dense or hybrid)
+  1. Retrieve top-k chunks (dense, hybrid or graph)
   2. Inject retrieved context into the LLM prompt
-  3. Generate a response via Ollama (Llama 3 or Mistral)
+  3. Generate a response via Ollama (any configured model tag)
   4. Count tokens and estimate cost
   5. Run RAGAS evaluation metrics
   6. Compute hallucination risk score
@@ -16,23 +16,15 @@ Execution flow
 
 Every module in the pipeline is called through this orchestrator.
 The Streamlit dashboard and the benchmark experiment runner both
-use this class as their single entry point.
-
-Usage (CLI)
------------
-    uv run python pipeline/rag.py \\
-        --query "What causes hallucination in LLMs?" \\
-        --llm llama3 \\
-        --retrieval hybrid
+use this class as their single entry point. To ask a question
+interactively, use the dashboard's Live Monitor page.
 """
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass, field
 from typing import Literal
 
-import typer
 from loguru import logger
 
 from config.settings import settings
@@ -57,8 +49,6 @@ except ImportError:
 
 
 RetrievalChoice = Literal["dense", "hybrid", "graph"]
-
-app = typer.Typer(add_completion=False)
 
 
 # ── Result type ───────────────────────────────────────────────────────────────
@@ -100,41 +90,6 @@ class RAGResult:
     e2e_ms: float = 0.0
     telemetry_path: str = ""
     metadata: dict = field(default_factory=dict)
-
-    def summary(self) -> str:
-        """Return a formatted terminal summary string."""
-        lines = [
-            "─" * 56,
-            f" Query : {self.query[:70]}",
-            "─" * 56,
-            f" Retrieved chunks : {len(self.retrieved_chunks)} "
-            f"(strategy: {self.retrieval_telemetry.get('strategy', '?')})",
-        ]
-        for i, c in enumerate(self.retrieved_chunks[:3], 1):
-            lines.append(f"   [{i}] score={c.score:.3f} | {c.text[:80].strip()}…")
-        lines += [
-            "",
-            f" Answer : {self.answer[:200].strip()}",
-            "",
-            " ── Telemetry ──────────────────────────────────────",
-            f"  Retrieval latency  : {self.retrieval_telemetry.get('retrieval_ms', 0):.1f} ms",
-            f"  Generation latency : {self.generation_response.generation_ms:.1f} ms",
-            f"  Evaluation latency : {self.evaluation_ms:.1f} ms",
-            f"  End-to-end latency : {self.e2e_ms:.1f} ms",
-            f"  Prompt tokens      : {self.token_usage.prompt_tokens}",
-            f"  Completion tokens  : {self.token_usage.completion_tokens}",
-            f"  Estimated cost     : ${self.token_usage.estimated_cost_usd:.6f}",
-            "",
-            " ── RAGAS Evaluation ───────────────────────────────",
-            f"  Context Relevance  : {_fmt(self.context_relevance)}",
-            f"  Answer Faithfulness: {_fmt(self.answer_faithfulness)}",
-            f"  Answer Correctness : {_fmt(self.answer_correctness)}",
-            f"  Hallucination Risk : {_risk_label(self.hallucination_risk)}",
-            "─" * 56,
-            f" Telemetry → {self.telemetry_path}",
-            "─" * 56,
-        ]
-        return "\n".join(lines)
 
 
 @dataclass
@@ -382,50 +337,3 @@ class RAGPipeline:
             telemetry_path=str(tel_path),
             metadata={"query_id": query_id, "query_type": query_type},
         )
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-
-def _fmt(v: float | None) -> str:
-    return f"{v:.4f}" if v is not None else "N/A (no ground truth)"
-
-
-def _risk_label(v: float | None) -> str:
-    if v is None:
-        return "N/A"
-    label = "LOW" if v < 0.35 else "MEDIUM" if v < 0.65 else "HIGH"
-    return f"{label}  ({v:.4f})"
-
-
-# ── CLI ───────────────────────────────────────────────────────────────────────
-
-
-@app.command()
-def main(
-    query: str = typer.Argument(..., help="The question to ask the RAG system."),
-    llm: str = typer.Option("", help="Ollama model tag, e.g. llama3, mistral, llama3.2:3b. Defaults to DEFAULT_LLM."),
-    retrieval: RetrievalChoice = typer.Option("hybrid", help="Retrieval strategy: dense | hybrid"),
-    top_k: int = typer.Option(5, help="Number of chunks to retrieve."),
-    ground_truth: str = typer.Option("", help="Optional reference answer for evaluation."),
-    no_eval: bool = typer.Option(False, "--no-eval", help="Skip RAGAS evaluation."),
-) -> None:
-    """Run a single query through the RAG pipeline and print the result."""
-    logger.remove()
-    logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level:<8} | {message}")
-
-    pipeline = RAGPipeline(
-        llm_model=llm or None,
-        retrieval_strategy=retrieval,
-        top_k=top_k,
-        run_evaluation=not no_eval,
-    )
-    result = pipeline.query(
-        query_text=query,
-        ground_truth=ground_truth or None,
-    )
-    print(result.summary())
-
-
-if __name__ == "__main__":
-    app()

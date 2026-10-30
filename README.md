@@ -38,7 +38,6 @@
   - [Option B - Local with uv](#option-b--local-with-uv)
   - [Configuration](#configuration)
 - [Usage](#usage)
-  - [Running the RAG Pipeline](#running-the-rag-pipeline)
   - [Launching the Dashboard](#launching-the-dashboard)
   - [Running the Benchmark Evaluation](#running-the-benchmark-evaluation)
   - [Asking Questions About Your Own Documents](#asking-questions-about-your-own-documents)
@@ -532,7 +531,7 @@ The settings most often changed:
 
 | Setting | Meaning |
 |---|---|
-| `GENERATOR_MODELS` | Comma-separated Ollama model tags offered in the dashboard and CLI. `llama3` and `mistral` use their own chat templates, as in the experiments; any other tag uses a generic prompt. |
+| `GENERATOR_MODELS` | Comma-separated Ollama model tags offered in the dashboard. `llama3` and `mistral` use their own chat templates, as in the experiments; any other tag uses a generic prompt. |
 | `DEFAULT_LLM` | The generator selected by default. Must be one of `GENERATOR_MODELS`. |
 | `RAGAS_JUDGE_MODEL` | The model that scores each answer. |
 | `CHROMA_MODE` | `embedded` keeps the index in `CHROMA_PATH` inside the app; `http` connects to a server at `CHROMA_HOST:CHROMA_PORT`. Docker always uses `http`. |
@@ -550,62 +549,6 @@ See the comments in either file for the rest.
 
 Commands below are shown in two variants: **Docker** and **local uv**. They are functionally identical. Inside the container, run `python` directly: the app image carries the project's environment but not `uv`.
 
-### Running the RAG Pipeline
-
-Run a single query through the full pipeline (retrieval + generation + telemetry + evaluation):
-
-```bash
-# Docker
-docker compose exec ragscope python pipeline/rag.py \
-  "Which protein does empagliflozin inhibit?" \
-  --llm llama3 \
-  --retrieval hybrid \
-  --top-k 5
-
-# Local
-uv run python pipeline/rag.py \
-  "Which protein does empagliflozin inhibit?" \
-  --llm llama3 \
-  --retrieval hybrid \
-  --top-k 5
-```
-
-> The query is a positional argument, not a `--query` flag — `pipeline/rag.py` is a Typer CLI with `query` declared as `typer.Argument`. `--llm` takes any Ollama model tag (for example `llama3.2:3b`) and defaults to `DEFAULT_LLM`. The sample below is from the research configuration.
-
-**Sample output:**
-
-```
-────────────────────────────────────────────────────────
- Query : Which protein does empagliflozin inhibit?
-────────────────────────────────────────────────────────
- Retrieved chunks : 5 (strategy: hybrid)
-   [1] score=0.016 | empagliflozin reduces HG induced inflammatory and fibrotic markers by blocking…
-   [2] score=0.016 | 0.80 - 1.01). Empagliflozin was well tolerated under fed and fasting condition…
-   [3] score=0.016 | OBJECTIVES: Empagliflozin is an orally available, potent and highly selective i…
-
- Answer : According to Passage 3, empagliflozin is an orally available, potent and highly selective inhibitor of the sodium glucose cotransporter 2 (SGLT2).
-
- ── Telemetry ──────────────────────────────────────
-  Retrieval latency  : 328.9 ms
-  Generation latency : 6857.2 ms
-  Evaluation latency : 20534.3 ms
-  End-to-end latency : 27725.0 ms
-  Prompt tokens      : 1520
-  Completion tokens  : 37
-  Estimated cost     : $0.000000
-
- ── RAGAS Evaluation ───────────────────────────────
-  Context Relevance  : 0.7500
-  Answer Faithfulness: 1.0000
-  Answer Correctness : N/A (no ground truth)
-  Hallucination Risk : LOW  (0.1000)
-────────────────────────────────────────────────────────
- Telemetry → telemetry/store/ee89ca0c-83de-489c-ab93-e4f865dae4ad.json
-────────────────────────────────────────────────────────
-```
-
-> Hybrid scores are Reciprocal Rank Fusion values (around 0.016), not cosine similarities. Answer correctness needs a reference answer, so it shows `N/A` for an ad-hoc question.
-
 ### Launching the Dashboard
 
 ```bash
@@ -622,6 +565,8 @@ The dashboard provides four views at `http://localhost:8501`:
 - **Query Explorer** — click any logged query to inspect retrieved chunks, similarity scores, faithfulness breakdowns, latency decomposition, and the same per-query pipeline flow Sankey
 - **Benchmark Results** — the four experimental conditions compared over the 200-query benchmark: summary statistics, hallucination risk profile, Cohen's *d* effect sizes, latency and token breakdown, metric correlations, and performance by query role
 - **Knowledge Base** — upload your own PDF and text files (see below), and browse the BioASQ collection: corpus composition by dataset, a 3D PCA projection of sampled embeddings coloured by dataset, a paginated chunk browser, a semantic search preview, and the knowledge graph
+
+> In the Live Monitor, hybrid and graph chunk scores are Reciprocal Rank Fusion values (around 0.016), not cosine similarities. Answer correctness needs a reference answer, so it shows N/A for an ad-hoc question unless you enter one in the sidebar.
 
 ### Running the Benchmark Evaluation
 
@@ -741,10 +686,6 @@ A finished build **replaces the current graph**. Nothing is written until extrac
 > ⏱️ **Expected runtime:** about 1 hour for 300 chunks (11.8 s per chunk on average on an Apple M5 with `llama3.2` on the GPU). Individual chunks vary widely; some take over a minute. Above about 2 concurrent requests, raising the concurrency makes little difference, because a single request already keeps the GPU busy. A chunk that fails extraction is skipped and listed under `failures` in the manifest (2 of 300 in the shipped build). Extraction runs at temperature 0 with a fixed seed, so the same sample gives the same graph. Building over the full corpus is not practical on a laptop; it projects to roughly 100 hours.
 
 **3. Use it**
-
-```bash
-uv run python pipeline/rag.py "Which protein does empagliflozin inhibit?" --retrieval graph
-```
 
 In the dashboard, choose **graph** under *Retrieval Strategy* in the Live Monitor sidebar. The retriever loads the graph once and reloads it when the files change, but restart the dashboard so the Knowledge Base page picks up the new graph.
 

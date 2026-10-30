@@ -212,7 +212,7 @@ Ingestion is a streaming pipeline that processes documents in mini-batches to ke
 
 **Entry point:** `pipeline/rag.py` → `RAGPipeline.query()`
 
-The `RAGPipeline` class is the single entry point for all query execution — used by the CLI, the dashboard, and the experiment runner.
+The `RAGPipeline` class is the single entry point for all query execution — used by the dashboard and the experiment runner.
 
 **Execution sequence:**
 
@@ -592,7 +592,6 @@ Applying the correct template is essential — supplying a completion-style prom
 | `RAGPipeline.answer(query_text)` | method | Retrieval and generation only; returns a `DraftAnswer` |
 | `RAGPipeline.evaluate(draft, ground_truth, ...)` | method | RAGAS scoring, telemetry record; returns `RAGResult` |
 | `RAGResult` | dataclass | Complete query result including all scores and telemetry, incl. `evaluation_ms` |
-| `RAGResult.summary()` | method | Formatted terminal output string (includes an Evaluation latency line) |
 
 **`RAGPipeline` constructor behaviour:** the BM25 index (hybrid) and the loaded graph with its label embeddings (graph) are built once per process and shared by every later pipeline, keyed on the file and rebuilt only when the file changes. Before this, the dashboard rebuilt them for every query (about 0.8 s and 0.65 s).
 
@@ -759,7 +758,7 @@ All settings live in `.env` (start from `.env.example` for CPU-only machines or 
 | Variable | Default | Used by |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | All LLM clients, RAGAS runner |
-| `GENERATOR_MODELS` | `llama3,mistral` | Generator tags offered in the dashboard and CLI |
+| `GENERATOR_MODELS` | `llama3,mistral` | Generator tags offered in the dashboard |
 | `DEFAULT_LLM` | `llama3` | `RAGPipeline` default; must be in `GENERATOR_MODELS` |
 | `RETRIEVAL_STRATEGY` | `hybrid` | `RAGPipeline` default |
 | `TOP_K` | `5` | Both retrievers |

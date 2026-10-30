@@ -54,8 +54,8 @@ class Settings(BaseSettings):
     generator_models: str = Field(
         default="llama3,mistral",
         description=(
-            "Comma-separated Ollama model tags offered as generators in the dashboard "
-            "and CLI. llama3 and mistral are the dissertation models; any other tag "
+            "Comma-separated Ollama model tags offered as generators in the dashboard. "
+            "llama3 and mistral are the dissertation models; any other tag "
             "(e.g. llama3.2:3b) works with the generic prompt."
         ),
     )
