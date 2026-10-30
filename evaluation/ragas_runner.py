@@ -131,12 +131,18 @@ class RAGASRunner:
                 reference=ground_truth or None,
             )
             dataset = EvaluationDataset(samples=[sample])
+            from ragas.run_config import RunConfig
+
             scores = evaluate(
                 dataset=dataset,
                 metrics=metrics,
                 llm=llm,
                 embeddings=self._embeddings,
                 raise_exceptions=True,
+                # The metrics' judge calls are queued on one Ollama server, so
+                # on a CPU the last can wait minutes. RAGAS's 180 s default is
+                # kept unless RAGAS_TIMEOUT_SECONDS raises it.
+                run_config=RunConfig(timeout=settings.ragas_timeout_seconds),
             )
 
             logger.debug(f"Raw RAGAS scores: {scores}")

@@ -111,6 +111,13 @@ class Settings(BaseSettings):
         description="Temperature for the RAGAS judge LLM (0-1).",
     )
     ragas_max_tokens: int = Field(default=2048)
+    ragas_timeout_seconds: int = Field(
+        default=180,
+        description=(
+            "Seconds each RAGAS judge call may take, including time queued behind "
+            "the other metrics. 180 is RAGAS's own default; raise it on CPU-only machines."
+        ),
+    )
 
     # ── Cost estimation ────────────────────────────────────────────────────────
     cost_per_1k_prompt_tokens: float = Field(default=0.00)
