@@ -15,11 +15,8 @@ st.caption("Select any logged query to inspect its full telemetry trace.")
 
 from dashboard.components.graph_view import render_retrieval_graph
 from dashboard.components.latency_chart import pipeline_flow_sankey
-from dashboard.components.metric_cards import (
-    ragas_scorecard,
-    similarity_meter_html,
-    telemetry_row,
-)
+from dashboard.components.metric_cards import ragas_scorecard, telemetry_row
+from dashboard.components.passages import answer_html, render_passages
 from telemetry.logger import get_telemetry_logger
 
 records = get_telemetry_logger().load_all()
@@ -62,7 +59,7 @@ if record.get("ground_truth"):
 st.subheader("Generated Answer")
 st.markdown(
     f'<div style="background:rgba(82,45,128,0.08);padding:1rem;'
-    f'border-left:4px solid #522D80;border-radius:4px;">{record.get("answer", "")}</div>',
+    f'border-left:4px solid #522D80;border-radius:4px;">{answer_html(record.get("answer"))}</div>',
     unsafe_allow_html=True,
 )
 st.divider()
@@ -148,35 +145,32 @@ if record.get("retrieval_strategy") == "graph":
         )
     st.divider()
 
-# ── Retrieved Chunks ──────────────────────────────────────────────────────────
-chunks = record.get("retrieved_chunks", [])
-st.subheader(f"Retrieved Chunks ({len(chunks)})")
-for i, chunk in enumerate(chunks, 1):
-    score = chunk.get("score", 0.0)
-    st.markdown(
-        similarity_meter_html(score, label=f"Chunk {i} similarity"),
-        unsafe_allow_html=True,
-    )
-    graph_info = chunk.get("graph")
-    label = f"Chunk {i} — dataset: {chunk.get('dataset', '?')} | {chunk.get('chunk_id', '')}"
-    if graph_info:
-        origin = "graph only" if graph_info.get("from_graph_leg") else "graph + dense"
-        label += f"  ·  graph rank {graph_info.get('graph_rank', '?')} ({origin})"
-    with st.expander(label):
-        if graph_info:
-            # Graph retrieval records why a chunk was returned, which a
-            # similarity score alone cannot express.
-            via = graph_info.get("via", []) or []
-            if via:
-                st.caption("Reached via these graph entities:")
-                st.dataframe(
-                    [{"Entity": v.get("node", ""), "PageRank mass": v.get("mass", 0.0)}
-                     for v in via],
-                    hide_index=True, width="stretch",
-                )
-            else:
-                st.caption("Reached via the document node rather than a named entity.")
-        st.markdown(chunk.get("text", ""))
+# ── Retrieved passages ────────────────────────────────────────────────────────
+
+
+def _graph_details(passage: dict) -> None:
+    """Why graph retrieval returned this passage, which a score cannot express."""
+    info = passage["graph"]
+    origin = "graph only" if info.get("from_graph_leg") else "graph and dense retrieval"
+    st.caption(f"Graph rank {info.get('graph_rank', '?')}, found by {origin}.")
+    via = info.get("via", []) or []
+    if via:
+        st.caption("Reached via these graph entities:")
+        st.dataframe(
+            [{"Entity": v.get("node", ""), "PageRank mass": v.get("mass", 0.0)} for v in via],
+            hide_index=True, width="stretch",
+        )
+    else:
+        st.caption("Reached via the document node rather than a named entity.")
+
+
+render_passages(
+    record.get("retrieved_chunks", []),
+    answer=record.get("answer"),
+    strategy=record.get("retrieval_strategy", "dense"),
+    excerpts=True,
+    graph_details=_graph_details,
+)
 
 # ── Raw JSON ──────────────────────────────────────────────────────────────────
 with st.expander("Raw Telemetry Record (JSON)", icon=":material/data_object:"):

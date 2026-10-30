@@ -110,6 +110,8 @@ def build_record(
                 # present only for graph retrieval: which seed entities reached
                 # this chunk, and via which nodes
                 **({"graph": c.metadata["graph"]} if "graph" in c.metadata else {}),
+                # present only for your own documents: the file and page
+                **{k: c.metadata[k] for k in ("source", "page") if c.metadata.get(k)},
             }
             for c in retrieved_chunks
         ],

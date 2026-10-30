@@ -292,6 +292,7 @@ ragscope/
 │       ├── theme.py               # Shared icons (Material Symbols / inline SVG) + CSS theme
 │       ├── formatting.py          # Shared number formatting (durations in s or ms)
 │       ├── metric_cards.py        # Metric display components
+│       ├── passages.py            # Retrieved passages: numbered as cited, with sources
 │       ├── latency_chart.py       # Latency visualisation
 │       └── graph_view.py          # Interactive graphs: retrieval path and entity explorer
 │
@@ -561,7 +562,7 @@ uv run streamlit run dashboard/app.py
 
 The dashboard provides four views at `http://localhost:8501`:
 
-- **Live Monitor** — submit a query interactively and watch the full pipeline execute: generated answer, RAGAS scores, colour-graded chunk similarity, and a Sankey diagram of every instrumented stage's wall-clock duration. The answer is shown as soon as it is generated, while the RAGAS scores are still being computed. Choose the **Knowledge base** (BioASQ benchmark or your own documents) in the sidebar
+- **Live Monitor** — submit a query interactively and watch the full pipeline execute: generated answer, RAGAS scores, the retrieved passages, and a Sankey diagram of every instrumented stage's wall-clock duration. The answer is shown as soon as it is generated, while the RAGAS scores are still being computed. Passages are numbered as the model saw them, so "Passage 3" in the answer is passage 3 in the list; cited passages are marked, and each links to its PubMed abstract (or names your file and page). Choose the **Knowledge base** (BioASQ benchmark or your own documents) in the sidebar
 - **Query Explorer** — click any logged query to inspect retrieved chunks, similarity scores, faithfulness breakdowns, latency decomposition, and the same per-query pipeline flow Sankey
 - **Benchmark Results** — the four experimental conditions compared over the 200-query benchmark: summary statistics, hallucination risk profile, Cohen's *d* effect sizes, latency and token breakdown, metric correlations, and performance by query role
 - **Knowledge Base** — three tabs over a picker that lists every ChromaDB collection (the BioASQ benchmark, your documents, and any other):
@@ -569,7 +570,7 @@ The dashboard provides four views at `http://localhost:8501`:
   - **Upload documents:** add PDF and text files (see below)
   - **Knowledge graph:** *Explore an entity* draws it, its related entities and their source chunks left to right, and clicking any entity re-centres on it; *Trace a question* runs graph retrieval (no LLM, milliseconds) and draws the path it took, as on the Live Monitor
 
-> In the Live Monitor, hybrid and graph chunk scores are Reciprocal Rank Fusion values (around 0.016), not cosine similarities. Answer correctness needs a reference answer, so it shows N/A for an ad-hoc question unless you enter one in the sidebar.
+> With hybrid and graph retrieval, passage scores are Reciprocal Rank Fusion values (around 0.016) that only order the passages, so the dashboard shows each passage's rank rather than a similarity. Answer correctness needs a reference answer, so it shows N/A for an ad-hoc question unless you enter one in the sidebar.
 
 ### Running the Benchmark Evaluation
 

@@ -16,17 +16,14 @@ import streamlit as st
 from config.settings import settings
 from dashboard.components.graph_view import render_retrieval_graph
 from dashboard.components.latency_chart import pipeline_flow_sankey
-from dashboard.components.metric_cards import (
-    ragas_scorecard,
-    similarity_meter_html,
-    telemetry_row,
-)
+from dashboard.components.metric_cards import ragas_scorecard, telemetry_row
+from dashboard.components.passages import answer_html, render_passages
 
 
 def _answer_box(text: str) -> None:
     st.markdown(
         f'<div style="background:rgba(82,45,128,0.08);padding:1rem;'
-        f'border-left:4px solid #522D80;border-radius:4px;">{text}</div>',
+        f'border-left:4px solid #522D80;border-radius:4px;">{answer_html(text)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -315,17 +312,13 @@ if st.session_state.last_result:
         )
     st.divider()
 
-    # ── Retrieved Chunks ──────────────────────────────────────────────────────
-    st.subheader(f"Retrieved Chunks (top {len(result.retrieved_chunks)})")
-    for i, chunk in enumerate(result.retrieved_chunks, 1):
-        st.markdown(
-            similarity_meter_html(chunk.score, label=f"Chunk {i} similarity"),
-            unsafe_allow_html=True,
-        )
-        _src = chunk.metadata.get("source")
-        _where = (f"{_src}, page {chunk.metadata.get('page')}" if _src
-                  else f"dataset: {chunk.metadata.get('dataset', '?')}")
-        with st.expander(f"Chunk {i} — {_where} | {chunk.chunk_id}"):
-            st.markdown(chunk.text)
+    # ── Retrieved passages ────────────────────────────────────────────────────
+    render_passages(
+        [{"chunk_id": c.chunk_id, "text": c.text, "score": c.score,
+          "score_kind": c.score_kind, "metadata": c.metadata}
+         for c in result.retrieved_chunks],
+        answer=result.answer,
+        strategy=result.retrieval_telemetry.get("strategy", data["retrieval_choice"]),
+    )
 else:
     st.info("Run a query above to see the generated answer, evaluation scores, and retrieved chunks.")
