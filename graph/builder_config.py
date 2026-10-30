@@ -27,6 +27,8 @@ NODE_CHUNKS_PATH = _in_repo(settings.graph_node_chunks_path)  # data/graph/node_
 GRAPH_DIR = GRAPH_PATH.parent
 MANIFEST_PATH = GRAPH_DIR / "manifest.json"
 SAMPLE_DIR = GRAPH_DIR / "sample"                 # one .md file per sampled chunk
+EXTRACTIONS_DIR = GRAPH_DIR / "extractions"       # one saved result per extracted chunk
+WORK_DIR = GRAPH_DIR / "work"                     # scratch files for --all builds
 CORPUS_PATH = REPO_ROOT / "data" / "bm25_corpus.jsonl"
 
 # docling-graph reads the Ollama address from the environment rather than from

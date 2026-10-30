@@ -67,6 +67,8 @@ data/documents/
 data/bm25_documents.jsonl
 data/documents_manifest.json
 data/graph/lightrag/
+data/graph/extractions/
+data/graph/work/
 ragscope-index-*.tar.gz
 telemetry/store/
 experiments/results/

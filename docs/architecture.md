@@ -497,6 +497,31 @@ pipeline/vectorstore.py                     │
 
 ---
 
+### `graph/build_graph.py` (offline graph builder)
+
+Extracts entities and relations per chunk with docling-graph (`uv sync --extra graph`) and composes them into the graph that `pipeline/retrieval/graph.py` reads.
+
+| Option | Meaning |
+|---|---|
+| *(none)* | Build over the sample in `data/graph/sample/` (300 chunks, ~1 h on an Apple M5 GPU) |
+| `--all` | Build over every chunk in `data/bm25_corpus.jsonl` (30,850 chunks, ~100 h) |
+| `--limit N` | Extract at most N new chunks this run |
+| `--retry-failed` | Retry chunks whose extraction failed earlier |
+| `--publish-every N` | Re-publish the graph every N chunks (default 500) |
+| `--publish-only` | Rebuild the graph files from saved extractions, without the model |
+| `--concurrency N` | Concurrent Ollama requests (default 8) |
+
+Each chunk's result is saved to `data/graph/extractions/` as it completes, so builds resume after interruption. `publish()` composes the saved extractions into `graph.json`, `node_to_chunks.json` and `manifest.json`, written atomically; a build still in progress never replaces a larger live graph.
+
+### `pipeline/maintenance.py` and `scripts/reset_data.py`
+
+| Symbol | Description |
+|---|---|
+| `clear_documents(delete_files=False)` | Empty the `ragscope_documents` collection and remove its BM25 file and manifest; optionally delete the uploaded files |
+| `clear_graph(delete_extractions=False, delete_sample=False)` | Remove the graph files; optionally the saved extractions (forcing re-extraction) and the sample |
+
+`scripts/reset_data.py --documents / --graph` is the command-line front end (with confirmation); the Knowledge Base page offers the same with a confirmation checkbox. Neither touches the BioASQ index.
+
 ### `pipeline/retrieval/dense.py`
 
 | Symbol | Type | Description |

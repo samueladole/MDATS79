@@ -232,7 +232,8 @@ ragscope/
 ├── scripts/
 │   ├── fetch_index.py             # Download the prebuilt index instead of running ingestion
 │   ├── package_index.py           # Maintainer tool: build the index archive for a release
-│   └── fetch_example_documents.py # Five CC BY papers from PubMed Central, to try document ingestion
+│   ├── fetch_example_documents.py # Five CC BY papers from PubMed Central, to try document ingestion
+│   └── reset_data.py              # Clear your documents or the knowledge graph, to rebuild them
 │
 ├── data/                          # Dataset loading and preprocessing
 │   ├── loaders/
@@ -248,6 +249,7 @@ ragscope/
 ├── pipeline/                      # Core RAG pipeline
 │   ├── ingestion.py               # Document ingestion orchestrator
 │   ├── knowledge_base.py          # BioASQ benchmark vs. your documents: collection + BM25 file
+│   ├── maintenance.py             # Clearing your documents' index and the knowledge graph
 │   ├── embeddings.py              # Embedding generation wrapper
 │   ├── vectorstore.py             # ChromaDB interface (embedded or server)
 │   ├── retrieval/
@@ -263,7 +265,7 @@ ragscope/
 │
 ├── graph/                         # Offline knowledge-graph builder (uv sync --extra graph)
 │   ├── sample_chunks.py           # Pick the chunks to extract
-│   ├── build_graph.py             # Extract entities and relations with docling-graph
+│   ├── build_graph.py             # Extract entities and relations; resumable, sample or --all
 │   ├── builder_config.py          # Extraction settings and paths
 │   ├── biomed_template.py         # Biomedical entity and relation schema
 │   ├── lightrag_compare.py        # LightRAG baseline comparison
@@ -639,63 +641,103 @@ uv run python pipeline/ingestion.py --corpus documents
 - Answer correctness needs a reference answer, so it shows N/A for your own questions.
 - Graph retrieval is available for the BioASQ benchmark only, because the knowledge graph is built over that corpus.
 
-### Building the Knowledge Graph (Graph Retrieval)
-
-The `graph` retrieval strategy reads a knowledge graph that is built offline. Build it once before selecting `graph`. Dense and hybrid retrieval do not need it.
-
-The builder uses [docling-graph](https://github.com/docling-project/docling-graph) 1.9.1 with a local Ollama model to extract biomedical entities (diseases, genes/proteins, chemicals/drugs) and their relations from each chunk. docling-graph is needed only to build the graph, not to query it, so it is an optional extra in the same environment:
+**To start over:** open **Knowledge Base → Upload documents → Clear my documents**, or run:
 
 ```bash
-uv sync --extra graph
+uv run python scripts/reset_data.py --documents                           # keeps your files
+uv run python scripts/reset_data.py --documents --delete-document-files   # removes them too
 ```
 
-The commands below run from the repository root on the host, like the *Local* variants above. The prebuilt index from `scripts/fetch_index.py` already includes the graph.
+This empties the `ragscope_documents` collection (its chunks), its BM25 file and its manifest. The BioASQ benchmark is never touched. Press **Save and index** (or rerun the ingestion command) to rebuild.
+
+### Building the Knowledge Graph (Graph Retrieval)
+
+The `graph` retrieval strategy reads a knowledge graph of biomedical entities (diseases, genes and proteins, chemicals and drugs) and their relations, extracted from the corpus offline. Dense and hybrid retrieval do not need it. The prebuilt index from `scripts/fetch_index.py` includes the 300-chunk sample graph.
+
+**How graph retrieval works**
+
+1. **Seed.** The query is matched against entity names by embedding similarity (cosine ≥ 0.55) and by near-exact token matching, which catches gene symbols and acronyms. No language model is called, so retrieval stays in milliseconds.
+2. **Traverse.** It takes the 2-hop neighbourhood around the matched entities, skipping hub entities with more than 100 connections, and runs Personalized PageRank over it.
+3. **Score and fuse.** Each chunk is scored by the PageRank of the entities extracted from it, using `node_to_chunks.json`. With `GRAPH_FUSE_DENSE=true` (the default), that ranking is fused with dense retrieval by Reciprocal Rank Fusion (weights 0.6 dense, 0.4 graph, k = 60). With `false`, the results come from the graph alone.
+
+The Live Monitor and Query Explorer draw the path the walk took, and **Knowledge Base → Knowledge graph** lets you explore entities and trace a question.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `GRAPH_PATH` | `data/graph/graph.json` | The graph (NetworkX node-link JSON) |
+| `GRAPH_NODE_CHUNKS_PATH` | `data/graph/node_to_chunks.json` | Which chunks each entity was extracted from |
+| `GRAPH_FUSE_DENSE` | `true` | Fuse with dense retrieval, or return graph-only results |
+
+**Two graph sizes**
+
+| | Sample | Whole corpus |
+|---|---|---|
+| Chunks | 300, picked at an even stride with no reference to the benchmark queries | All 30,850 |
+| Corpus coverage | about 1% | 100% |
+| Time on an Apple M5 MacBook Pro (Ollama on the GPU) | about 1 hour | **about 100 hours (roughly 4 days)** |
+| Time on a CPU only | several hours | weeks; not practical |
+| Command | `graph/build_graph.py` | `graph/build_graph.py --all` |
+
+The estimates come from the measured sustained rate of 11.8 s per chunk (`llama3.2`, 3B). Individual chunks vary widely, and raising the concurrency beyond about 2 barely helps, because one request already keeps the GPU busy.
 
 **Before you start**
 
-- `data/bm25_corpus.jsonl` must exist. The ingestion step writes it. On the Docker path too, since Compose mounts `./data` into the container.
-
-- Ollama must be running on the host, with the extractor model pulled:
-
-  ```bash
-  ollama pull llama3.2           # ~2 GB
-  ```
-
-The builder uses the Ollama address from `.env` (`OLLAMA_BASE_URL`), like the rest of the pipeline.
-
-**1. Sample the chunks to extract**
-
 ```bash
-uv run python graph/sample_chunks.py 300
+uv sync --extra graph       # docling-graph: needed to build the graph, not to query it
+ollama pull llama3.2        # the extractor model, ~2 GB
 ```
 
-This writes one Markdown file per chunk into `data/graph/sample/`, replacing any previous sample. Chunks are picked at an even stride across the whole corpus, with no reference to the benchmark queries, so the graph is not biased towards the questions it will be tested on. The shipped graph uses 300 chunks, and this command reproduces exactly that sample.
+`data/bm25_corpus.jsonl` must exist: ingestion or `scripts/fetch_index.py` writes it. The builder uses `OLLAMA_BASE_URL` from `.env`, like the rest of the pipeline. The commands run from the repository root on the host.
 
-**2. Run the extraction**
+**Build the sample (about 1 hour)**
 
 ```bash
-uv run python graph/build_graph.py 8     # argument: concurrent requests (default 8)
+uv run python graph/sample_chunks.py 300    # writes the sample to data/graph/sample/
+uv run python graph/build_graph.py          # extracts it and publishes the graph
 ```
 
-Progress is printed every 25 chunks. When extraction finishes, the builder writes its output to `data/graph/`, which is where the retriever reads from, so there is nothing to copy:
+This reproduces the shipped graph: extraction runs at temperature 0 with a fixed seed.
+
+**Build the whole corpus (about 100 hours, resumable)**
+
+```bash
+uv run python graph/build_graph.py --all
+```
+
+- **Resumable.** Every chunk is saved to `data/graph/extractions/` the moment it is extracted. Stop with Ctrl-C (the chunks already in flight finish), or lose power, and run the same command again: it carries on where it stopped.
+- **Usable while it runs.** The graph is published every 500 chunks and at the end of every run, so coverage on the Knowledge Base page grows and graph retrieval works throughout. A run in progress never replaces a larger graph that is already live: for example, the 300-chunk sample stays in place until the full build has extracted more than 298 chunks.
+- **In batches.** `--limit 2000` stops after 2,000 new chunks (about 6.5 hours), so you can build overnight and resume the next night.
+- **Progress.** The log prints chunks done, chunks per second and the time left every 25 chunks.
+- **Failures.** A chunk that fails extraction (malformed model output) is recorded and skipped; 2 of 300 failed in the sample build. `--retry-failed` tries them again.
+- **Keep the machine awake.** On macOS, `caffeinate -i uv run python graph/build_graph.py --all` stops the laptop sleeping during the build.
+
+Other options: `--concurrency N` (default 8), `--publish-every N` (default 500) and `--publish-only`, which rebuilds the graph files from the saved extractions in seconds without calling the model.
+
+**Output**
 
 | File | Contents |
 |---|---|
-| `graph.json` | The graph, as NetworkX node-link JSON |
-| `node_to_chunks.json` | For each node, the chunk IDs it was extracted from. This is how retrieval maps graph hits back to passages. |
-| `manifest.json` | Build statistics: chunks attempted and succeeded, failures, timing, node and edge counts |
+| `data/graph/graph.json` | The graph, as NetworkX node-link JSON |
+| `data/graph/node_to_chunks.json` | For each entity, the chunk IDs it was extracted from |
+| `data/graph/manifest.json` | Build statistics: scope, chunks extracted and still to do, failures, coverage, entity and relation counts, time per extraction |
+| `data/graph/extractions/` | One saved result per extracted chunk; what makes builds resumable |
 
-A finished build **replaces the current graph**. Nothing is written until extraction completes, so an interrupted build leaves the existing graph untouched. To build somewhere else, set `GRAPH_PATH` and `GRAPH_NODE_CHUNKS_PATH` in `.env` (or the shell). The builder and the retriever both read those settings, and the sample folder sits next to `GRAPH_PATH`.
+Files are replaced atomically, so the retriever never reads a half-written graph. To build somewhere else, set `GRAPH_PATH` and `GRAPH_NODE_CHUNKS_PATH`; the builder and the retriever both read them.
 
-> ⏱️ **Expected runtime:** about 1 hour for 300 chunks (11.8 s per chunk on average on an Apple M5 with `llama3.2` on the GPU). Individual chunks vary widely; some take over a minute. Above about 2 concurrent requests, raising the concurrency makes little difference, because a single request already keeps the GPU busy. A chunk that fails extraction is skipped and listed under `failures` in the manifest (2 of 300 in the shipped build). Extraction runs at temperature 0 with a fixed seed, so the same sample gives the same graph. Building over the full corpus is not practical on a laptop; it projects to roughly 100 hours.
+**Use it**
 
-**3. Use it**
+In the Live Monitor sidebar, choose **graph** under *Retrieval Strategy*. The retriever reloads the graph when its files change, and Docker sees new graph files immediately because Compose mounts `./data`.
 
-In the dashboard, choose **graph** under *Retrieval Strategy* in the Live Monitor sidebar. The retriever loads the graph once and reloads it when the files change, but restart the dashboard so the Knowledge Base page picks up the new graph.
+> **Coverage is not the only limit.** In fused mode, a chunk found only by the graph cannot enter the top 5. Its best fused score is 0.4 / 61 = 0.0066, below the fifth dense result's 0.6 / 65 = 0.0092. So fusion lets the graph re-rank what dense retrieval found, but not add new chunks, **whatever the coverage**. Set `GRAPH_FUSE_DENSE=false` to see graph-only results. Lowering `HYBRID_DENSE_WEIGHT` below about 0.44 would also let graph-only chunks in, but that setting also changes hybrid retrieval, away from the configuration behind the published results.
 
-- **Local and Docker:** nothing else to do. Compose mounts `./data`, so the container sees the new `data/graph/` straight away.
+**Clear and rebuild**
 
-> By default, graph results are fused with dense retrieval (`GRAPH_FUSE_DENSE=true`). While the graph covers only a small part of the corpus, fusion can reorder what dense retrieval found but can't bring in a passage that only the graph found. Set `GRAPH_FUSE_DENSE=false` to see graph-only results.
+```bash
+uv run python scripts/reset_data.py --graph                         # keep saved extractions
+uv run python scripts/reset_data.py --graph --delete-extractions    # start from nothing
+```
+
+The first form removes the graph files (entities, relations and chunks covered) but keeps `data/graph/extractions/`, so `graph/build_graph.py --publish-only` restores the graph in seconds. The second also deletes the saved extractions, so the next build re-extracts every chunk. The same controls are under **Knowledge Base → Knowledge graph → Manage the graph**. Neither touches the BioASQ index.
 
 **Compared with LightRAG.** [graph/lightrag_results.md](graph/lightrag_results.md) compares this retriever with [LightRAG](https://github.com/HKUDS/LightRAG) on the same 50 chunks, extraction model and embedder:
 - **Build:** this retriever's graph builds 3 times faster.

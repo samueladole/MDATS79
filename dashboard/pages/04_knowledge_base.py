@@ -45,6 +45,22 @@ FRIENDLY = {
 }
 
 
+GRAPH_REBUILD_HELP = """Build or rebuild the graph from the command line (it needs Ollama and
+`uv sync --extra graph`):
+
+```bash
+uv run python graph/sample_chunks.py 300      # pick the 300-chunk sample
+uv run python graph/build_graph.py            # sample: ~1 hour
+uv run python graph/build_graph.py --all      # whole corpus: ~100 hours, resumable
+uv run python graph/build_graph.py --publish-only   # restore from saved extractions
+```
+
+A whole-corpus build saves every chunk as it goes: stop it with Ctrl-C and run
+the same command again to resume. The graph is published as it grows, so this
+page and graph retrieval work throughout. See the README, *Building the
+Knowledge Graph*."""
+
+
 # ── Data access (cached) ──────────────────────────────────────────────────────
 
 
@@ -285,16 +301,32 @@ with tab_upload:
             "again: the collection is rebuilt from the folder each time."
         )
 
+    with st.expander("Clear my documents", icon=":material/delete_sweep:"):
+        st.caption(
+            "Empties the My documents collection (its chunks, BM25 file and manifest) "
+            "so you can index again from scratch. The BioASQ benchmark is not touched. "
+            "Command-line equivalent: `uv run python scripts/reset_data.py --documents`."
+        )
+        also_files = st.checkbox("Also delete the uploaded files", key="clear_docs_files")
+        sure = st.checkbox("I understand this cannot be undone", key="clear_docs_sure")
+        if st.button("Clear my documents", type="primary", disabled=not sure,
+                     icon=":material/delete:", key="clear_docs_btn"):
+            from pipeline.maintenance import clear_documents
+
+            report = clear_documents(delete_files=also_files)
+            _collections.clear()
+            _metadata_values.clear()
+            st.success("Removed: " + "; ".join(report.removed))
+
 
 # ── Knowledge graph ───────────────────────────────────────────────────────────
 
 with tab_graph:
     gp, ncp = Path(settings.graph_path), Path(settings.graph_node_chunks_path)
     if not gp.exists() or not ncp.exists():
-        st.info(
-            f"No knowledge graph found at `{gp}`. Build one with `graph/build_graph.py`, "
-            "or fetch the prebuilt index, to enable graph retrieval."
-        )
+        st.info(f"No knowledge graph found at `{gp}`, so graph retrieval is unavailable. "
+                "Fetch the prebuilt index (`scripts/fetch_index.py`) or build one.")
+        st.markdown(GRAPH_REBUILD_HELP)
         st.stop()
 
     stamp = (gp.stat().st_mtime_ns, ncp.stat().st_mtime_ns)
@@ -314,11 +346,11 @@ with tab_graph:
     g4.metric("Corpus coverage", f"{coverage:.1f}%",
               help="Share of the BioASQ collection the graph spans. Graph retrieval "
                    "can only reach chunks inside it.")
-    if coverage < 50:
+    if coverage < 99.5:
         st.caption(
-            f":material/warning: The graph covers {coverage:.1f}% of the BioASQ corpus, so "
-            "graph retrieval is a demonstration of the mechanism, not a quality comparison "
-            "with dense or hybrid retrieval."
+            f":material/warning: The graph covers {coverage:.1f}% of the BioASQ corpus, and "
+            "graph retrieval can only reach chunks inside it. Build the whole corpus with "
+            "`graph/build_graph.py --all` (about 100 hours; see *Manage the graph* below)."
         )
 
     mode = st.segmented_control(
@@ -425,10 +457,33 @@ with tab_graph:
         if manifest.exists():
             man = json.loads(manifest.read_text())
             st.json({
+                "scope": man.get("scope", "sample"),
                 "extractor": man.get("extractor"),
                 "chunks_attempted": man.get("chunks_attempted"),
                 "chunks_ok": man.get("chunks_ok"),
+                "chunks_still_to_extract": man.get("chunks_pending"),
                 "failures": len(man.get("failures", []) or []),
-                "s_per_chunk": man.get("s_per_chunk"),
+                "corpus_coverage_pct": man.get("corpus_coverage_pct"),
+                "mean_seconds_per_extraction": man.get("mean_seconds_per_extraction",
+                                                       man.get("s_per_chunk")),
                 "dedup_ratio": man.get("dedup_ratio"),
+                "published_at": man.get("published_at"),
             })
+
+    # ── Manage the graph ──────────────────────────────────────────────────────
+    with st.expander("Manage the graph: rebuild or clear", icon=":material/build:"):
+        st.markdown(GRAPH_REBUILD_HELP)
+        st.markdown("**Clear the graph** so you can rebuild it. Graph retrieval is "
+                    "unavailable until a new graph is built.")
+        drop_saved = st.checkbox(
+            "Also delete the saved extractions (the next build re-extracts every chunk)",
+            key="clear_graph_extractions")
+        sure_graph = st.checkbox("I understand this cannot be undone", key="clear_graph_sure")
+        if st.button("Clear the graph", type="primary", disabled=not sure_graph,
+                     icon=":material/delete:", key="clear_graph_btn"):
+            from pipeline.maintenance import clear_graph
+
+            report = clear_graph(delete_extractions=drop_saved)
+            _graph.clear()
+            st.success("Removed: " + "; ".join(report.removed)
+                       + ("" if not report.kept else ". Kept: " + "; ".join(report.kept)))
