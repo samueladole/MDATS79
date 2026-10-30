@@ -57,9 +57,5 @@ coverage.xml
 .DS_Store
 Thumbs.db
 
-# ── Docker ───────────────────────────────────────────────────────────────────
-# (Dockerfiles are committed; only runtime artefacts excluded)
-docker-compose.override.yml
-
 # Graph build artefacts (same class as bm25_corpus.jsonl)
 data/graph/

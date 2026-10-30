@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# RAGScope — Docker Compose (Production / Research)
+# RAGScope — Docker Compose
 #
 # Services
 # ────────
@@ -11,13 +11,22 @@
 #   cp .env.example .env
 #   docker compose up --build
 #
-# The dashboard is available at http://localhost:8501 once all services report
-# healthy. On first boot, expect 10–20 minutes for model downloads.
+# The dashboard is available at http://localhost:8501 once both services report
+# healthy. Ollama runs on the host, so pull its models there first.
 #
-# Volumes
+# Development
+# ───────────
+#   docker compose up --build --watch
+#
+# Syncs code edits into the running container (Streamlit reloads on save) and
+# rebuilds the image when pyproject.toml or uv.lock change. See `develop:`.
+#
+# Storage
 # ───────
-#   chroma_data     Persists embedded corpus between restarts.
-#   telemetry_data  Persists query telemetry JSON logs between restarts.
+#   chroma_data     Named volume: the embedded corpus.
+#   telemetry_data  Named volume: query telemetry JSON logs.
+#   ./data          Host folder: BM25 corpus, knowledge graph, your documents.
+#   ./experiments/results  Host folder: benchmark CSVs and reports.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 name: ragscope
@@ -88,12 +97,38 @@ services:
       - telemetry_data:/app/telemetry/store
       # Persist experiment results to the host for direct file access.
       - ./experiments/results:/app/experiments/results
+      # Ingestion writes the BM25 corpus here, and the graph and your documents
+      # live here. Without this mount they would sit in the container layer and
+      # be lost whenever the container is recreated. data/ also holds the
+      # loader code, which comes from the same checkout as the image.
+      - ./data:/app/data
     env_file:
       - .env
     environment:
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       CHROMA_MODE: http       # containers use the chromadb service, whatever .env says
       CHROMA_HOST: chromadb
+      # Reload the dashboard when watch mode syncs a changed file. Harmless
+      # otherwise: nothing changes the code inside a container that is not
+      # being watched.
+      STREAMLIT_SERVER_RUN_ON_SAVE: "true"
+    # `docker compose up --watch`: development without rebuilding by hand.
+    develop:
+      watch:
+        # Code edits are copied into the running container. Paths listed in
+        # .dockerignore are skipped automatically.
+        - action: sync
+          path: .
+          target: /app
+          ignore:
+            - data/          # already mounted from the host
+            - .venv/
+        # A dependency change needs a new image, and rebuilding gives the
+        # container a fresh virtual environment.
+        - action: rebuild
+          path: pyproject.toml
+        - action: rebuild
+          path: uv.lock
     depends_on:
       chromadb:
         condition: service_healthy

@@ -219,8 +219,7 @@ ragscope/
 ├── .gitignore
 ├── LICENSE
 │
-├── docker-compose.yml             # The two services: ragscope (app) and chromadb (Ollama runs on the host, not in Compose)
-├── docker-compose.override.yml    # Local dev overrides (hot-reload, source mount)
+├── docker-compose.yml             # The two services, ragscope (app) and chromadb, plus watch mode for development (Ollama runs on the host)
 │
 ├── docker/                        # Per-service Dockerfiles
 │   ├── app/
@@ -419,7 +418,7 @@ Inside Docker the app always talks to the `chromadb` service, whatever `CHROMA_M
 **4. Build and start the services**
 
 ```bash
-docker compose up --build
+docker compose up --build        # add --watch to develop inside Docker (see Development Mode)
 ```
 
 The dashboard will be available at **http://localhost:8501** once both services are healthy.
@@ -441,7 +440,7 @@ docker compose exec ragscope python pipeline/ingestion.py \
   --chunk-overlap 64
 ```
 
-> This embeds the 30,850 BioASQ chunks using `all-MiniLM-L6-v2`. Expect 20–40 minutes on CPU. Progress is displayed in the terminal.
+> This embeds the 30,850 BioASQ chunks using `all-MiniLM-L6-v2`. Expect 20–40 minutes on CPU. Progress is displayed in the terminal. The vectors go to the `chroma_data` volume, and the BM25 corpus to `data/` on your machine, which Compose mounts into the container.
 
 **6. Stop all services**
 
@@ -708,11 +707,7 @@ The commands below run from the repository root on the host, like the *Local* va
 
 **Before you start**
 
-- `data/bm25_corpus.jsonl` must exist. The ingestion step writes it. On the Docker path it is written inside the container, so copy it out first:
-
-  ```bash
-  docker compose cp ragscope:/app/data/bm25_corpus.jsonl data/bm25_corpus.jsonl
-  ```
+- `data/bm25_corpus.jsonl` must exist. The ingestion step writes it. On the Docker path too, since Compose mounts `./data` into the container.
 
 - Ollama must be running on the host, with the extractor model pulled:
 
@@ -756,9 +751,7 @@ uv run python pipeline/rag.py "Which protein does empagliflozin inhibit?" --retr
 
 In the dashboard, choose **graph** under *Retrieval Strategy* in the Live Monitor sidebar. The retriever loads the graph once and reloads it when the files change, but restart the dashboard so the Knowledge Base page picks up the new graph.
 
-- **Local:** nothing else to do.
-- **Docker (default, with the override):** the source directory is mounted, so the container sees `data/graph/` straight away.
-- **Docker (`-f docker-compose.yml` only):** the graph is copied into the image at build time, so rebuild: `docker compose -f docker-compose.yml build ragscope && docker compose -f docker-compose.yml up -d`.
+- **Local and Docker:** nothing else to do. Compose mounts `./data`, so the container sees the new `data/graph/` straight away.
 
 > By default, graph results are fused with dense retrieval (`GRAPH_FUSE_DENSE=true`). While the graph covers only a small part of the corpus, fusion can reorder what dense retrieval found but can't bring in a passage that only the graph found. Set `GRAPH_FUSE_DENSE=false` to see graph-only results.
 
@@ -786,7 +779,14 @@ The `docker-compose.yml` defines two services:
 | `ragscope` | `./docker/app/Dockerfile` | 8501 | Main application (pipeline + dashboard) |
 | `chromadb` | `chromadb/chroma:1.5.9` | 8000 | Persistent vector store |
 
-The `docker-compose.override.yml` (dev mode) adds a source mount and hot reload to `ragscope`; it adds no services.
+Where data lives:
+
+| Storage | Holds | Removed by `docker compose down -v` |
+|---|---|:---:|
+| `chroma_data` (named volume) | The BioASQ and documents collections | Yes |
+| `telemetry_data` (named volume) | Query telemetry records | Yes |
+| `./data` (host folder) | BM25 corpus, knowledge graph, your documents | No |
+| `./experiments/results` (host folder) | Benchmark CSVs and reports | No |
 
 ### Common Commands
 
@@ -803,26 +803,26 @@ docker compose exec ragscope bash
 # Run a one-off Python command inside the container
 docker compose exec ragscope python -c "from config.settings import settings; print(settings.ollama_base_url)"
 
-# Rebuild the app image after code changes (not needed in dev mode, which
-# mounts the source; see below)
-docker compose build ragscope
-
-# After pulling changes to pyproject.toml / uv.lock: rebuild AND renew the
-# container venvs. The dev override keeps /app/.venv in an anonymous volume,
-# which a plain rebuild reuses, so new packages would otherwise be missing.
-docker compose up -d --build --renew-anon-volumes
+# Rebuild and restart after code or dependency changes (watch mode does this
+# for you; see below)
+docker compose up -d --build
 
 # Hard reset — removes all containers, networks, and volumes
 docker compose down -v --remove-orphans
 ```
 
-### Development Mode (Hot Reload)
+### Development Mode (Watch)
 
-Docker Compose applies `docker-compose.override.yml` automatically, so a plain `docker compose up` runs in development mode: the source directory is mounted into the container, code changes take effect without rebuilding the image, and Streamlit reloads on file save. To run the production configuration alone, without the source mount, name the base file explicitly:
+`docker-compose.yml` has a [Compose Watch](https://docs.docker.com/compose/how-tos/file-watch/) section. Start the stack with `--watch` to develop inside Docker without rebuilding by hand:
 
 ```bash
-docker compose -f docker-compose.yml up
+docker compose up --build --watch
 ```
+
+- **Code edits** are copied into the running container within a couple of seconds, and Streamlit reloads the dashboard.
+- **Changes to `pyproject.toml` or `uv.lock`** rebuild the image and restart the container, so new packages are always installed.
+
+Without `--watch`, the container runs the code baked into its image.
 
 The test suite runs on the host (`uv run pytest`), since the image is built without development dependencies.
 

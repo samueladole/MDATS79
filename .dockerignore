@@ -41,7 +41,6 @@ ENV/
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 .dockerignore
-docker-compose.override.yml   # Dev-only; not needed in the production image
 
 # ── IDE / editor ─────────────────────────────────────────────────────────────
 .vscode/

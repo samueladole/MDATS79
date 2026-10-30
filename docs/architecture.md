@@ -98,7 +98,7 @@ The system integrates five concerns into a single cohesive platform:
 
 ## Service Layer (Docker)
 
-The platform is composed of two Docker services orchestrated via `docker-compose.yml`; `docker-compose.override.yml` adds a source mount and hot reload to `ragscope` for development but no further services:
+The platform is composed of two Docker services, both defined in `docker-compose.yml`. The `ragscope` service mounts `./data` from the host, so the BM25 corpus, knowledge graph and user documents survive container rebuilds. Its `develop.watch` section serves development: `docker compose up --watch` syncs code edits into the container and rebuilds the image when `pyproject.toml` or `uv.lock` change:
 
 | Service | Image | Port | Responsibility |
 |---|---|:---:|---|
