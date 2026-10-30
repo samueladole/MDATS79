@@ -433,13 +433,16 @@ class VectorStore:
         logger.info("Collection reset complete.")
 
 
-# ── Module-level singleton ─────────────────────────────────────────────────────
-_store: VectorStore | None = None
+# ── Module-level singletons ────────────────────────────────────────────────────
+_stores: dict[str, VectorStore] = {}
 
 
-def get_vector_store() -> VectorStore:
-    """Return the module-level singleton, initialising it on first call."""
-    global _store
-    if _store is None:
-        _store = VectorStore()
-    return _store
+def get_vector_store(collection_name: str | None = None) -> VectorStore:
+    """Return the shared store for ``collection_name``, opening it on first use.
+
+    Defaults to the BioASQ collection, ``settings.chroma_collection``.
+    """
+    name = collection_name or settings.chroma_collection
+    if name not in _stores:
+        _stores[name] = VectorStore(collection_name=name)
+    return _stores[name]

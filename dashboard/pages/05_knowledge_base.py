@@ -1,10 +1,14 @@
 """
 RAGScope Dashboard — Page 5: Knowledge Base
 ===============================================
-Read-only view into the ChromaDB collection backing the RAG pipeline:
-collection stats, per-dataset composition, a metadata-filterable chunk
-browser, a semantic search preview against the live index, and the
-knowledge graph built over the corpus for graph retrieval.
+View of the ChromaDB collection backing the RAG pipeline: collection stats,
+per-dataset composition, a metadata-filterable chunk browser, a semantic
+search preview against the live index, and the knowledge graph built over the
+corpus for graph retrieval.
+
+The "My documents" section at the top is the one place that writes: it saves
+uploaded PDF and text files and indexes them in their own collection, never
+in the BioASQ benchmark collection shown below it.
 """
 
 from __future__ import annotations
@@ -22,7 +26,69 @@ from dashboard.components.vector_space import vector_space_scatter
 from pipeline.vectorstore import get_vector_store
 
 st.title(":material/database: Knowledge Base")
-st.caption("Read-only view of the ChromaDB collection backing the RAG pipeline.")
+st.caption("The ChromaDB collections behind the RAG pipeline.")
+
+
+def _documents_section() -> None:
+    """Upload and index your own files, in a collection of their own."""
+    from pipeline.ingestion import ingest_corpus
+    from pipeline.knowledge_base import get_knowledge_base
+
+    kb = get_knowledge_base("documents")
+    folder = Path(settings.documents_dir)
+    files = sorted(
+        f for f in folder.rglob("*")
+        if f.is_file() and f.suffix.lower() in {".pdf", ".txt", ".md"}
+    ) if folder.is_dir() else []
+
+    with st.expander(
+        f"My documents ({len(files)} file{'s' if len(files) != 1 else ''})",
+        icon=":material/upload_file:", expanded=not files,
+    ):
+        st.caption(
+            f"Add PDF, .txt or .md files to ask questions about them. They are saved "
+            f"to `{folder}` and indexed in their own collection (`{kb.collection}`), "
+            f"so the BioASQ benchmark below is never changed. Query them on the "
+            f"Live Monitor page under **Knowledge base → My documents**. PDFs need a "
+            f"text layer: scanned pages are skipped."
+        )
+        uploads = st.file_uploader(
+            "Add files", type=["pdf", "txt", "md"], accept_multiple_files=True,
+            key="documents_upload",
+        )
+        if st.button("Save and index", icon=":material/library_add:", type="primary",
+                     disabled=not (uploads or files)):
+            folder.mkdir(parents=True, exist_ok=True)
+            for upload in uploads or []:
+                # Keep only the base name, so an upload cannot write outside the folder.
+                (folder / Path(upload.name).name).write_bytes(upload.getbuffer())
+            try:
+                with st.spinner("Reading and indexing documents …"):
+                    summary = ingest_corpus("documents", source=folder)
+                st.success(
+                    f"Indexed {summary.total_passages:,} pages and files as "
+                    f"{summary.total_chunks:,} chunks."
+                )
+            except ValueError as exc:
+                st.warning(str(exc))
+            st.rerun()
+        if files:
+            st.dataframe(
+                pd.DataFrame([
+                    {"File": f.relative_to(folder).as_posix(),
+                     "Size (KB)": round(f.stat().st_size / 1024, 1)}
+                    for f in files
+                ]),
+                hide_index=True, width="stretch",
+            )
+            st.caption(
+                "To remove a file, delete it from the folder and press **Save and "
+                "index** again: the collection is rebuilt from the folder each time."
+            )
+
+
+_documents_section()
+st.subheader("BioASQ Benchmark Collection")
 
 DATASET_LABELS = {
     "bioasq": "BioASQ",

@@ -41,15 +41,26 @@ st.session_state.setdefault("last_result", None)
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.subheader("Pipeline Configuration")
+    _kbs = {"BioASQ benchmark": "bioasq", "My documents": "documents"}
+    kb_label = st.radio(
+        "Knowledge base", list(_kbs),
+        help="My documents searches the PDF and text files you ingested on the "
+             "Knowledge Base page. It is a separate collection, so the BioASQ "
+             "benchmark index is never changed.",
+    )
+    knowledge_base = _kbs[kb_label]
     _models = settings.generator_model_list
     llm_choice = st.selectbox(
         "LLM Model", _models, index=_models.index(settings.default_llm),
         help="Set the choices with GENERATOR_MODELS in .env.",
     )
     retrieval_choice = st.selectbox(
-        "Retrieval Strategy", ["hybrid", "dense", "graph"], index=0,
+        "Retrieval Strategy",
+        ["hybrid", "dense", "graph"] if knowledge_base == "bioasq" else ["hybrid", "dense"],
+        index=0,
         help="graph: seeds entities from the query, traverses the knowledge "
-             "graph, and fuses the result with dense retrieval.",
+             "graph, and fuses the result with dense retrieval. Only the BioASQ "
+             "benchmark has a knowledge graph.",
     )
     query_type_choice = st.selectbox(
         "Query Type",
@@ -122,6 +133,7 @@ if st.session_state.pipeline_running:
                 retrieval_strategy=retrieval_choice,
                 top_k=top_k,
                 run_evaluation=run_eval,
+                knowledge_base=knowledge_base,
             )
             draft = pipeline.answer(query_text, ground_truth=ground_truth.strip() or None)
         # Evaluation is most of the wait (three judge-model calls), so the
@@ -140,6 +152,7 @@ if st.session_state.pipeline_running:
         st.session_state.last_result = {
             "result": result,
             "query_text": query_text,
+            "kb_label": kb_label,
             "llm_choice": llm_choice,
             "retrieval_choice": retrieval_choice,
             "query_type_choice": query_type_choice,
@@ -257,6 +270,7 @@ if st.session_state.last_result:
 
     st.divider()
     st.caption(
+        f"{data.get('kb_label', 'BioASQ benchmark')} · "
         f"Condition: **{data['llm_choice'].title()} + {data['retrieval_choice'].title()}** "
         f"· query_type={data.get('query_type_choice', 'unknown')} "
         f"· top_k={data['top_k']} · RAGAS eval: {'on' if data['run_eval'] else 'off'} "
@@ -321,9 +335,10 @@ if st.session_state.last_result:
             similarity_meter_html(chunk.score, label=f"Chunk {i} similarity"),
             unsafe_allow_html=True,
         )
-        with st.expander(
-            f"Chunk {i} — dataset: {chunk.metadata.get('dataset', '?')} | {chunk.chunk_id}"
-        ):
+        _src = chunk.metadata.get("source")
+        _where = (f"{_src}, page {chunk.metadata.get('page')}" if _src
+                  else f"dataset: {chunk.metadata.get('dataset', '?')}")
+        with st.expander(f"Chunk {i} — {_where} | {chunk.chunk_id}"):
             st.markdown(chunk.text)
 
     st.divider()

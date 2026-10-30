@@ -26,6 +26,7 @@ def _build_dense(
     store: "VectorStore | None" = None,
     embedder: "EmbeddingGenerator | None" = None,
     top_k: int | None = None,
+    bm25_corpus_path: "Path | None" = None,  # noqa: ARG001 - hybrid only
 ) -> BaseRetriever:
     from pipeline.retrieval.dense import DenseRetriever
 
@@ -88,6 +89,7 @@ def _build_graph(
     store: "VectorStore | None" = None,
     embedder: "EmbeddingGenerator | None" = None,
     top_k: int | None = None,
+    bm25_corpus_path: "Path | None" = None,  # noqa: ARG001 - hybrid only
 ) -> BaseRetriever:
     # Imported lazily: loading the graph artefacts is graph-specific and
     # networkx should not be imported by callers using another strategy.
@@ -117,9 +119,13 @@ def build_retriever(
     store: "VectorStore | None" = None,
     embedder: "EmbeddingGenerator | None" = None,
     top_k: int | None = None,
+    bm25_corpus_path: "Path | None" = None,
 ) -> BaseRetriever:
     """
     Construct the retriever for ``strategy``, fully initialised.
+
+    ``bm25_corpus_path`` selects the BM25 corpus for hybrid retrieval and
+    defaults to the BioASQ corpus; it must match the collection in ``store``.
 
     Raises
     ------
@@ -137,7 +143,8 @@ def build_retriever(
             f"Unknown retrieval strategy {strategy!r}. Valid strategies: {valid}."
         ) from None
 
-    return factory(store=store, embedder=embedder, top_k=top_k)
+    return factory(store=store, embedder=embedder, top_k=top_k,
+                   bm25_corpus_path=bm25_corpus_path)
 
 
 # Fail loudly at import time if the registry and the canonical name list drift

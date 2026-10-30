@@ -38,6 +38,7 @@ from loguru import logger
 from config.settings import settings
 from pipeline.embeddings import get_embedding_generator
 from pipeline.generation import BaseLLMClient, GenerationResponse, build_llm_client
+from pipeline.knowledge_base import get_knowledge_base
 from pipeline.retrieval import BaseRetriever, build_retriever
 from pipeline.vectorstore import RetrievedChunk, get_vector_store
 from telemetry.logger import TelemetryLogger, build_record, get_telemetry_logger
@@ -172,6 +173,8 @@ class RAGPipeline:
     telemetry_logger   : TelemetryLogger instance.
     dataset            : Dataset label for telemetry (e.g. ``"bioasq_phase_a"``).
     experiment_id      : Optional experiment identifier for batch runs.
+    knowledge_base     : ``"bioasq"`` (the benchmark corpus) or ``"documents"``
+                         (your own ingested files).
     """
 
     def __init__(
@@ -183,6 +186,7 @@ class RAGPipeline:
         telemetry_logger: TelemetryLogger | None = None,
         dataset: str = "interactive",
         experiment_id: str | None = None,
+        knowledge_base: str = "bioasq",
     ) -> None:
         llm_model = llm_model or settings.default_llm
         self.llm_model = llm_model
@@ -199,7 +203,14 @@ class RAGPipeline:
         logger.info(f"LLM client: {self._llm}")
 
         # ── Retriever ─────────────────────────────────────────────────────────
-        store = get_vector_store()
+        kb = get_knowledge_base(knowledge_base)
+        if retrieval_strategy == "graph" and not kb.supports_graph:
+            raise ValueError(
+                f"Graph retrieval needs a knowledge graph, and there is none for "
+                f"'{kb.label}'. Use dense or hybrid retrieval."
+            )
+        self.knowledge_base = kb.name
+        store = get_vector_store(kb.collection)
         embedder = get_embedding_generator()
 
         # build_retriever raises on an unknown strategy. The previous inline
@@ -210,6 +221,7 @@ class RAGPipeline:
             store=store,
             embedder=embedder,
             top_k=self.top_k,
+            bm25_corpus_path=kb.bm25_path,
         )
 
         logger.info(

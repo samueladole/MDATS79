@@ -58,6 +58,10 @@ Usage
     # Custom batch sizes (for machines with limited RAM)
     uv run python pipeline/ingestion.py --corpus bioasq --embed-batch-size 64
 
+    # Your own PDF / text / Markdown files (default folder: data/documents/).
+    # Goes to its own collection and BM25 file; the BioASQ index is untouched.
+    uv run python pipeline/ingestion.py --corpus documents --source path/to/files
+
     # Docker
     docker compose exec ragscope uv run python pipeline/ingestion.py --corpus bioasq
 """
@@ -77,8 +81,10 @@ from tqdm import tqdm
 
 from config.settings import settings
 from data.loaders import bioasq as bioasq_loader
+from data.loaders import documents as documents_loader
 from data.preprocessing.chunker import Chunk, TokenChunker
 from pipeline.embeddings import get_embedding_generator
+from pipeline.knowledge_base import KnowledgeBase, get_knowledge_base
 from pipeline.vectorstore import get_vector_store
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -158,6 +164,7 @@ def ingest_corpus(
     upsert_batch_size: int = DEFAULT_UPSERT_BATCH,
     reset: bool = False,
     dry_run: bool = False,
+    source: Path | str | None = None,
 ) -> IngestionSummary:
     """
     Run the full ingestion pipeline for the specified corpus.
@@ -179,6 +186,8 @@ def ingest_corpus(
     reset             : If True, wipe the ChromaDB collection before ingesting.
     dry_run           : If True, run all loading/chunking steps but skip all
                         write operations (ChromaDB, BM25, manifest).
+    source            : Folder to read for ``corpus="documents"``. Defaults to
+                        ``settings.documents_dir``.
 
     Returns
     -------
@@ -192,7 +201,8 @@ def ingest_corpus(
     _log_banner(corpus, dry_run)
 
     # ── Initialise services ────────────────────────────────────────────────────
-    store = get_vector_store()
+    kb = get_knowledge_base("documents" if corpus == "documents" else "bioasq")
+    store = get_vector_store(kb.collection)
     embedder = get_embedding_generator()
     chunker = TokenChunker(
         chunk_size=chunk_size or settings.chunk_size,
@@ -208,17 +218,28 @@ def ingest_corpus(
         f"upsert_batch={upsert_batch_size}"
     )
 
-    if reset and not dry_run:
-        logger.warning("--reset: wiping ChromaDB collection …")
-        store.reset()
-        logger.info("Collection cleared.")
-
     # ── Stage 1: Load and deduplicate passages ─────────────────────────────────
-    all_passages, dataset_stats = _load_all_passages(corpus)
+    # Loaded before any reset, so a run that finds nothing to index leaves the
+    # existing collection as it was.
+    all_passages, dataset_stats = _load_all_passages(corpus, source)
 
     if not all_passages:
+        if corpus == "documents":
+            raise ValueError(
+                "No readable text found in the documents folder. Add PDF (with a "
+                "text layer), .txt or .md files and try again."
+            )
         logger.error(f"No passages loaded for corpus='{corpus}'. Aborting.")
         sys.exit(1)
+
+    # The documents collection mirrors its folder: rebuilt on every run, so a
+    # file deleted from the folder also disappears from retrieval.
+    if corpus == "documents":
+        reset = True
+    if reset and not dry_run:
+        logger.warning(f"--reset: wiping ChromaDB collection '{kb.collection}' …")
+        store.reset()
+        logger.info("Collection cleared.")
 
     logger.info(
         f"Passages loaded (after dedup): {len(all_passages):,}  "
@@ -250,6 +271,7 @@ def ingest_corpus(
         store=store,
         embed_batch_size=embed_batch_size,
         upsert_batch_size=upsert_batch_size,
+        bm25_path=kb.bm25_path,
     )
 
     # ── Stage 3: Finalise ─────────────────────────────────────────────────────
@@ -265,8 +287,8 @@ def ingest_corpus(
         t_total=t_total,
         dry_run=False,
     )
-    _write_manifest(summary)
-    _print_summary_table(summary, dataset_stats)
+    _write_manifest(summary, kb.manifest_path)
+    _print_summary_table(summary, dataset_stats, kb)
     return summary
 
 
@@ -325,6 +347,7 @@ def load_bm25_corpus(path: Path | None = None) -> tuple[list[str], list[str]]:
 
 def _load_all_passages(
     corpus: str,
+    source: Path | str | None = None,
 ) -> tuple[list[dict], dict[str, DatasetStats]]:
     """
     Load passages from all requested datasets and deduplicate.
@@ -340,7 +363,7 @@ def _load_all_passages(
     all_passages: list[dict] = []
     stats: dict[str, DatasetStats] = {}
 
-    for ds_name, loader_fn in _resolve_datasets(corpus):
+    for ds_name, loader_fn in _resolve_datasets(corpus, source):
         ds_stat = DatasetStats(name=ds_name)
         t0 = time.perf_counter()
 
@@ -373,7 +396,9 @@ def _load_all_passages(
     return all_passages, stats
 
 
-def _resolve_datasets(corpus: str) -> list[tuple[str, callable]]:
+def _resolve_datasets(
+    corpus: str, source: Path | str | None = None
+) -> list[tuple[str, callable]]:
     """
     Map the ``corpus`` argument to (dataset_name, loader_function) pairs.
 
@@ -386,8 +411,11 @@ def _resolve_datasets(corpus: str) -> list[tuple[str, callable]]:
 
     if corpus in ("all", "bioasq"):
         return all_datasets
+    if corpus == "documents":
+        folder = Path(source or settings.documents_dir)
+        return [("documents", lambda: documents_loader.load_documents(folder))]
 
-    logger.error(f"Unknown corpus value '{corpus}'. Valid options: all, bioasq")
+    logger.error(f"Unknown corpus value '{corpus}'. Valid options: all, bioasq, documents")
     sys.exit(1)
 
 
@@ -399,6 +427,7 @@ def _stream_ingest(
     store,
     embed_batch_size: int,
     upsert_batch_size: int,
+    bm25_path: Path = BM25_CORPUS_PATH,
 ) -> tuple[int, int, int]:
     """
     Core streaming loop: for each passage, chunk it, accumulate chunks into a
@@ -427,8 +456,8 @@ def _stream_ingest(
     bm25_entries = 0
 
     # Open the BM25 JSONL file for incremental appending
-    BM25_CORPUS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    bm25_fh = BM25_CORPUS_PATH.open("wb")
+    bm25_path.parent.mkdir(parents=True, exist_ok=True)
+    bm25_fh = bm25_path.open("wb")
 
     # Rolling buffers — cleared after each flush
     chunk_buf: list[Chunk] = []
@@ -454,6 +483,8 @@ def _stream_ingest(
                 metadata={
                     "dataset": ds_name,
                     "title": passage.get("title", ""),
+                    # File provenance, present only for --corpus documents.
+                    **{k: passage[k] for k in ("source", "page") if k in passage},
                 },
             )
 
@@ -610,16 +641,17 @@ def _build_summary(
     )
 
 
-def _write_manifest(summary: IngestionSummary) -> None:
+def _write_manifest(summary: IngestionSummary, path: Path = MANIFEST_PATH) -> None:
     """Persist the ingestion manifest as a formatted JSON file."""
-    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MANIFEST_PATH.write_bytes(orjson.dumps(summary.to_dict(), option=orjson.OPT_INDENT_2))
-    logger.info(f"Manifest → {MANIFEST_PATH}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(orjson.dumps(summary.to_dict(), option=orjson.OPT_INDENT_2))
+    logger.info(f"Manifest → {path}")
 
 
 def _print_summary_table(
     summary: IngestionSummary,
     dataset_stats: dict[str, DatasetStats],
+    kb: KnowledgeBase,
 ) -> None:
     """Print a formatted summary to the logger."""
     sep = "─" * 64
@@ -645,8 +677,9 @@ def _print_summary_table(
             f"{s.passages_skipped:>7,}  {s.chunks_created:>8,}  {s.chunks_upserted:>8,}"
         )
     logger.info(sep)
-    logger.info(f"  Manifest  → {MANIFEST_PATH}")
-    logger.info(f"  BM25 idx  → {BM25_CORPUS_PATH}")
+    logger.info(f"  Collection→ {kb.collection}")
+    logger.info(f"  Manifest  → {kb.manifest_path}")
+    logger.info(f"  BM25 idx  → {kb.bm25_path}")
     logger.info(sep)
 
 
@@ -666,7 +699,14 @@ def _log_banner(corpus: str, dry_run: bool) -> None:
 def main(
     corpus: str = typer.Option(
         "bioasq",
-        help="Corpus to ingest: bioasq (or 'all', an alias for the same single corpus).",
+        help=(
+            "Corpus to ingest: bioasq (or 'all', an alias for it), or documents "
+            "for your own PDF / .txt / .md files (see --source)."
+        ),
+    ),
+    source: str = typer.Option(
+        "",
+        help="Folder of files for --corpus documents. Defaults to DOCUMENTS_DIR (data/documents).",
     ),
     chunk_size: int = typer.Option(
         512,
@@ -728,6 +768,7 @@ def main(
         upsert_batch_size=upsert_batch_size,
         reset=reset,
         dry_run=dry_run,
+        source=source or None,
     )
 
 

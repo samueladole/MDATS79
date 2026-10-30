@@ -100,6 +100,14 @@ class Settings(BaseSettings):
     chroma_host: str = Field(default="localhost")
     chroma_port: int = Field(default=8000)
     chroma_collection: str = Field(default="ragscope_corpus")
+    documents_collection: str = Field(
+        default="ragscope_documents",
+        description="Collection for your own PDF and text files, kept apart from BioASQ.",
+    )
+    documents_dir: Path = Field(
+        default=Path("data/documents"),
+        description="Folder of PDF, text and Markdown files ingested by --corpus documents.",
+    )
 
     # ── RAGAS ──────────────────────────────────────────────────────────────────
     ragas_judge_model: str = Field(

@@ -24,6 +24,10 @@ data/raw/
 data/chroma_store/
 data/bm25_corpus.jsonl
 data/ingestion_manifest.json
+# Your own documents and their index (pipeline/ingestion.py --corpus documents)
+data/documents/
+data/bm25_documents.jsonl
+data/documents_manifest.json
 
 # ── Telemetry and results (large, runtime-generated) ─────────────────────────
 telemetry/store/
