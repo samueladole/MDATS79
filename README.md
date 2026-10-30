@@ -6,8 +6,8 @@
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![uv](https://img.shields.io/badge/uv-package_manager-DE5FE9?style=flat-square&logo=astral&logoColor=white)](https://docs.astral.sh/uv)
 [![Docker](https://img.shields.io/badge/Docker-compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.32%2B-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-0.4%2B-orange?style=flat-square)](https://trychroma.com)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.55-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-orange?style=flat-square)](https://trychroma.com)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_Inference-black?style=flat-square)](https://ollama.com)
 [![RAGAS](https://img.shields.io/badge/RAGAS-Evaluation_Framework-6c63ff?style=flat-square)](https://docs.ragas.io)
 [![Licence: MIT](https://img.shields.io/badge/Licence-MIT-green?style=flat-square)](LICENSE)
@@ -34,7 +34,7 @@
 - [Getting Started](#getting-started)
   - [Quick Start (CPU-only Laptop)](#quick-start-cpu-only-laptop)
   - [Prerequisites](#prerequisites)
-  - [Option A - Docker (Recommended)](#option-a--docker-recommended)
+  - [Option A - Docker](#option-a--docker)
   - [Option B - Local with uv](#option-b--local-with-uv)
   - [Configuration](#configuration)
 - [Usage](#usage)
@@ -63,9 +63,9 @@ RAG systems are powerful but opaque. When a response is wrong, it is rarely obvi
 
 This research is structured around three questions:
 
-- **RQ1 — Metric Calibration:** How reliable is a real-time composite risk score in estimating actual answer correctness within RAG systems?
-- **RQ2 — Fault Localisation:** How effectively can real-time metrics isolate the cause of a RAG failure to either the retrieval or generation stage?
-- **RQ3 — Configuration Trade-offs:** How do dense and hybrid retrieval strategies, when paired with Llama 3 (8B) and Mistral (7B), trade off between output quality (faithfulness and hallucination risk) and system efficiency (latency and token use)?
+- **RQ1 — Metric Calibration:** To what extent does a real-time composite hallucination risk score predict actual answer correctness within RAG systems?
+- **RQ2 — Fault Localisation:** How effectively can real-time observability metrics isolate the root cause of a RAG failure to either the retrieval or generation stage?
+- **RQ3 — Configuration Trade-offs:** How do dense and hybrid retrieval strategies, when paired with different open-weight LLMs (Llama 3 8B and Mistral 7B), balance output quality against system efficiency?
 
 ---
 
@@ -75,7 +75,7 @@ This platform was developed as the primary artefact for an MSc Data Science diss
 
 ### The Problem
 
-Despite the maturity of evaluation frameworks like RAGAS (Es et al., 2023), a critical gap remains:
+Despite the maturity of evaluation frameworks like RAGAS (Es et al., 2024), a critical gap remains:
 
 | Tool | Offline Batch Eval | Real-Time Telemetry | Open Source | Framework-Agnostic | Research-Grade Metrics |
 |---|:---:|:---:|:---:|:---:|:---:|
@@ -96,7 +96,7 @@ The platform is organised into six stages, each mapped to a specific research qu
 ```
  1. Data          2. RAG Query Pipeline        3. Evaluation
  ────────    ▶    ─────────────────────   ▶    ─────────────
- BioASQ corpus    Dense/Hybrid retrieval        RAGAS Runner (judge: qwen2.5:7b)
+ BioASQ corpus    Dense/hybrid/graph retrieval  RAGAS Runner (judge: qwen2.5:7b)
  → preprocess     → LLM generation              → Hallucination Risk score
  → index          (Llama 3 8B / Mistral 7B)     (RQ1)
  (RQ3)            (RQ3)
@@ -109,14 +109,14 @@ The platform is organised into six stages, each mapped to a specific research qu
  4 conditions ×                                  Per-stage latency + tokens
  200 queries → CSV                               → flat JSON record (RQ2)
  → Cohen's d, Pearson r                                │
- (RQ3 / Objective 6)                                   ▼
+ (RQ3 / Objective 4)                                   ▼
 
                                                   5. Dashboard
                                                   ─────────────
                                                   Live Monitor · Comparison ·
                                                   Query Explorer · Benchmark
                                                   Results · Knowledge Base
-                                                  (Objective 5)
+                                                  (Objective 2)
 ```
 
 ---
@@ -129,14 +129,14 @@ The platform is organised into six stages, each mapped to a specific research qu
 - Evaluation runs alongside query execution — no separate batch job required
 
 ### 📡 Telemetry Collection
-- End-to-end latency profiling with stage-level decomposition (retrieval time vs. generation time)
+- End-to-end latency profiling with stage-level decomposition (retrieval, generation and evaluation)
 - Token usage logging (prompt tokens, completion tokens, total)
 - Per-query cost estimation based on configurable per-token rate tables
 - Structured JSON telemetry store for reproducibility and offline analysis
 
 ### 🔁 Comparative Experimentation
-- Pluggable retrieval strategies: **dense retrieval** (ChromaDB vector search) and **hybrid retrieval** (BM25 + dense via Reciprocal Rank Fusion)
-- Pluggable LLM backends: **Llama 3 (8B)** and **Mistral 7B** via Ollama (runs fully locally — no API key required)
+- Pluggable retrieval strategies: **dense retrieval** (ChromaDB vector search), **hybrid retrieval** (BM25 + dense via Reciprocal Rank Fusion) and **graph retrieval** (knowledge-graph traversal, added after the experiment)
+- Any Ollama model as the generator, set with `GENERATOR_MODELS`; the experiment used **Llama 3 (8B)** and **Mistral 7B**. Everything runs locally, with no API key
 - 2 × 2 factorial experiment runner with automated result logging
 
 ### 📊 Interactive Dashboard
@@ -144,13 +144,18 @@ The platform is organised into six stages, each mapped to a specific research qu
 - Comparative performance heatmaps across retrieval × LLM conditions
 - Retrieved document chunk viewer with colour-graded per-chunk similarity scores
 - Sankey diagram of the full pipeline process flow — every instrumented stage (embedding, retrieval sub-stages, generation, RAGAS evaluation) sized by actual wall-clock duration for a single query
-- Read-only ChromaDB knowledge-base browser with corpus composition breakdown, a 3D PCA projection of sampled embeddings, and a semantic search preview
-- Export of session data to CSV for downstream analysis
+- The generated answer appears as soon as it exists, while RAGAS evaluation is still running
+- Knowledge-base page: upload your own PDF and text files, and browse the BioASQ collection with its corpus composition, a 3D PCA projection of sampled embeddings, a semantic search preview and the knowledge graph
+- CSV export of benchmark results for downstream analysis
 
 ### 🗂️ Benchmark Pipeline
 - Pre-built BioASQ loaders covering three evaluation roles (Phase A retrieval, factoid, summary)
 - Stratified query sampling utilities
 - Ground-truth answer alignment for RAGAS answer correctness computation
+
+### 📄 Your Own Documents
+- Ingest PDF, plain-text and Markdown files into a knowledge base kept separate from the benchmark
+- PDFs are read page by page, so every retrieved chunk cites its file and page
 
 ---
 
@@ -188,7 +193,7 @@ A single benchmark dataset, **BioASQ**, is used for evaluation — accessed via 
 | Vector DB | [ChromaDB](https://trychroma.com) | Embedding storage & similarity search: embedded in the app by default, or a separate server (the Compose service) |
 | Sparse Retrieval | `rank_bm25` | BM25 scoring for hybrid retrieval |
 | Hybrid Fusion | Custom RRF implementation | Reciprocal Rank Fusion |
-| Evaluation | [RAGAS](https://docs.ragas.io) | Context relevance, faithfulness, correctness (judge: Qwen2.5 7B) |
+| Evaluation | [RAGAS](https://docs.ragas.io) | Context relevance, faithfulness, correctness (judge: Qwen2.5 7B in the research configuration, `qwen2.5:3b` by default) |
 | Telemetry | Custom JSON logger | Query-level instrumentation store |
 | Dashboard | [Streamlit](https://streamlit.io) | Interactive real-time visualisation |
 | Data Processing | `pandas`, `numpy` | Benchmark loading and analysis |
@@ -205,6 +210,7 @@ A single benchmark dataset, **BioASQ**, is used for evaluation — accessed via 
 ragscope/
 │
 ├── README.md
+├── CITATION.cff                   # Citation metadata ("Cite this repository" on GitHub)
 ├── pyproject.toml                 # Project metadata & dependencies (uv); optional extra: graph
 ├── uv.lock                        # Pinned lockfile — commit this for reproducibility
 ├── .env.example                   # Default configuration: small models, CPU-only, embedded ChromaDB
@@ -213,7 +219,7 @@ ragscope/
 ├── .gitignore
 ├── LICENSE
 │
-├── docker-compose.yml             # Orchestrates production services: app, chromadb (Ollama runs on the host, not a Compose service)
+├── docker-compose.yml             # The two services: ragscope (app) and chromadb (Ollama runs on the host, not in Compose)
 ├── docker-compose.override.yml    # Local dev overrides (hot-reload, source mount)
 │
 ├── docker/                        # Per-service Dockerfiles
@@ -221,6 +227,9 @@ ragscope/
 │   │   └── Dockerfile             # RAGScope app image (Python 3.12, uv-installed deps)
 │   └── scripts/
 │       └── entrypoint.sh          # Container startup: waits for host Ollama + ChromaDB to be reachable
+│
+├── config/
+│   └── settings.py                # All settings, read from .env
 │
 ├── scripts/
 │   ├── fetch_index.py             # Download the prebuilt index instead of running ingestion
@@ -248,7 +257,8 @@ ragscope/
 │   │   ├── hybrid.py              # Hybrid retrieval (BM25 + RRF)
 │   │   └── graph.py               # Graph retrieval (entity seeding + Personalized PageRank)
 │   ├── generation/
-│   │   ├── llm_client.py          # Ollama API wrapper; generic client for any model tag
+│   │   ├── __init__.py            # build_llm_client(): picks the client for a model tag
+│   │   ├── llm_client.py          # Ollama API wrapper and the generic RAG prompt
 │   │   ├── llama3.py              # Llama 3 (8B) prompt template
 │   │   └── mistral.py             # Mistral 7B prompt template
 │   └── rag.py                     # End-to-end query pipeline orchestrator
@@ -258,7 +268,8 @@ ragscope/
 │   ├── build_graph.py             # Extract entities and relations with docling-graph
 │   ├── builder_config.py          # Extraction settings and paths
 │   ├── biomed_template.py         # Biomedical entity and relation schema
-│   └── lightrag_compare.py        # LightRAG baseline comparison
+│   ├── lightrag_compare.py        # LightRAG baseline comparison
+│   └── lightrag_results.md        # Its results
 │
 ├── telemetry/                     # Instrumentation layer
 │   ├── logger.py                  # Structured JSON telemetry logger
@@ -327,6 +338,7 @@ ollama pull qwen2.5:3b                     # RAGAS judge
 # 4. Configuration and data
 cp .env.example .env                       # CPU defaults
 uv run python scripts/fetch_index.py       # prebuilt index (~350 MB), checked against its SHA-256
+                                           # (or build it: uv run python pipeline/ingestion.py --corpus all, 20–40 min)
 
 # 5. Dashboard
 uv run streamlit run dashboard/app.py      # http://localhost:8501
@@ -340,18 +352,18 @@ Open **Live Monitor**, ask a biomedical question such as *Which protein does emp
 > - The RAGAS scores follow about **100 s** later (median 102 s, range 75–161 s), because the judge makes three model calls per query.
 > - End to end, a query takes about **2 minutes** (median 121 s).
 >
-> Switch off **Run RAGAS Evaluation** in the sidebar for quick exploration. Older or smaller laptops will be slower. With 8 GB of memory, keeping the generator and judge loaded together is tight: the model server crashed twice in nine queries. Close other memory-heavy applications, or use `GENERATOR_MODELS=qwen2.5:3b` and `DEFAULT_LLM=qwen2.5:3b` so the generator and judge are the same model.
+> Switch off **Run RAGAS Evaluation** in the sidebar for quick exploration. Older or smaller laptops will be slower. With 8 GB of memory, keeping the generator and judge loaded together is tight: the model server crashed twice in nine queries. Close other memory-heavy applications, or use `GENERATOR_MODELS=qwen2.5:3b` and `DEFAULT_LLM=qwen2.5:3b` so the generator and judge are the same model. The judge then scores its own answers, so treat the scores with more caution.
 
-To reproduce the dissertation configuration (Llama 3 8B and Mistral 7B, Qwen2.5 7B judge) use `cp .env.research.example .env` instead, and pull `llama3`, `mistral` and `qwen2.5:7b`. Those models need about 14 GB of disk and are practical only with a GPU or Apple silicon.
+To reproduce the dissertation configuration (Llama 3 8B and Mistral 7B, Qwen2.5 7B judge) use `cp .env.research.example .env` instead, and pull `llama3`, `mistral` and `qwen2.5:7b`. Those models need about 14 GB of disk and are practical only with a GPU or Apple silicon. The published results were produced on an Apple M5 MacBook Pro (16 GB) with Ollama running the models on its integrated GPU.
 
 ### Prerequisites
 
 | Requirement | Version | Install |
 |---|---|---|
-| [Docker](https://docs.docker.com/get-docker/) | ≥ 26.0 | Required for the recommended Docker path |
-| [Docker Compose](https://docs.docker.com/compose/) | ≥ 2.27 | Bundled with Docker Desktop |
-| [uv](https://docs.astral.sh/uv/getting-started/installation/) | ≥ 0.4 | Required for the local development path |
-| [Ollama](https://ollama.com) | Latest | **Required for both paths** — Ollama always runs on the host, never inside a container. Install it and pull the models before starting either path (see below). |
+| [Docker](https://docs.docker.com/get-docker/) | ≥ 26.0 | Optional: only for the Docker path (Option A) |
+| [Docker Compose](https://docs.docker.com/compose/) | ≥ 2.27 | Optional: bundled with Docker Desktop |
+| [uv](https://docs.astral.sh/uv/getting-started/installation/) | ≥ 0.4 | Required for the quick start and the local path (Option B) |
+| [Ollama](https://ollama.com) | Latest | **Required for every path** — Ollama always runs on the host, never inside a container. Install it and pull the models first (see below). |
 | RAM | ≥ 8 GB (CPU defaults) | 16 GB for the research configuration; 32 GB recommended for running both 7–8B models |
 | Disk | ≥ 6 GB free (CPU defaults) | Research configuration: ≥ 25 GB (models ~14 GB + corpus + embeddings + images) |
 
@@ -366,7 +378,7 @@ To reproduce the dissertation configuration (Llama 3 8B and Mistral 7B, Qwen2.5 
 
 ---
 
-### Option A — Docker (Recommended)
+### Option A — Docker
 
 Docker Compose orchestrates two services automatically: the RAGScope app and ChromaDB (vector store). No manual setup of Python or ChromaDB is required — but **Ollama is not containerised**: it always runs on the host machine (reached via `host.docker.internal`), so it must be installed and have its models pulled *before* starting the stack, for both this path and Option B.
 
@@ -423,7 +435,7 @@ The dashboard will be available at **http://localhost:8501** once both services 
 Run this once to download and embed the BioASQ passages into ChromaDB:
 
 ```bash
-docker compose exec ragscope uv run python pipeline/ingestion.py \
+docker compose exec ragscope python pipeline/ingestion.py \
   --corpus all \
   --chunk-size 512 \
   --chunk-overlap 64
@@ -539,7 +551,7 @@ See the comments in either file for the rest.
 
 ## Usage
 
-All commands below are shown in two variants: **Docker** (recommended) and **local uv**. They are functionally identical.
+Commands below are shown in two variants: **Docker** and **local uv**. They are functionally identical. Inside the container, run `python` directly: the app image carries the project's environment but not `uv`.
 
 ### Running the RAG Pipeline
 
@@ -547,7 +559,7 @@ Run a single query through the full pipeline (retrieval + generation + telemetry
 
 ```bash
 # Docker
-docker compose exec ragscope uv run python pipeline/rag.py \
+docker compose exec ragscope python pipeline/rag.py \
   "Which protein does empagliflozin inhibit?" \
   --llm llama3 \
   --retrieval hybrid \
@@ -621,7 +633,7 @@ The full 2 × 2 factorial benchmark (200 queries × 4 conditions = 800 records):
 
 ```bash
 # Docker
-docker compose exec ragscope uv run python experiments/run_2x2_factorial.py \
+docker compose exec ragscope python experiments/run_2x2_factorial.py \
   --dataset all \
   --conditions all \
   --output experiments/results/benchmark_20260801.csv
@@ -640,13 +652,13 @@ uv run python experiments/run_2x2_factorial.py \
   --output experiments/results/bioasq_summary_mistral_dense.csv
 ```
 
-> ⚠️ **Expected runtime:** The full 800-query experiment takes on the order of half a day on consumer hardware (CPU inference) — RAGAS judge latency dominates per-query time. Run as a background/overnight job. A `--resume` flag resumes from a checkpoint if the run is interrupted.
+> ⚠️ **Expected runtime:** The full 800-query experiment averaged about 57 s per query, around 13 hours in total, on an Apple M5 MacBook Pro with Ollama on its integrated GPU. On a CPU alone it takes several times longer. RAGAS judge latency dominates per-query time. Run it as a background or overnight job; `--resume` continues from a checkpoint if the run is interrupted.
 
 After the experiment completes, run the statistical analysis:
 
 ```bash
 # Docker
-docker compose exec ragscope uv run python experiments/analyse_results.py \
+docker compose exec ragscope python experiments/analyse_results.py \
   --input experiments/results/benchmark_20260801.csv \
   --output experiments/results/analysis_report.md
 
@@ -745,8 +757,8 @@ uv run python pipeline/rag.py "Which protein does empagliflozin inhibit?" --retr
 In the dashboard, choose **graph** under *Retrieval Strategy* in the Live Monitor sidebar. The retriever loads the graph once and reloads it when the files change, but restart the dashboard so the Knowledge Base page picks up the new graph.
 
 - **Local:** nothing else to do.
-- **Docker (dev override):** the source directory is mounted, so the container sees `data/graph/` straight away.
-- **Docker (production compose):** the graph is copied into the image at build time, so rebuild: `docker compose build ragscope && docker compose up -d`.
+- **Docker (default, with the override):** the source directory is mounted, so the container sees `data/graph/` straight away.
+- **Docker (`-f docker-compose.yml` only):** the graph is copied into the image at build time, so rebuild: `docker compose -f docker-compose.yml build ragscope && docker compose -f docker-compose.yml up -d`.
 
 > By default, graph results are fused with dense retrieval (`GRAPH_FUSE_DENSE=true`). While the graph covers only a small part of the corpus, fusion can reorder what dense retrieval found but can't bring in a passage that only the graph found. Set `GRAPH_FUSE_DENSE=false` to see graph-only results.
 
@@ -788,13 +800,11 @@ docker compose logs -f ragscope
 # Open a shell in the app container
 docker compose exec ragscope bash
 
-# Run a one-off uv command inside the container
-docker compose exec ragscope uv run python -c "from config.settings import settings; print(settings.ollama_base_url)"
+# Run a one-off Python command inside the container
+docker compose exec ragscope python -c "from config.settings import settings; print(settings.ollama_base_url)"
 
-# Run the test suite inside Docker
-docker compose exec ragscope uv run pytest tests/ -v
-
-# Rebuild the app image after code changes (Compose watch handles this in dev)
+# Rebuild the app image after code changes (not needed in dev mode, which
+# mounts the source; see below)
 docker compose build ragscope
 
 # After pulling changes to pyproject.toml / uv.lock: rebuild AND renew the
@@ -808,13 +818,13 @@ docker compose down -v --remove-orphans
 
 ### Development Mode (Hot Reload)
 
-For active development, use the override file which mounts the source directory as a volume, so code changes are reflected without rebuilding the image:
+Docker Compose applies `docker-compose.override.yml` automatically, so a plain `docker compose up` runs in development mode: the source directory is mounted into the container, code changes take effect without rebuilding the image, and Streamlit reloads on file save. To run the production configuration alone, without the source mount, name the base file explicitly:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.override.yml up
+docker compose -f docker-compose.yml up
 ```
 
-The override also enables Streamlit's `--server.runOnSave` flag, so the dashboard reloads automatically on file save.
+The test suite runs on the host (`uv run pytest`), since the image is built without development dependencies.
 
 ### Dockerfile Summary
 
@@ -845,7 +855,7 @@ ENTRYPOINT ["/entrypoint.sh"]   # waits for chromadb + host Ollama, then starts 
 
 ## Evaluation Metrics
 
-RAGScope computes the following metrics per query using the RAGAS framework (Es et al., 2023):
+RAGScope computes the following metrics per query using the RAGAS framework (Es et al., 2024):
 
 | Metric | Range | Description |
 |---|:---:|---|
@@ -898,6 +908,12 @@ Cohen's *d* thresholds: |*d*| < 0.20 negligible, 0.20–0.49 small, 0.50–0.79 
 
 **Graph retrieval (proof of concept).** Graph retrieval was added after the benchmark, as a platform extension, and is not one of the four experimental conditions; no quality comparison has been run. Over a 298-chunk graph, it found starting entities for 74 of the 200 benchmark queries, and graph-only retrieval took a median of 19.9 ms. See [Building the Knowledge Graph](#building-the-knowledge-graph-graph-retrieval).
 
+**Since submission.** Evaluating the platform further, in response to supervisory review, found the following:
+
+- **Where the time goes:** ChromaDB accounts for under 0.1% of query time; the RAGAS judge and generation account for nearly all of it.
+- **CPU-only use:** on a processor alone, the 3B models answer in about 25 s and finish evaluation in about 2 minutes.
+- **LightRAG:** compared with this retriever, its graph modes are about 140 times slower per query, because they call the LLM on every query ([graph/lightrag_results.md](graph/lightrag_results.md)).
+
 Full results and analysis:
 
 - Chapter 4 of the dissertation (submitted September 2026)
@@ -910,8 +926,8 @@ Full results and analysis:
 The following limitations are acknowledged and discussed in full in the dissertation:
 
 - **Domain specificity:** The evaluation corpus is BioASQ (biomedical abstracts); findings may not generalise to other domains (e.g., legal, general web text).
-- **RAGAS judge bias:** RAGAS metrics are computed using an LLM judge, which may share biases with the evaluated model - particularly when the same model serves both roles. Mitigation: the judge model (Qwen 2.5) is held constant and separated from the evaluated LLM configurations where possible.
-- **Hardware constraints:** Local inference on consumer hardware does not replicate production-scale latency profiles. Reported latency figures should be interpreted comparatively within experimental conditions, not as absolute production benchmarks.
+- **RAGAS judge bias:** RAGAS metrics are computed using an LLM judge, which may share biases with the evaluated model - particularly when the same model serves both roles. Mitigation: the judge model (Qwen 2.5) is held constant and separated from the evaluated LLM configurations where possible. The CPU profile offers `qwen2.5:3b` both as a generator and as the judge; choose `llama3.2:3b` as the generator to keep the two apart.
+- **Hardware constraints:** The experiment ran on a single laptop (an Apple M5 MacBook Pro, 16 GB, with Ollama on its integrated GPU), which does not replicate production-scale latency profiles. Reported latency figures should be interpreted comparatively within experimental conditions, not as absolute production benchmarks.
 - **Timeline constraints:** The 5.5-month dissertation window limits the scale of experimentation; a larger query benchmark would strengthen statistical conclusions.
 
 Found since submission:
@@ -929,6 +945,7 @@ Found since submission:
 | System Architecture | ✅ Complete | `docs/architecture.md`, `docs/images/ragscope_system_architecture.svg` |
 | Platform Implementation | ✅ Complete | `pipeline/`, `evaluation/`, `dashboard/` |
 | Benchmark Experiment | ✅ Complete | `experiments/results/` |
+| LightRAG Baseline Comparison | ✅ Complete | `graph/lightrag_results.md` |
 | Dissertation | ✅ Complete | — |
 | Publication | 🔄 In progress | — |
 
@@ -936,7 +953,7 @@ Found since submission:
 
 ## Citation
 
-If you use RAGScope in your own research, please cite:
+If you use RAGScope in your own research, please cite it as below, or use GitHub's **Cite this repository** button, which reads [`CITATION.cff`](CITATION.cff):
 
 ```bibtex
 @mastersthesis{ragscope2026,
@@ -953,7 +970,8 @@ If you use RAGScope in your own research, please cite:
 ### Key References
 
 - Barnett et al. (2024) — Seven failure points in RAG engineering
-- Es et al. (2023) — RAGAS: Automated evaluation of RAG
+- Es et al. (2024) — RAGAS: Automated evaluation of RAG
+- Guo et al. (2024) — LightRAG: Simple and fast retrieval-augmented generation
 - Hevner et al. (2004) — Design Science in information systems research
 - Lewis et al. (2020) — Retrieval-augmented generation for knowledge-intensive NLP
 - Peffers et al. (2007) — Design Science Research Methodology
