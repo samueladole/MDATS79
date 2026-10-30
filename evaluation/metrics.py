@@ -2,7 +2,7 @@
 RAGScope — Metrics Aggregation
 ================================
 Aggregates per-query RAGAS scores and telemetry into summary statistics
-used by the benchmark analysis and the dashboard comparison view.
+used by the benchmark analysis script and the Benchmark Results page.
 
 Implements the statistical analysis plan from the proposal:
     * Descriptive statistics (mean, std, IQR, min, max)
@@ -198,7 +198,7 @@ def pearson_r(x: list[float], y: list[float]) -> float | None:
     return round(num / den, 4) if den > 0 else None
 
 
-# ── Condition comparison ──────────────────────────────────────────────────────
+# ── Metrics analysed per condition ────────────────────────────────────────────
 
 EVAL_METRICS = [
     "context_relevance",
@@ -210,39 +210,6 @@ EVAL_METRICS = [
     "estimated_cost_usd",
 ]
 
-
-def compare_conditions(
-    records_a: list[dict],
-    records_b: list[dict],
-    label_a: str = "A",
-    label_b: str = "B",
-) -> dict:
-    """
-    Generate a full pairwise comparison between two sets of telemetry records.
-
-    Computes descriptive stats for each metric in both groups and
-    Cohen's d for all evaluation metrics.
-
-    Parameters
-    ----------
-    records_a, records_b : Lists of telemetry record dicts.
-    label_a, label_b     : Condition labels (e.g. ``"llama3_dense"``).
-
-    Returns
-    -------
-    dict
-        ``{metric: {"stats_a": ..., "stats_b": ..., "cohens_d": ...}}``
-    """
-    result = {}
-    for metric in EVAL_METRICS:
-        vals_a = [r.get(metric) for r in records_a]
-        vals_b = [r.get(metric) for r in records_b]
-        result[metric] = {
-            "stats_a": descriptive_stats(vals_a, metric).to_dict(),
-            "stats_b": descriptive_stats(vals_b, metric).to_dict(),
-            "cohens_d": cohens_d(vals_a, vals_b, label_a, label_b, metric).to_dict(),
-        }
-    return result
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

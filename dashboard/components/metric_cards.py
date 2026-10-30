@@ -95,7 +95,7 @@ def _score_card_html(
     display_value = f"{value:.3f}" if value is not None else "N/A"
     pct = (1.0 - value if invert else value) * 100 if value is not None else 0.0
     # Hallucination risk already has an established LOW/MEDIUM/HIGH banding
-    # (risk_band, used by the heatmaps and risk-band charts elsewhere) — reuse
+    # (risk_band, used by the risk-band charts elsewhere) — reuse
     # it here instead of introducing a second, differently-thresholded scheme.
     quality = risk_band(value) if invert else (_quality_delta(value) or "No data")
     # The quality label sits on a solid colour fill (a badge), not bare

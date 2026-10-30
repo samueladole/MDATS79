@@ -1,5 +1,5 @@
 """
-RAGScope Dashboard — Page 5: Knowledge Base
+RAGScope Dashboard — Page 4: Knowledge Base
 ===============================================
 View of the ChromaDB collection backing the RAG pipeline: collection stats,
 per-dataset composition, a metadata-filterable chunk browser, a semantic

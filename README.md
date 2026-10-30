@@ -113,8 +113,8 @@ The platform is organised into six stages, each mapped to a specific research qu
 
                                                   5. Dashboard
                                                   ─────────────
-                                                  Live Monitor · Comparison ·
-                                                  Query Explorer · Benchmark
+                                                  Live Monitor · Query
+                                                  Explorer · Benchmark
                                                   Results · Knowledge Base
                                                   (Objective 2)
 ```
@@ -141,7 +141,7 @@ The platform is organised into six stages, each mapped to a specific research qu
 
 ### 📊 Interactive Dashboard
 - Live metric time series for active query sessions, with results persisted across page interaction
-- Comparative performance heatmaps across retrieval × LLM conditions
+- Benchmark Results page comparing the four conditions: summary statistics, effect sizes, risk profile, latency and token breakdown, and metric correlations
 - Retrieved document chunk viewer with colour-graded per-chunk similarity scores
 - Sankey diagram of the full pipeline process flow — every instrumented stage (embedding, retrieval sub-stages, generation, RAGAS evaluation) sized by actual wall-clock duration for a single query
 - The generated answer appears as soon as it exists, while RAGAS evaluation is still running
@@ -286,15 +286,13 @@ ragscope/
 │   ├── app.py                     # Main Streamlit application entry point
 │   ├── pages/
 │   │   ├── 01_live_monitor.py     # Ask a question; answer, scores, pipeline flow Sankey, graph path
-│   │   ├── 02_comparison.py       # Cross-condition comparative analysis
-│   │   ├── 03_query_explorer.py   # Per-query drill-down view + pipeline flow Sankey
-│   │   ├── 04_benchmark_results.py # Benchmark experiment results
-│   │   └── 05_knowledge_base.py   # Upload your documents; browse the BioASQ collection and graph
+│   │   ├── 02_query_explorer.py   # Per-query drill-down view + pipeline flow Sankey
+│   │   ├── 03_benchmark_results.py # Benchmark results: the four conditions compared
+│   │   └── 04_knowledge_base.py   # Upload your documents; browse the BioASQ collection and graph
 │   └── components/
 │       ├── theme.py               # Shared icons (Material Symbols / inline SVG) + CSS theme
 │       ├── metric_cards.py        # Metric display components
 │       ├── latency_chart.py       # Latency visualisation
-│       ├── heatmap.py             # RAGAS score heatmaps
 │       ├── graph_view.py          # Interactive retrieval-path graph
 │       └── vector_space.py        # Pure-numpy PCA + 3D embedding scatter
 │
@@ -618,12 +616,11 @@ open http://localhost:8501
 uv run streamlit run dashboard/app.py
 ```
 
-The dashboard provides five views at `http://localhost:8501`:
+The dashboard provides four views at `http://localhost:8501`:
 
 - **Live Monitor** — submit a query interactively and watch the full pipeline execute: generated answer, RAGAS scores, colour-graded chunk similarity, and a Sankey diagram of every instrumented stage's wall-clock duration. The answer is shown as soon as it is generated, while the RAGAS scores are still being computed. Choose the **Knowledge base** (BioASQ benchmark or your own documents) in the sidebar
-- **Comparison** — side-by-side heatmaps of RAGAS scores across LLM × retrieval conditions
 - **Query Explorer** — click any logged query to inspect retrieved chunks, similarity scores, faithfulness breakdowns, latency decomposition, and the same per-query pipeline flow Sankey
-- **Benchmark Results** — full visualisation of the 200-query benchmark experiment results
+- **Benchmark Results** — the four experimental conditions compared over the 200-query benchmark: summary statistics, hallucination risk profile, Cohen's *d* effect sizes, latency and token breakdown, metric correlations, and performance by query role
 - **Knowledge Base** — upload your own PDF and text files (see below), and browse the BioASQ collection: corpus composition by dataset, a 3D PCA projection of sampled embeddings coloured by dataset, a paginated chunk browser, a semantic search preview, and the knowledge graph
 
 ### Running the Benchmark Evaluation

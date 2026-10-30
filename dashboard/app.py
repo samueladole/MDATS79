@@ -2,16 +2,15 @@
 RAGScope — Streamlit Dashboard Entry Point
 ============================================
 Multi-page Streamlit application that provides real-time observability
-of the RAG pipeline, comparative analysis across experimental conditions,
-query-level drill-down inspection, and benchmark experiment visualisation.
+of the RAG pipeline, query-level drill-down inspection, benchmark experiment
+analysis across the experimental conditions, and the knowledge base.
 
 Pages
 -----
   01_live_monitor.py      Live query execution with real-time metric display
-  02_comparison.py        Cross-condition heatmap comparison
-  03_query_explorer.py    Per-query telemetry and chunk inspection
-  04_benchmark_results.py Benchmark experiment results and analysis
-  05_knowledge_base.py    ChromaDB collection browser and semantic search preview
+  02_query_explorer.py    Per-query telemetry and chunk inspection
+  03_benchmark_results.py Benchmark results and cross-condition analysis
+  04_knowledge_base.py    Document upload, collection browser, semantic search
 
 Run
 ---
@@ -89,10 +88,9 @@ def render_home() -> None:
         | Page | Description |
         |---|---|
         | :material/monitor_heart: Live Monitor | Submit queries and observe real-time RAGAS scores and telemetry |
-        | :material/compare_arrows: Comparison | Compare RAGAS metrics across the 4 experimental conditions |
         | :material/manage_search: Query Explorer | Inspect individual query telemetry, retrieved chunks, and scores |
-        | :material/analytics: Benchmark Results | Visualise the 200-query experiment results and statistics |
-        | :material/database: Knowledge Base | Browse the ChromaDB collection and preview semantic search |
+        | :material/analytics: Benchmark Results | Compare the four experimental conditions over the 200-query benchmark |
+        | :material/database: Knowledge Base | Add your own documents; browse the ChromaDB collection and preview semantic search |
 
         ---
         **Research context:** This platform was developed as the primary artefact for an
@@ -106,10 +104,9 @@ def render_home() -> None:
 pages = [
     st.Page(render_home, title="Home", icon=":material/home:", default=True, url_path="home"),
     st.Page("pages/01_live_monitor.py", title="Live Monitor", icon=":material/monitor_heart:"),
-    st.Page("pages/02_comparison.py", title="Condition Comparison", icon=":material/compare_arrows:"),
-    st.Page("pages/03_query_explorer.py", title="Query Explorer", icon=":material/manage_search:"),
-    st.Page("pages/04_benchmark_results.py", title="Benchmark Results", icon=":material/analytics:"),
-    st.Page("pages/05_knowledge_base.py", title="Knowledge Base", icon=":material/database:"),
+    st.Page("pages/02_query_explorer.py", title="Query Explorer", icon=":material/manage_search:"),
+    st.Page("pages/03_benchmark_results.py", title="Benchmark Results", icon=":material/analytics:"),
+    st.Page("pages/04_knowledge_base.py", title="Knowledge Base", icon=":material/database:"),
 ]
 pg = st.navigation(pages)
 pg.run()

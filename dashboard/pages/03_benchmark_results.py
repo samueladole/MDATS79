@@ -1,5 +1,5 @@
 """
-RAGScope Dashboard — Page 4: Benchmark Results
+RAGScope Dashboard — Page 3: Benchmark Results
 ================================================
 Visualises the results of the 200-query 2×2 factorial experiment.
 Loads from the CSV output of ``experiments/run_2x2_factorial.py``.

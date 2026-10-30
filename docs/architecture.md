@@ -154,10 +154,9 @@ config/settings.py
             │
             ├── dashboard/app.py
             │   ├── dashboard/pages/01_live_monitor.py
-            │   ├── dashboard/pages/02_comparison.py
-            │   ├── dashboard/pages/03_query_explorer.py
-            │   ├── dashboard/pages/04_benchmark_results.py
-            │   └── dashboard/pages/05_knowledge_base.py
+            │   ├── dashboard/pages/02_query_explorer.py
+            │   ├── dashboard/pages/03_benchmark_results.py
+            │   └── dashboard/pages/04_knowledge_base.py
             │
             └── experiments/run_2x2_factorial.py
                     └── experiments/analyse_results.py
@@ -329,23 +328,22 @@ Embeddings for `AnswerCorrectness` (semantic similarity to the ground truth) reu
 **Entry point:** `dashboard/app.py`  
 **URL:** `http://localhost:8501`
 
-The dashboard is a five-page Streamlit application providing real-time and retrospective views over the telemetry store and the ChromaDB collection.
+The dashboard is a four-page Streamlit application providing real-time and retrospective views over the telemetry store and the ChromaDB collection.
 
 | Page | File | Purpose |
 |---|---|---|
 | Live Monitor | `01_live_monitor.py` | Submit queries interactively; results persist across reruns (e.g. expanding a chunk) instead of gating on button state; per-session (not global) latency history; per-query pipeline flow Sankey |
-| Comparison | `02_comparison.py` | RAGAS heatmaps and Cohen's d table across all four conditions; flags missing/sparse conditions instead of silently reporting a false zero effect size |
-| Query Explorer | `03_query_explorer.py` | Per-query drill-down: chunks, scores, latency decomposition, pipeline flow Sankey, raw JSON |
-| Benchmark Results | `04_benchmark_results.py` | Load benchmark CSVs; grouped bar of mean RAGAS scores, box plots, hallucination risk band distribution, Cohen's d effect-size chart, latency/token breakdown, Pearson correlation heatmap, per-dataset breakdown |
-| Knowledge Base | `05_knowledge_base.py` | Read-only ChromaDB browser: collection stats, corpus composition by dataset, a 3D PCA projection of sampled embeddings, paginated chunk browser, semantic search preview |
+| Query Explorer | `02_query_explorer.py` | Per-query drill-down: chunks, scores, latency decomposition, pipeline flow Sankey, raw JSON |
+| Benchmark Results | `03_benchmark_results.py` | Compares the four conditions from the benchmark CSVs: grouped bar of mean RAGAS scores, box plots, hallucination risk band distribution, Cohen's d effect-size chart, latency/token breakdown, Pearson correlation heatmap, per-dataset breakdown |
+| Knowledge Base | `04_knowledge_base.py` | Upload and index your own documents; ChromaDB browser: collection stats, corpus composition by dataset, a 3D PCA projection of sampled embeddings, paginated chunk browser, semantic search preview |
 
 Shared visualisation components live in `dashboard/components/`:
 
 | Component | Description |
 |---|---|
 | `metric_cards.py` | Modern colour-graded RAGAS scorecard tiles (icon, value, meter bar, quality badge); `similarity_meter_html()` for chunk similarity bars; 6-column telemetry row (adds Evaluation Latency) |
-| `latency_chart.py` | Time-series, histogram, grouped box-plot, and `pipeline_flow_sankey()` — a theme-aware Sankey diagram of one query's full stage-by-stage latency breakdown (Plotly) |
-| `heatmap.py` | RAGAS score heatmap; token usage heatmap (Plotly) |
+| `latency_chart.py` | `latency_time_series()` for the session's latency history, and `pipeline_flow_sankey()` — a theme-aware Sankey diagram of one query's full stage-by-stage latency breakdown (Plotly) |
+| `graph_view.py` | Interactive retrieval-path graph for graph retrieval: query, seed entities, traversal and the chunks reached |
 | `vector_space.py` | `pca_3d()` — pure-numpy PCA (via SVD, no scikit-learn/UMAP dependency) projecting sampled embeddings to 3D; `vector_space_scatter()` — Plotly 3D scatter coloured by dataset, for the Knowledge Base page |
 
 **Colour conventions used throughout the dashboard:**
@@ -674,7 +672,6 @@ class Timer:
 | `descriptive_stats(values, metric)` | function | Returns `DescriptiveStats` (mean, std, median, IQR, min, max) |
 | `cohens_d(group_a, group_b, ...)` | function | Returns `CohensD` with pooled SD and magnitude label |
 | `pearson_r(x, y)` | function | Pearson correlation coefficient; `None` if < 3 paired values |
-| `compare_conditions(records_a, records_b, ...)` | function | Full pairwise comparison dict for all `EVAL_METRICS` |
 | `EVAL_METRICS` | constant | List of metric names used in analysis |
 
 ---
@@ -696,10 +693,9 @@ The Streamlit app uses multi-page routing via the `dashboard/pages/` directory. 
 |---|---|---|
 | Home | `/` | `config/settings`, `telemetry/logger` |
 | Live Monitor | `01_live_monitor` | `pipeline/rag.RAGPipeline`, all component modules incl. `latency_chart.pipeline_flow_sankey` |
-| Comparison | `02_comparison` | `telemetry/logger`, `evaluation/metrics`, `dashboard/components/heatmap` |
-| Query Explorer | `03_query_explorer` | `telemetry/logger`, `evaluation/hallucination_score`, all component modules incl. `latency_chart.pipeline_flow_sankey` |
-| Benchmark Results | `04_benchmark_results` | `pandas`, `plotly.express`, `evaluation/metrics` |
-| Knowledge Base | `05_knowledge_base` | `pipeline/vectorstore.get_vector_store`, `pipeline/embeddings.get_embedding_generator`, `dashboard/components/vector_space` |
+| Query Explorer | `02_query_explorer` | `telemetry/logger`, `evaluation/hallucination_score`, all component modules incl. `latency_chart.pipeline_flow_sankey` |
+| Benchmark Results | `03_benchmark_results` | `pandas`, `plotly.express`, `evaluation/metrics` |
+| Knowledge Base | `04_knowledge_base` | `pipeline/vectorstore.get_vector_store`, `pipeline/embeddings.get_embedding_generator`, `dashboard/components/vector_space` |
 
 ---
 

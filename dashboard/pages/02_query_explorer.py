@@ -1,5 +1,5 @@
 """
-RAGScope Dashboard — Page 3: Query Explorer
+RAGScope Dashboard — Page 2: Query Explorer
 =============================================
 Inspect individual telemetry records in detail:
 retrieved chunks, scores, latency decomposition, and answers.
