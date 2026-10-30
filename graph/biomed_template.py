@@ -1,5 +1,5 @@
 """
-Minimal biomedical extraction template for the docling-graph feasibility spikes.
+Minimal biomedical extraction template used by the docling-graph builder.
 
 Deliberately small (3 entity types, 4 edge types). The full ontology — a subset
 of the BioLink Model selected to cover >=90% of the benchmark queries — is a

@@ -266,7 +266,7 @@ summary = _load_graph_summary(
 if summary is None:
     st.info(
         f"No knowledge graph found at `{settings.graph_path}`. "
-        "Build one with `graph/spikes/build_subset.py` to enable the `graph` "
+        "Build one with `graph/build_graph.py` to enable the `graph` "
         "retrieval strategy."
     )
 else:

@@ -158,7 +158,7 @@ class GraphRetriever(BaseRetriever):
         if not gp.exists() or not ncp.exists():
             raise FileNotFoundError(
                 f"Graph artefacts missing ({gp}, {ncp}). Build them first with "
-                f"graph/spikes/build_subset.py, or point GRAPH_PATH at an existing graph."
+                f"graph/build_graph.py, or point GRAPH_PATH at an existing graph."
             )
 
         # Both orientations are kept. Traversal runs on the undirected view, so a

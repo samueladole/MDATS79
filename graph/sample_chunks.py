@@ -9,8 +9,8 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from pipeline_config import CORPUS_PATH as SRC  # noqa: E402
-from pipeline_config import SAMPLE_DIR as OUT  # noqa: E402
+from builder_config import CORPUS_PATH as SRC  # noqa: E402
+from builder_config import SAMPLE_DIR as OUT  # noqa: E402
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 24
 OUT.mkdir(parents=True, exist_ok=True)

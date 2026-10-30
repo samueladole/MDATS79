@@ -29,8 +29,12 @@ import re  # noqa: E402
 
 import networkx as nx  # noqa: E402
 
-from docling_graph import run_pipeline  # noqa: E402
-from pipeline_config import (  # noqa: E402
+try:
+    from docling_graph import run_pipeline  # noqa: E402
+except ImportError:  # pragma: no cover - depends on the install
+    sys.exit("docling-graph is not installed. It is an optional extra; install it with:\n"
+             "  uv sync --extra graph")
+from builder_config import (  # noqa: E402
     GRAPH_PATH,
     MANIFEST_PATH,
     NODE_CHUNKS_PATH,
@@ -97,7 +101,7 @@ def extract_one(path: Path) -> tuple[str, nx.DiGraph | None, float, str | None]:
 def main(concurrency: int = 8) -> None:
     docs = sorted(SAMPLE_DIR.glob("*.md"))
     if not docs:
-        sys.exit(f"no chunks in {SAMPLE_DIR} — run make_sample.py first")
+        sys.exit(f"no chunks in {SAMPLE_DIR} — run graph/sample_chunks.py first")
     print(f"building over {len(docs)} chunks, concurrency={concurrency}", flush=True)
 
     merged = nx.DiGraph()
