@@ -1,18 +1,22 @@
 """
 RAGScope Dashboard — Page 4: Knowledge Base
 ===============================================
-View of the ChromaDB collection backing the RAG pipeline: collection stats,
-per-dataset composition, a metadata-filterable chunk browser, a semantic
-search preview against the live index, and the knowledge graph built over the
-corpus for graph retrieval.
+The data behind the RAG pipeline, in three tabs:
 
-The "My documents" section at the top is the one place that writes: it saves
-uploaded PDF and text files and indexes them in their own collection, never
-in the BioASQ benchmark collection shown below it.
+* **Chunks** — browse any ChromaDB collection, or search it by meaning, and
+  open a chunk to read it with its metadata.
+* **Upload documents** — add your own PDF and text files. They are indexed in
+  their own collection, never in the BioASQ benchmark collection.
+* **Knowledge graph** — explore an entity's neighbourhood, or trace how graph
+  retrieval walks the graph for a question, both as left-to-right DAGs.
+
+A collection picker at the top selects which ChromaDB collection the Chunks
+tab shows; every collection on the server is listed, not only BioASQ.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from pathlib import Path
@@ -22,15 +26,211 @@ import plotly.express as px
 import streamlit as st
 
 from config.settings import settings
-from dashboard.components.vector_space import vector_space_scatter
+from dashboard.components.graph_view import (
+    DOC_PREFIX,
+    TYPE_NAMES,
+    entity_neighbourhood,
+    render_entity_graph,
+    render_retrieval_graph,
+)
 from pipeline.vectorstore import get_vector_store
 
 st.title(":material/database: Knowledge Base")
-st.caption("The ChromaDB collections behind the RAG pipeline.")
+st.caption("The ChromaDB collections and the knowledge graph behind the RAG pipeline.")
+
+FRIENDLY = {
+    settings.chroma_collection: "BioASQ benchmark",
+    settings.documents_collection: "My documents",
+}
 
 
-def _documents_section() -> None:
-    """Upload and index your own files, in a collection of their own."""
+# ── Data access (cached) ──────────────────────────────────────────────────────
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _collections() -> list[dict]:
+    return get_vector_store().list_collections()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _metadata_values(collection: str, key: str, count: int) -> dict[str, int]:
+    # ``count`` is part of the cache key, so re-ingesting refreshes the values.
+    return get_vector_store(collection).metadata_values(key)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _embedding_dim(collection: str, count: int) -> int | None:
+    return get_vector_store(collection).embedding_dimension()
+
+
+@st.cache_resource(show_spinner=False)
+def _graph(graph_path: str, nc_path: str, stamp: tuple):
+    """Load the knowledge graph once per file version."""
+    import networkx as nx
+
+    digraph = nx.node_link_graph(json.loads(Path(graph_path).read_text()), edges="edges")
+    node_chunks = json.loads(Path(nc_path).read_text())
+    entities = [n for n in digraph.nodes if not str(n).startswith(DOC_PREFIX)]
+    undirected = digraph.to_undirected(as_view=True)
+    relations = {
+        n: sum(1 for m in undirected.neighbors(n) if not str(m).startswith(DOC_PREFIX))
+        for n in entities
+    }
+    rows = [{
+        "id": n,
+        "Entity": str(digraph.nodes[n].get("name") or digraph.nodes[n].get("label") or n),
+        "Type": TYPE_NAMES.get(str(digraph.nodes[n].get("__class__", "")),
+                               str(digraph.nodes[n].get("__class__", "Entity"))),
+        "Relations": relations[n],
+        "Chunks": len(node_chunks.get(n, [])),
+    } for n in entities]
+    rows.sort(key=lambda r: (-r["Relations"], -r["Chunks"], r["Entity"].lower()))
+    return digraph, node_chunks, pd.DataFrame(rows)
+
+
+def _store_label() -> str:
+    if settings.chroma_mode == "embedded":
+        return f"embedded · {settings.chroma_path}"
+    return f"server · {settings.chroma_host}:{settings.chroma_port}"
+
+
+def _source_of(meta: dict) -> str:
+    return str(meta.get("source") or meta.get("title") or meta.get("dataset") or "—")
+
+
+def _preview(text: str, n: int = 180) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= n else text[: n - 1] + "…"
+
+
+# ── Collection picker ─────────────────────────────────────────────────────────
+
+try:
+    collections = _collections()
+except Exception as exc:  # the server is down or misconfigured
+    st.error(f"Could not reach ChromaDB ({_store_label()}).\n\n**Error:** {exc}")
+    st.stop()
+
+if not collections:
+    st.info(
+        "ChromaDB has no collections yet. Fetch the prebuilt index with "
+        "`uv run python scripts/fetch_index.py`, or build it with "
+        "`uv run python pipeline/ingestion.py --corpus all`. Your own files can be "
+        "added on the **Upload documents** tab below."
+    )
+
+names = [c["name"] for c in collections]
+by_name = {c["name"]: c for c in collections}
+default = names.index(settings.chroma_collection) if settings.chroma_collection in names else 0
+
+if names:
+    pick_col, *metric_cols = st.columns([2.2, 1, 1, 1, 1.6])
+    selected = pick_col.selectbox(
+        "Collection", names, index=default, key="kb_collection",
+        format_func=lambda n: f"{FRIENDLY.get(n, n)} · {by_name[n]['count']:,} chunks",
+        help="Every collection on this ChromaDB instance. The benchmark index and "
+             "your own documents are kept in separate collections.",
+    )
+    info = by_name[selected]
+    metric_cols[0].metric("Chunks", f"{info['count']:,}")
+    dim = _embedding_dim(selected, info["count"]) if info["count"] else None
+    metric_cols[1].metric("Embedding dim", dim if dim is not None else "—")
+    metric_cols[2].metric("Distance", info["space"])
+    metric_cols[3].metric("Store", _store_label().split(" · ")[0],
+                          help=_store_label())
+else:
+    selected, info = None, {"count": 0}
+
+tab_chunks, tab_upload, tab_graph = st.tabs([
+    ":material/table_rows: Chunks",
+    ":material/upload_file: Upload documents",
+    ":material/hub: Knowledge graph",
+])
+
+
+# ── Chunks: browse and search in one table ────────────────────────────────────
+
+with tab_chunks:
+    if not selected or info["count"] == 0:
+        st.info("This collection is empty.")
+    else:
+        store = get_vector_store(selected)
+        # Filter on the file for your documents, on the dataset otherwise.
+        field = "source" if _metadata_values(selected, "source", info["count"]) else "dataset"
+        values = _metadata_values(selected, field, info["count"])
+
+        q_col, f_col, n_col = st.columns([3, 2, 1])
+        query = q_col.text_input(
+            "Search", key=f"kb_search_{selected}",
+            placeholder="Search by meaning, e.g. Which protein does empagliflozin inhibit? "
+                        "Leave empty to browse.",
+        )
+        choice = f_col.selectbox(
+            f"Filter by {'file' if field == 'source' else field}",
+            ["All"] + list(values), key=f"kb_filter_{selected}",
+            format_func=lambda v: v if v == "All" else f"{v} ({values[v]:,})",
+        )
+        size = n_col.selectbox("Rows", [10, 25, 50, 100], index=1, key="kb_rows")
+        where = None if choice == "All" else {field: choice}
+
+        if query.strip():
+            from pipeline.embeddings import get_embedding_generator
+
+            with st.spinner("Searching…"):
+                vector = get_embedding_generator().embed_query(query)
+                results = store.query(vector, top_k=size, where=where)
+            rows = [{"Rank": i, "Similarity": r.score, "Chunk": r.chunk_id,
+                     "Source": _source_of(r.metadata), "Page": r.metadata.get("page"),
+                     "Text": _preview(r.text)} for i, r in enumerate(results, 1)]
+            caption = (f"Top {len(rows)} by cosine similarity to the query"
+                       + ("" if where is None else f", within {choice}") + ".")
+        else:
+            total = values.get(choice, 0) if where else info["count"]
+            pages = max(1, -(-total // size))
+            page = st.number_input(f"Page (of {pages:,})", 1, pages, 1, key=f"kb_page_{selected}")
+            results = store.get_chunks(where=where, limit=size, offset=(page - 1) * size)
+            rows = [{"Chunk": r.chunk_id, "Source": _source_of(r.metadata),
+                     "Page": r.metadata.get("page"), "Text": _preview(r.text)}
+                    for r in results]
+            caption = f"{total:,} chunks in storage order. Type a query above to rank them by meaning."
+
+        if not rows:
+            st.info("No chunks match.")
+        else:
+            df = pd.DataFrame(rows)
+            if df["Page"].isna().all():
+                df = df.drop(columns="Page")
+            table_col, detail_col = st.columns([3, 2])
+            with table_col:
+                event = st.dataframe(
+                    df, hide_index=True, width="stretch", height=min(38 * len(df) + 40, 640),
+                    on_select="rerun", selection_mode="single-row",
+                    key=f"kb_table_{selected}_{hashlib.md5(query.encode()).hexdigest()[:6]}",
+                    column_config={
+                        "Similarity": st.column_config.ProgressColumn(
+                            "Similarity", min_value=0.0, max_value=1.0, format="%.3f"),
+                        "Text": st.column_config.TextColumn("Text", width="large"),
+                    },
+                )
+                st.caption(caption + " Select a row to read the chunk.")
+            with detail_col:
+                picked = event.selection.rows if event and event.selection else []
+                if not picked:
+                    st.info("Select a row to see the full chunk and its metadata.", icon=":material/left_click:")
+                else:
+                    chunk = results[picked[0]]
+                    with st.container(border=True):
+                        st.markdown(f"**{chunk.chunk_id}**")
+                        if chunk.score_kind == "cosine":
+                            st.caption(f"Similarity {chunk.score:.3f}")
+                        st.markdown(" ".join(f"`{k}: {v}`" for k, v in chunk.metadata.items()
+                                             if v not in (None, "")))
+                        st.text(chunk.text)
+
+
+# ── Upload documents ──────────────────────────────────────────────────────────
+
+with tab_upload:
     from pipeline.ingestion import ingest_corpus
     from pipeline.knowledge_base import get_knowledge_base
 
@@ -41,366 +241,188 @@ def _documents_section() -> None:
         if f.is_file() and f.suffix.lower() in {".pdf", ".txt", ".md"}
     ) if folder.is_dir() else []
 
-    with st.expander(
-        f"My documents ({len(files)} file{'s' if len(files) != 1 else ''})",
-        icon=":material/upload_file:", expanded=not files,
-    ):
+    st.markdown(
+        f"Add PDF, .txt or .md files to ask questions about them. They are saved to "
+        f"`{folder}` and indexed in the **{FRIENDLY[kb.collection]}** collection "
+        f"(`{kb.collection}`), so the BioASQ benchmark is never changed. Query them on "
+        f"the Live Monitor under **Knowledge base → My documents**, or pick the "
+        f"collection above to browse them. PDFs need a text layer: scanned pages are skipped."
+    )
+    uploads = st.file_uploader(
+        "Add files", type=["pdf", "txt", "md"], accept_multiple_files=True,
+        key="documents_upload",
+    )
+    if st.button("Save and index", icon=":material/library_add:", type="primary",
+                 disabled=not (uploads or files)):
+        folder.mkdir(parents=True, exist_ok=True)
+        for upload in uploads or []:
+            # Keep only the base name, so an upload cannot write outside the folder.
+            (folder / Path(upload.name).name).write_bytes(upload.getbuffer())
+        try:
+            with st.spinner("Reading and indexing documents …"):
+                summary = ingest_corpus("documents", source=folder)
+            st.success(
+                f"Indexed {summary.total_passages:,} pages and files as "
+                f"{summary.total_chunks:,} chunks."
+            )
+        except ValueError as exc:
+            st.warning(str(exc))
+        _collections.clear()
+        st.rerun()
+
+    if files:
+        st.dataframe(
+            pd.DataFrame([
+                {"File": f.relative_to(folder).as_posix(),
+                 "Size (KB)": round(f.stat().st_size / 1024, 1)}
+                for f in files
+            ]),
+            hide_index=True, width="stretch",
+        )
         st.caption(
-            f"Add PDF, .txt or .md files to ask questions about them. They are saved "
-            f"to `{folder}` and indexed in their own collection (`{kb.collection}`), "
-            f"so the BioASQ benchmark below is never changed. Query them on the "
-            f"Live Monitor page under **Knowledge base → My documents**. PDFs need a "
-            f"text layer: scanned pages are skipped."
+            "To remove a file, delete it from the folder and press **Save and index** "
+            "again: the collection is rebuilt from the folder each time."
         )
-        uploads = st.file_uploader(
-            "Add files", type=["pdf", "txt", "md"], accept_multiple_files=True,
-            key="documents_upload",
-        )
-        if st.button("Save and index", icon=":material/library_add:", type="primary",
-                     disabled=not (uploads or files)):
-            folder.mkdir(parents=True, exist_ok=True)
-            for upload in uploads or []:
-                # Keep only the base name, so an upload cannot write outside the folder.
-                (folder / Path(upload.name).name).write_bytes(upload.getbuffer())
-            try:
-                with st.spinner("Reading and indexing documents …"):
-                    summary = ingest_corpus("documents", source=folder)
-                st.success(
-                    f"Indexed {summary.total_passages:,} pages and files as "
-                    f"{summary.total_chunks:,} chunks."
-                )
-            except ValueError as exc:
-                st.warning(str(exc))
-            st.rerun()
-        if files:
-            st.dataframe(
-                pd.DataFrame([
-                    {"File": f.relative_to(folder).as_posix(),
-                     "Size (KB)": round(f.stat().st_size / 1024, 1)}
-                    for f in files
-                ]),
-                hide_index=True, width="stretch",
-            )
-            st.caption(
-                "To remove a file, delete it from the folder and press **Save and "
-                "index** again: the collection is rebuilt from the folder each time."
-            )
-
-
-_documents_section()
-st.subheader("BioASQ Benchmark Collection")
-
-DATASET_LABELS = {
-    "bioasq": "BioASQ",
-}
-DATASET_COLORS = {
-    "BioASQ": "#2a78d6",
-    "Other / Unlabelled": "#95a5a6",
-}
-
-try:
-    vector_store = get_vector_store()
-    total_chunks = vector_store.count()
-except Exception as exc:
-    st.error(
-        f"Could not connect to ChromaDB at `{settings.chroma_host}:{settings.chroma_port}`.\n\n"
-        f"**Error:** {exc}"
-    )
-    st.stop()
-
-# ── Overview ───────────────────────────────────────────────────────────────────
-st.subheader("Collection Overview")
-
-if total_chunks == 0:
-    st.info(
-        "The collection is empty — no chunks have been ingested yet. Run:\n\n"
-        "```bash\n"
-        "uv run python pipeline/ingestion.py --corpus bioasq --chunk-size 512 --chunk-overlap 64\n"
-        "```"
-    )
-    st.stop()
-
-embedding_dim = vector_store.embedding_dimension()
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total Chunks", f"{total_chunks:,}")
-c2.metric("Collection", vector_store.collection_name)
-c3.metric("Embedding Dim", embedding_dim if embedding_dim is not None else "—")
-c4.metric("Chroma Endpoint", f"{settings.chroma_host}:{settings.chroma_port}")
-st.caption(f"Embedding model (configured): `{settings.embedding_model}`")
-st.divider()
-
-# ── Corpus composition ────────────────────────────────────────────────────────
-st.subheader("Corpus Composition")
-st.caption("Indexed chunks by source dataset — a single BioASQ corpus, so this is a sanity-check total rather than a breakdown.")
-
-dataset_counts = {ds_key: vector_store.count_where({"dataset": ds_key}) for ds_key in DATASET_LABELS}
-other_count = total_chunks - sum(dataset_counts.values())
-
-comp_rows = [
-    {"dataset": DATASET_LABELS[k], "chunks": v} for k, v in dataset_counts.items() if v > 0
-]
-if other_count > 0:
-    comp_rows.append({"dataset": "Other / Unlabelled", "chunks": other_count})
-comp_df = pd.DataFrame(comp_rows)
-comp_df["share_percentage"] = (comp_df["chunks"] / total_chunks * 100).round(1)
-
-col_chart, col_table = st.columns([1, 1])
-with col_chart:
-    fig = px.bar(
-        comp_df,
-        x="dataset",
-        y="chunks",
-        color="dataset",
-        color_discrete_map=DATASET_COLORS,
-        labels={"dataset": "Dataset", "chunks": "Chunk Count"},
-        title="Chunks per Source Dataset",
-    )
-    fig.update_layout(
-        height=360,
-        showlegend=True,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig, width="stretch")
-with col_table:
-    st.write(f"**Chunk counts and share per dataset**")
-    st.dataframe(comp_df, width="stretch", hide_index=True)
-st.divider()
-
-# ── 3D embedding space ───────────────────────────────────────────────────────
-st.subheader("3D Embedding Space")
-st.caption(
-    "A PCA projection of sampled embeddings down to 3 dimensions a coarse view of "
-    "how the indexed corpus clusters in vector space, coloured by source dataset."
-)
-
-sample_per_dataset = st.slider(
-    "Points to sample per dataset (capped by how many exist)",
-    min_value=50,
-    max_value=1000,
-    value=300,
-    step=50,
-)
-
-if st.button("Compute projection", icon=":material/scatter_plot:"):
-    with st.spinner("Sampling embeddings and computing the PCA projection…"):
-        sampled_chunks = []
-        for ds_key, ds_count in dataset_counts.items():
-            if ds_count == 0:
-                continue
-            sampled_chunks += vector_store.sample_embeddings(
-                where={"dataset": ds_key}, sample_size=sample_per_dataset
-            )
-        st.session_state["vector_space_sample"] = sampled_chunks
-
-sampled_chunks = st.session_state.get("vector_space_sample")
-if sampled_chunks:
-    vector_space_scatter(sampled_chunks, DATASET_LABELS, DATASET_COLORS)
-else:
-    st.info("Click **Compute projection** to sample embeddings and render the 3D view.")
-st.divider()
-
-# ── Chunk browser ──────────────────────────────────────────────────────────────
-st.subheader("Chunk Browser")
-st.caption(
-    "A direct browse of stored chunks by metadata filter rows are in storage order, "
-    "not ranked by similarity. Use Semantic Search Preview below to see similarity-ranked results."
-)
-
-available_labels = ["All"] + [DATASET_LABELS[k] for k, v in dataset_counts.items() if v > 0]
-reverse_label_map = {v: k for k, v in DATASET_LABELS.items()}
-
-filter_col, size_col, page_col = st.columns([2, 1, 1])
-with filter_col:
-    dataset_filter = st.selectbox("Filter by dataset", options=available_labels)
-with size_col:
-    page_size = st.selectbox("Rows per page", options=[10, 25, 50, 100], index=1)
-
-where_clause = {"dataset": reverse_label_map[dataset_filter]} if dataset_filter != "All" else None
-filtered_count = dataset_counts[reverse_label_map[dataset_filter]] if where_clause else total_chunks
-max_page = max(0, (filtered_count - 1) // page_size)
-
-with page_col:
-    page_num = st.number_input("Page", min_value=0, max_value=max_page, value=0, step=1)
-
-page_chunks = vector_store.get_chunks(where=where_clause, limit=page_size, offset=page_num * page_size)
-
-if page_chunks:
-    browser_rows = [
-        {
-            "chunk_id": c.chunk_id,
-            "dataset": DATASET_LABELS.get(c.metadata.get("dataset"), c.metadata.get("dataset") or "—"),
-            "title": c.metadata.get("title") or "—",
-            "text_preview": (c.text[:200] + "…") if c.text and len(c.text) > 200 else (c.text or ""),
-        }
-        for c in page_chunks
-    ]
-    st.dataframe(pd.DataFrame(browser_rows), width="stretch", hide_index=True)
-    st.caption(f"Showing {len(browser_rows)} of {filtered_count:,} chunks (page {page_num + 1} of {max_page + 1}).")
-else:
-    st.info("No chunks match this filter.")
-st.divider()
-
-# ── Semantic search preview ───────────────────────────────────────────────────
-st.subheader("Semantic Search Preview")
-st.caption(
-    "Embed a query and retrieve the nearest chunks a quick way to spot-check "
-    "what the pipeline would actually retrieve for a given question."
-)
-
-search_query = st.text_input("Query", placeholder="e.g. What are the main causes of climate change?")
-search_top_k = st.slider("Top-K", min_value=1, max_value=20, value=5)
-
-if search_query:
-    from pipeline.embeddings import get_embedding_generator
-
-    with st.spinner("Embedding query and searching…"):
-        query_vector = get_embedding_generator().embed_query(search_query)
-        results = vector_store.query(query_vector, top_k=search_top_k)
-
-    if results:
-        result_rows = [
-            {
-                "rank": i + 1,
-                "similarity": r.score,
-                "dataset": DATASET_LABELS.get(r.metadata.get("dataset"), r.metadata.get("dataset") or "—"),
-                "chunk_id": r.chunk_id,
-                "text_preview": (r.text[:200] + "…") if len(r.text) > 200 else r.text,
-            }
-            for i, r in enumerate(results)
-        ]
-        st.dataframe(pd.DataFrame(result_rows), width="stretch", hide_index=True)
-    else:
-        st.info("No results.")
 
 
 # ── Knowledge graph ───────────────────────────────────────────────────────────
-st.divider()
-st.subheader("Knowledge Graph")
-st.caption(
-    "Entities and relations extracted from the corpus, used by the `graph` "
-    "retrieval strategy to reach chunks through entity provenance rather than "
-    "vector similarity."
-)
 
-
-@st.cache_data(show_spinner=False)
-def _load_graph_summary(graph_path: str, nc_path: str, manifest_path: str) -> dict | None:
-    """Summarise the graph artefacts. Returns None if they haven't been built."""
-    gp, ncp = Path(graph_path), Path(nc_path)
+with tab_graph:
+    gp, ncp = Path(settings.graph_path), Path(settings.graph_node_chunks_path)
     if not gp.exists() or not ncp.exists():
-        return None
-    data = json.loads(gp.read_text())
-    node_chunks = json.loads(ncp.read_text())
-    manifest = {}
-    mp = Path(manifest_path)
-    if mp.exists():
-        manifest = json.loads(mp.read_text())
+        st.info(
+            f"No knowledge graph found at `{gp}`. Build one with `graph/build_graph.py`, "
+            "or fetch the prebuilt index, to enable graph retrieval."
+        )
+        st.stop()
 
-    nodes = data.get("nodes", [])
-    links = data.get("edges", data.get("links", []))
-    is_doc = lambda n: str(n.get("id", "")).startswith("DOC::")  # noqa: E731
-    classes = Counter(
-        n.get("__class__", "?") for n in nodes if not is_doc(n)
-    )
-    labels = Counter(e.get("label", "?") for e in links)
-    ent_ids = {n["id"] for n in nodes if not is_doc(n)}
-    ent_ent = sum(
-        1 for e in links
-        if e.get("source") in ent_ids and e.get("target") in ent_ids
-    )
-    covered = {c for v in node_chunks.values() for c in v}
-    return {
-        "nodes": len(nodes),
-        "edges": len(links),
-        "entities": len(ent_ids),
-        "documents": len(nodes) - len(ent_ids),
-        "classes": dict(classes.most_common()),
-        "edge_labels": dict(labels.most_common()),
-        "entity_entity_edges": ent_ent,
-        "chunks_covered": len(covered),
-        "manifest": manifest,
-    }
-
-
-summary = _load_graph_summary(
-    str(settings.graph_path), str(settings.graph_node_chunks_path),
-    str(Path(settings.graph_path).parent / "manifest.json"),
-)
-
-if summary is None:
-    st.info(
-        f"No knowledge graph found at `{settings.graph_path}`. "
-        "Build one with `graph/build_graph.py` to enable the `graph` "
-        "retrieval strategy."
-    )
-else:
-    coverage = 100 * summary["chunks_covered"] / total_chunks if total_chunks else 0.0
+    stamp = (gp.stat().st_mtime_ns, ncp.stat().st_mtime_ns)
+    digraph, node_chunks, entities = _graph(str(gp), str(ncp), stamp)
+    covered = len({c for v in node_chunks.values() for c in v})
+    corpus = by_name.get(settings.chroma_collection, {}).get("count", 0)
+    ent_ids = set(entities["id"])
+    ent_ent = sum(1 for u, v in digraph.edges if u in ent_ids and v in ent_ids)
+    coverage = 100 * covered / corpus if corpus else 0.0
 
     g1, g2, g3, g4 = st.columns(4)
-    g1.metric("Entities", f"{summary['entities']:,}")
-    g2.metric("Relations", f"{summary['edges']:,}")
-    g3.metric("Chunks covered", f"{summary['chunks_covered']:,}")
-    g4.metric(
-        "Corpus coverage", f"{coverage:.1f}%",
-        help="Share of the indexed corpus the graph spans. The graph retrieval "
-             "strategy can only reach chunks inside this slice.",
-    )
-
-    # Coverage is the single most important caveat on anything the graph does,
-    # so it is stated here rather than left for a reader to infer.
+    g1.metric("Entities", f"{len(entities):,}")
+    g2.metric("Entity relations", f"{ent_ent:,}",
+              help="Edges between two entities. The remaining edges link an entity "
+                   "to the chunk it came from (co-occurrence).")
+    g3.metric("Chunks covered", f"{covered:,}")
+    g4.metric("Corpus coverage", f"{coverage:.1f}%",
+              help="Share of the BioASQ collection the graph spans. Graph retrieval "
+                   "can only reach chunks inside it.")
     if coverage < 50:
-        st.warning(
-            f"**The graph covers {coverage:.1f}% of the corpus** "
-            f"({summary['chunks_covered']:,} of {total_chunks:,} chunks). "
-            "Dense retrieval searches the whole corpus, so in the fused `graph` "
-            "strategy the dense leg will dominate: a chunk found only by the "
-            "graph cannot currently displace dense's top results. Treat graph "
-            "retrieval as a demonstration of the mechanism, not a quality "
-            "comparison, until coverage matches."
+        st.caption(
+            f":material/warning: The graph covers {coverage:.1f}% of the BioASQ corpus, so "
+            "graph retrieval is a demonstration of the mechanism, not a quality comparison "
+            "with dense or hybrid retrieval."
         )
 
-    c_left, c_right = st.columns(2)
-    with c_left:
-        st.markdown("**Entity types**")
-        if summary["classes"]:
-            df_cls = pd.DataFrame(
-                [{"Type": k, "Count": v} for k, v in summary["classes"].items()]
+    mode = st.segmented_control(
+        "View", ["Explore an entity", "Trace a question"], default="Explore an entity",
+        key="kg_mode", label_visibility="collapsed",
+    ) or "Explore an entity"
+
+    if mode == "Explore an entity":
+        if "kg_focus" not in st.session_state or st.session_state.kg_focus not in digraph:
+            st.session_state.kg_focus = entities.iloc[0]["id"] if len(entities) else None
+
+        list_col, graph_col = st.columns([2, 5])
+        with list_col:
+            term = st.text_input("Find an entity", placeholder="e.g. aspirin, kinase, diabetes",
+                                 key="kg_term")
+            types = ["All types"] + sorted(entities["Type"].unique())
+            type_choice = st.selectbox("Type", types, key="kg_type", label_visibility="collapsed")
+            shown = entities
+            if term:
+                shown = shown[shown["Entity"].str.contains(term, case=False, regex=False)]
+            if type_choice != "All types":
+                shown = shown[shown["Type"] == type_choice]
+            shown = shown.head(300).reset_index(drop=True)
+            table = st.dataframe(
+                shown[["Entity", "Type", "Relations", "Chunks"]], hide_index=True,
+                width="stretch", height=520, on_select="rerun", selection_mode="single-row",
+                key=f"kg_table_{term}_{type_choice}",
             )
-            st.plotly_chart(
-                px.bar(df_cls, x="Count", y="Type", orientation="h",
-                       color_discrete_sequence=["#2a78d6"]).update_layout(
-                    height=240, margin=dict(l=0, r=0, t=10, b=0), showlegend=False),
-                width="stretch",
-            )
-    with c_right:
-        st.markdown("**Relation types**")
-        if summary["edge_labels"]:
-            df_lbl = pd.DataFrame(
-                [{"Relation": k, "Count": v} for k, v in summary["edge_labels"].items()]
-            )
-            st.plotly_chart(
-                px.bar(df_lbl, x="Count", y="Relation", orientation="h",
-                       color_discrete_sequence=["#24a35a"]).update_layout(
-                    height=240, margin=dict(l=0, r=0, t=10, b=0), showlegend=False),
-                width="stretch",
+            st.caption(f"{len(shown):,} shown, most-connected first. Select one to explore it.")
+            rows = table.selection.rows if table and table.selection else []
+            picked = shown.iloc[rows[0]]["id"] if rows else None
+            # Only a new table selection moves the focus, so clicking through the
+            # graph is not undone by a row that stays selected.
+            if picked is not None and picked != st.session_state.get("kg_last_pick"):
+                st.session_state.kg_last_pick = picked
+                st.session_state.kg_focus = picked
+
+        with graph_col:
+            focus = st.session_state.kg_focus
+            if focus is None:
+                st.info("The graph has no entities.")
+            else:
+                view = entity_neighbourhood(digraph, node_chunks, focus)
+                name = view["nodes"][0]["label"] if view["nodes"] else focus
+                kind = view["nodes"][0]["type"] if view["nodes"] else ""
+                st.markdown(f"**{name}** · {TYPE_NAMES.get(kind, kind)}")
+                clicked = render_entity_graph(view, key=f"kg_{hashlib.md5(focus.encode()).hexdigest()[:8]}")
+                if clicked and clicked.startswith(DOC_PREFIX):
+                    cid = clicked[len(DOC_PREFIX):]
+                    found = get_vector_store(settings.chroma_collection).get_by_ids([cid]).get(cid)
+                    with st.container(border=True):
+                        st.markdown(f"**{cid}**")
+                        in_chunk = [n["label"] for n in view["nodes"]
+                                    if n["kind"] != "source" and cid in node_chunks.get(n["id"], [])]
+                        if in_chunk:
+                            st.caption("Entities shown that come from this chunk: " + ", ".join(in_chunk))
+                        st.text(found.text if found else "Chunk text not found in the BioASQ collection.")
+                elif clicked and clicked != focus and clicked in digraph:
+                    st.session_state.kg_focus = clicked
+                    st.rerun()
+
+    else:
+        st.caption(
+            "Runs graph retrieval alone, with no language model and no dense leg, and "
+            "draws how the walk reached each chunk: the same view as the Live Monitor."
+        )
+        question = st.text_input("Question", key="kg_question",
+                                 placeholder="e.g. What does Cinryze inhibit?")
+        if question.strip():
+            from pipeline.retrieval.graph import GraphRetriever
+
+            with st.spinner("Walking the graph…"):
+                retriever = GraphRetriever(top_k=5, fuse_dense=False)
+                chunks, tel = retriever.retrieve(question, top_k=5)
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Seed entities", tel.get("graph_seeds_found", 0))
+            m2.metric("Chunks reached", len(chunks))
+            m3.metric("Retrieval", f"{tel.get('retrieval_ms', 0.0):.1f} ms")
+            render_retrieval_graph(
+                tel.get("graph_path"),
+                chunk_texts={c.chunk_id: c.text for c in chunks},
+                key=f"kg_trace_{hashlib.md5(question.encode()).hexdigest()[:8]}",
             )
 
-    # Entity-entity edges are the relational signal; edges to document nodes
-    # only encode co-occurrence, which dense retrieval already approximates.
-    ent_ent = summary["entity_entity_edges"]
-    st.caption(
-        f"Of {summary['edges']:,} relations, **{ent_ent:,} connect two entities** "
-        f"(true relational structure); the remaining "
-        f"{summary['edges'] - ent_ent:,} connect an entity to its source document "
-        f"(co-occurrence). Entities: {summary['entities']:,} across "
-        f"{summary['documents']:,} document nodes."
-    )
-
-    man = summary.get("manifest") or {}
-    if man:
-        with st.expander("Build provenance", icon=":material/history:"):
+    # ── Graph statistics ──────────────────────────────────────────────────────
+    with st.expander("Graph statistics and build provenance", icon=":material/query_stats:"):
+        s_left, s_right = st.columns(2)
+        types = entities["Type"].value_counts().rename_axis("Type").reset_index(name="Count")
+        s_left.plotly_chart(
+            px.bar(types, x="Count", y="Type", orientation="h", title="Entity types",
+                   color_discrete_sequence=["#2a78d6"]).update_layout(
+                height=240, margin=dict(l=0, r=0, t=40, b=0)),
+            width="stretch",
+        )
+        labels = Counter(d.get("label", "?") for _, _, d in digraph.edges(data=True))
+        rel = pd.DataFrame(labels.most_common(), columns=["Relation", "Count"])
+        s_right.plotly_chart(
+            px.bar(rel, x="Count", y="Relation", orientation="h", title="Relation types",
+                   color_discrete_sequence=["#24a35a"]).update_layout(
+                height=240, margin=dict(l=0, r=0, t=40, b=0)),
+            width="stretch",
+        )
+        manifest = gp.parent / "manifest.json"
+        if manifest.exists():
+            man = json.loads(manifest.read_text())
             st.json({
                 "extractor": man.get("extractor"),
                 "chunks_attempted": man.get("chunks_attempted"),
@@ -408,30 +430,4 @@ else:
                 "failures": len(man.get("failures", []) or []),
                 "s_per_chunk": man.get("s_per_chunk"),
                 "dedup_ratio": man.get("dedup_ratio"),
-                "pct_nodes_cross_chunk": man.get("pct_nodes_cross_chunk"),
             })
-
-    # ── Entity browser ────────────────────────────────────────────────────────
-    st.markdown("**Entity Browser**")
-    term = st.text_input(
-        "Filter entities", placeholder="e.g. aspirin, kinase, diabetes",
-        key="graph_entity_filter",
-    )
-    node_chunks = json.loads(Path(settings.graph_node_chunks_path).read_text())
-    graph_raw = json.loads(Path(settings.graph_path).read_text())
-    rows = []
-    for n in graph_raw.get("nodes", []):
-        nid = str(n.get("id", ""))
-        if nid.startswith("DOC::"):
-            continue
-        name = n.get("name") or n.get("label") or ""
-        if term and term.lower() not in str(name).lower():
-            continue
-        rows.append({
-            "Entity": name,
-            "Type": n.get("__class__", "?"),
-            "Chunks": len(node_chunks.get(nid, [])),
-        })
-    rows.sort(key=lambda r: (-r["Chunks"], str(r["Entity"])))
-    st.caption(f"{len(rows):,} entities" + (f" matching '{term}'" if term else ""))
-    st.dataframe(pd.DataFrame(rows[:200]), hide_index=True, width="stretch")

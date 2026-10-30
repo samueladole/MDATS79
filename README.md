@@ -144,7 +144,7 @@ The platform is organised into six stages, each mapped to a specific research qu
 - Retrieved document chunk viewer with colour-graded per-chunk similarity scores
 - Sankey diagram of the full pipeline process flow — every instrumented stage (embedding, retrieval sub-stages, generation, RAGAS evaluation) sized by actual wall-clock duration for a single query
 - The generated answer appears as soon as it exists, while RAGAS evaluation is still running
-- Knowledge-base page: upload your own PDF and text files, and browse the BioASQ collection with its corpus composition, a 3D PCA projection of sampled embeddings, a semantic search preview and the knowledge graph
+- Knowledge Base page: pick any ChromaDB collection, browse or search its chunks in one table, upload your own documents, and explore the knowledge graph as interactive left-to-right graphs (an entity's neighbourhood, or the path graph retrieval takes for a question)
 - CSV export of benchmark results for downstream analysis
 
 ### 🗂️ Benchmark Pipeline
@@ -292,8 +292,7 @@ ragscope/
 │       ├── theme.py               # Shared icons (Material Symbols / inline SVG) + CSS theme
 │       ├── metric_cards.py        # Metric display components
 │       ├── latency_chart.py       # Latency visualisation
-│       ├── graph_view.py          # Interactive retrieval-path graph
-│       └── vector_space.py        # Pure-numpy PCA + 3D embedding scatter
+│       └── graph_view.py          # Interactive graphs: retrieval path and entity explorer
 │
 ├── experiments/                   # Experimental scripts
 │   ├── run_2x2_factorial.py       # Full 2×2 factorial experiment runner
@@ -564,7 +563,10 @@ The dashboard provides four views at `http://localhost:8501`:
 - **Live Monitor** — submit a query interactively and watch the full pipeline execute: generated answer, RAGAS scores, colour-graded chunk similarity, and a Sankey diagram of every instrumented stage's wall-clock duration. The answer is shown as soon as it is generated, while the RAGAS scores are still being computed. Choose the **Knowledge base** (BioASQ benchmark or your own documents) in the sidebar
 - **Query Explorer** — click any logged query to inspect retrieved chunks, similarity scores, faithfulness breakdowns, latency decomposition, and the same per-query pipeline flow Sankey
 - **Benchmark Results** — the four experimental conditions compared over the 200-query benchmark: summary statistics, hallucination risk profile, Cohen's *d* effect sizes, latency and token breakdown, metric correlations, and performance by query role
-- **Knowledge Base** — upload your own PDF and text files (see below), and browse the BioASQ collection: corpus composition by dataset, a 3D PCA projection of sampled embeddings coloured by dataset, a paginated chunk browser, a semantic search preview, and the knowledge graph
+- **Knowledge Base** — three tabs over a picker that lists every ChromaDB collection (the BioASQ benchmark, your documents, and any other):
+  - **Chunks:** browse a collection, or type a query to rank its chunks by meaning; select a row to read the chunk and its metadata
+  - **Upload documents:** add PDF and text files (see below)
+  - **Knowledge graph:** *Explore an entity* draws it, its related entities and their source chunks left to right, and clicking any entity re-centres on it; *Trace a question* runs graph retrieval (no LLM, milliseconds) and draws the path it took, as on the Live Monitor
 
 > In the Live Monitor, hybrid and graph chunk scores are Reciprocal Rank Fusion values (around 0.016), not cosine similarities. Answer correctness needs a reference answer, so it shows N/A for an ad-hoc question unless you enter one in the sidebar.
 
@@ -617,7 +619,7 @@ RAGScope can ingest your own PDF, plain-text and Markdown files and answer quest
 
 They go into a separate ChromaDB collection (`ragscope_documents`) and a separate BM25 file, so ingesting them never changes the BioASQ index or the published results.
 
-**In the dashboard:** open **Knowledge Base → My documents**, add files, and press **Save and index**. Then in **Live Monitor**, choose **Knowledge base → My documents**.
+**In the dashboard:** open **Knowledge Base → Upload documents**, add files, and press **Save and index**. Then in **Live Monitor**, choose **Knowledge base → My documents**.
 
 **From the command line:**
 

@@ -90,7 +90,7 @@ def render_home() -> None:
         | :material/monitor_heart: Live Monitor | Submit queries and observe real-time RAGAS scores and telemetry |
         | :material/manage_search: Query Explorer | Inspect individual query telemetry, retrieved chunks, and scores |
         | :material/analytics: Benchmark Results | Compare the four experimental conditions over the 200-query benchmark |
-        | :material/database: Knowledge Base | Add your own documents; browse the ChromaDB collection and preview semantic search |
+        | :material/database: Knowledge Base | Browse and search any collection, upload documents, and explore the knowledge graph |
 
         ---
         **Research context:** This platform was developed as the primary artefact for an

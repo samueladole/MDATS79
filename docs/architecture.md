@@ -335,7 +335,7 @@ The dashboard is a four-page Streamlit application providing real-time and retro
 | Live Monitor | `01_live_monitor.py` | Submit queries interactively; results persist across reruns (e.g. expanding a chunk) instead of gating on button state; per-session (not global) latency history; per-query pipeline flow Sankey |
 | Query Explorer | `02_query_explorer.py` | Per-query drill-down: chunks, scores, latency decomposition, pipeline flow Sankey, raw JSON |
 | Benchmark Results | `03_benchmark_results.py` | Compares the four conditions from the benchmark CSVs: grouped bar of mean RAGAS scores, box plots, hallucination risk band distribution, Cohen's d effect-size chart, latency/token breakdown, Pearson correlation heatmap, per-dataset breakdown |
-| Knowledge Base | `04_knowledge_base.py` | Upload and index your own documents; ChromaDB browser: collection stats, corpus composition by dataset, a 3D PCA projection of sampled embeddings, paginated chunk browser, semantic search preview |
+| Knowledge Base | `04_knowledge_base.py` | A picker over every ChromaDB collection, then three tabs: **Chunks** (one table that browses, or ranks by semantic search when a query is typed, with a row-selected detail panel); **Upload documents**; **Knowledge graph** (an entity explorer drawn as a left-to-right DAG that re-centres on click, and a retrieval trace for a question using graph retrieval alone) |
 
 Shared visualisation components live in `dashboard/components/`:
 
@@ -343,8 +343,7 @@ Shared visualisation components live in `dashboard/components/`:
 |---|---|
 | `metric_cards.py` | Modern colour-graded RAGAS scorecard tiles (icon, value, meter bar, quality badge); `similarity_meter_html()` for chunk similarity bars; 6-column telemetry row (adds Evaluation Latency) |
 | `latency_chart.py` | `latency_time_series()` for the session's latency history, and `pipeline_flow_sankey()` — a theme-aware Sankey diagram of one query's full stage-by-stage latency breakdown (Plotly) |
-| `graph_view.py` | Interactive retrieval-path graph for graph retrieval: query, seed entities, traversal and the chunks reached |
-| `vector_space.py` | `pca_3d()` — pure-numpy PCA (via SVD, no scikit-learn/UMAP dependency) projecting sampled embeddings to 3D; `vector_space_scatter()` — Plotly 3D scatter coloured by dataset, for the Knowledge Base page |
+| `graph_view.py` | Interactive DAGs in one visual language. `render_retrieval_graph()`: the path graph retrieval took for a query (query, seed entities, hops, chunks reached), on Live Monitor, Query Explorer and the Knowledge Base trace view. `entity_neighbourhood()` + `render_entity_graph()`: one entity, its related entities and their source chunks, for the Knowledge Base entity explorer |
 
 **Colour conventions used throughout the dashboard:**
 - Experimental conditions (Llama3/Mistral × Dense/Hybrid) use a fixed categorical colour per condition, never reassigned by row order.
@@ -481,10 +480,11 @@ pipeline/vectorstore.py                     │
 | `.count()` | method | Total chunks in the collection |
 | `.count_where(where)` | method | Count chunks matching a metadata filter, without transferring documents/embeddings |
 | `.get_chunks(where, limit, offset)` | method | Plain metadata-filtered browse (not similarity-ranked) — powers the Knowledge Base chunk browser; returned `RetrievedChunk.score` is always 0.0 |
-| `.sample_embeddings(where, sample_size, seed)` | method | Random sample of chunks with `.embedding` populated, for the Knowledge Base's 3D vector-space view — fetches matching IDs first (cheap), samples in Python, then fetches full records only for the sampled IDs, since ChromaDB's `.get()` has no native random-sampling mode |
+| `.metadata_values(key)` | method | Chunk count per distinct value of a metadata field (e.g. `source`, `dataset`), for the Knowledge Base filter |
+| `.list_collections()` | method | Every collection on the ChromaDB instance, with chunk count and distance metric |
 | `.embedding_dimension()` | method | Dimensionality of a stored embedding, read directly from the collection (`None` if empty) |
 | `.reset()` | method | Delete and recreate collection (destructive) |
-| `RetrievedChunk` | dataclass | `chunk_id`, `text`, `score` (cosine sim [0,1]), `metadata`, `embedding` (`list[float] \| None`, only populated by `sample_embeddings()`) |
+| `RetrievedChunk` | dataclass | `chunk_id`, `text`, `score` (cosine sim [0,1], or an RRF value for hybrid and graph), `score_kind`, `metadata` |
 | `get_vector_store()` | function | Module-level singleton |
 
 **Distance conversion:** ChromaDB returns cosine distance ∈ [0, 2]. The wrapper converts to similarity via `max(0, 1 − distance/2)` so scores are always in [0, 1].
@@ -694,7 +694,7 @@ The Streamlit app uses multi-page routing via the `dashboard/pages/` directory. 
 | Live Monitor | `01_live_monitor` | `pipeline/rag.RAGPipeline`, all component modules incl. `latency_chart.pipeline_flow_sankey` |
 | Query Explorer | `02_query_explorer` | `telemetry/logger`, `evaluation/hallucination_score`, all component modules incl. `latency_chart.pipeline_flow_sankey` |
 | Benchmark Results | `03_benchmark_results` | `pandas`, `plotly.express`, `evaluation/metrics` |
-| Knowledge Base | `04_knowledge_base` | `pipeline/vectorstore.get_vector_store`, `pipeline/embeddings.get_embedding_generator`, `dashboard/components/vector_space` |
+| Knowledge Base | `04_knowledge_base` | `pipeline/vectorstore.get_vector_store`, `pipeline/embeddings.get_embedding_generator`, `pipeline/ingestion`, `pipeline/retrieval/graph.GraphRetriever`, `dashboard/components/graph_view` |
 
 ---
 

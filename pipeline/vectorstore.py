@@ -19,8 +19,7 @@ Both use the same collection layout and cosine HNSW index.
 from __future__ import annotations
 
 import functools
-import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import chromadb
@@ -52,10 +51,6 @@ class RetrievedChunk:
     score_kind : Which scale ``score`` is on: ``"cosine"``, ``"rrf"`` or
                  ``"none"`` (a plain browse, where score is fixed at 0.0).
     metadata   : Arbitrary metadata stored alongside the chunk.
-    embedding  : The stored dense vector, if fetched (``None`` otherwise —
-                 most methods don't request it, since it's the most
-                 expensive field to transfer and is only needed for
-                 visualisation, not retrieval or browsing).
     """
 
     chunk_id: str
@@ -63,7 +58,6 @@ class RetrievedChunk:
     score: float
     metadata: dict
     score_kind: str = "cosine"
-    embedding: list[float] | None = field(default=None, repr=False)
 
 
 def _reconnect_on_stale_collection(method):
@@ -340,63 +334,6 @@ class VectorStore:
         ]
 
     @_reconnect_on_stale_collection
-    def sample_embeddings(
-        self,
-        where: dict | None = None,
-        sample_size: int = 300,
-        seed: int | None = None,
-    ) -> list[RetrievedChunk]:
-        """
-        Return a random sample of chunks with their embeddings attached —
-        for visualisation (e.g. a 3D projection of the vector space), not
-        retrieval or browsing.
-
-        ChromaDB's ``.get()`` only supports contiguous ``limit``/``offset``
-        windows in storage order, not random sampling, and storage order is
-        not shuffled across datasets — a naive "first N" fetch would be
-        dominated by whichever dataset happened to be ingested first. This
-        method instead fetches matching IDs only (cheap: no documents,
-        metadata, or embeddings transferred), samples from those in Python,
-        and only then fetches the full records for the sampled IDs.
-
-        Parameters
-        ----------
-        where       : Optional ChromaDB metadata filter dict, e.g.
-                      ``{"dataset": "bioasq"}``. ``None`` samples the whole
-                      collection.
-        sample_size : Maximum number of chunks to sample.
-        seed        : Random seed for reproducible sampling. Defaults to
-                      ``settings.experiment_random_seed``.
-
-        Returns
-        -------
-        list[RetrievedChunk]
-            Each with ``.embedding`` populated. Order is randomised, not
-            similarity-ranked, so ``score`` is fixed at 0.0.
-        """
-        id_probe = self._collection.get(where=where or None, include=[])
-        all_ids = id_probe["ids"]
-        if not all_ids:
-            return []
-
-        rng = random.Random(seed if seed is not None else settings.experiment_random_seed)
-        sampled_ids = rng.sample(all_ids, min(sample_size, len(all_ids)))
-
-        result = self._collection.get(ids=sampled_ids, include=["documents", "metadatas", "embeddings"])
-        return [
-            RetrievedChunk(
-                chunk_id=cid,
-                text=text,
-                score=0.0,
-                metadata=meta or {},
-                embedding=list(emb) if emb is not None else None,
-            )
-            for cid, text, meta, emb in zip(
-                result["ids"], result["documents"], result["metadatas"], result["embeddings"]
-            )
-        ]
-
-    @_reconnect_on_stale_collection
     def embedding_dimension(self) -> int | None:
         """Return the dimensionality of stored embeddings, or None if the collection is empty."""
         probe = self._collection.get(limit=1, include=["embeddings"])
@@ -404,6 +341,30 @@ class VectorStore:
         if embeddings is None or len(embeddings) == 0:
             return None
         return len(embeddings[0])
+
+    @_reconnect_on_stale_collection
+    def metadata_values(self, key: str) -> dict[str, int]:
+        """Count chunks per distinct value of metadata ``key``, most common first.
+
+        Reads metadata only (no documents or embeddings). Used to offer
+        filters such as the source file or dataset on the Knowledge Base page.
+        """
+        metas = self._collection.get(include=["metadatas"])["metadatas"] or []
+        counts: dict[str, int] = {}
+        for m in metas:
+            value = (m or {}).get(key)
+            if value not in (None, ""):
+                counts[str(value)] = counts.get(str(value), 0) + 1
+        return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
+
+    def list_collections(self) -> list[dict]:
+        """Every collection on this ChromaDB instance: name, chunk count, distance."""
+        out = []
+        for col in self._client.list_collections():
+            meta = col.metadata or {}
+            out.append({"name": col.name, "count": col.count(),
+                        "space": meta.get("hnsw:space", "l2")})
+        return sorted(out, key=lambda c: c["name"])
 
     def collection_info(self) -> dict:
         """Return a summary dict for the dashboard and telemetry."""

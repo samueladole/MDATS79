@@ -243,3 +243,89 @@ class TestSelectionParsing:
         as_dict = {"selection": {"points": [{"customdata": ["Dis_headache"]}]}}
         assert _selected_ids(as_dict) == ["Dis_headache"]
         assert _selected_ids(None) == []
+
+
+# ── Entity explorer (Knowledge Base page) ─────────────────────────────────────
+
+
+@pytest.fixture
+def small_graph():
+    nx = pytest.importorskip("networkx")
+    g = nx.DiGraph()
+    g.add_node("Drug_aspirin", name="aspirin", __class__="ChemicalOrDrug")
+    g.add_node("Gene_cox1", name="COX-1", __class__="GeneOrProtein")
+    g.add_node("Dis_headache", name="headache", __class__="Disease")
+    g.add_node("Drug_ibuprofen", name="ibuprofen", __class__="ChemicalOrDrug")
+    g.add_node("DOC::doc1::chunk_0", name="doc1::chunk_0", __class__="BiomedicalAbstract")
+    g.add_edge("Drug_aspirin", "Gene_cox1", label="INHIBITS")
+    g.add_edge("Drug_aspirin", "Dis_headache", label="TREATS")
+    g.add_edge("Drug_ibuprofen", "Gene_cox1", label="INHIBITS")
+    g.add_edge("DOC::doc1::chunk_0", "Drug_aspirin", label="MENTIONS_COMPOUND")
+    node_chunks = {
+        "Drug_aspirin": ["doc1::chunk_0"],
+        "Gene_cox1": ["doc1::chunk_0", "doc2::chunk_0"],
+        "Dis_headache": ["doc3::chunk_0"],
+        "Drug_ibuprofen": ["doc2::chunk_0"],
+    }
+    return g, node_chunks
+
+
+class TestEntityNeighbourhood:
+    def test_three_columns_focus_related_sources(self, small_graph):
+        from dashboard.components.graph_view import entity_neighbourhood
+
+        view = entity_neighbourhood(*small_graph, "Drug_aspirin")
+        layers = {n["id"]: n["layer"] for n in view["nodes"]}
+        assert layers["Drug_aspirin"] == 0
+        assert layers["Gene_cox1"] == layers["Dis_headache"] == 1
+        assert all(n["layer"] == 2 for n in view["nodes"] if n["kind"] == "source")
+
+    def test_document_nodes_are_never_related_entities(self, small_graph):
+        from dashboard.components.graph_view import entity_neighbourhood
+
+        view = entity_neighbourhood(*small_graph, "Drug_aspirin")
+        assert not any(n["kind"] == "entity" and n["id"].startswith("DOC::")
+                       for n in view["nodes"])
+
+    def test_every_edge_points_right_so_the_view_is_a_dag(self, small_graph):
+        from dashboard.components.graph_view import entity_neighbourhood
+
+        view = entity_neighbourhood(*small_graph, "Gene_cox1")
+        layer = {n["id"]: n["layer"] for n in view["nodes"]}
+        assert view["edges"]
+        assert all(layer[e["target"]] > layer[e["source"]] for e in view["edges"])
+
+    def test_inbound_relation_is_marked_reversed(self, small_graph):
+        from dashboard.components.graph_view import _short_label, entity_neighbourhood
+
+        view = entity_neighbourhood(*small_graph, "Gene_cox1")
+        e = next(e for e in view["edges"] if e["target"] == "Drug_aspirin")
+        assert e["reversed"] and _short_label(e) == "inhibited by"
+
+    def test_shared_chunk_gets_an_arrow_from_each_entity(self, small_graph):
+        from dashboard.components.graph_view import entity_neighbourhood
+
+        view = entity_neighbourhood(*small_graph, "Drug_aspirin")
+        into = [e["source"] for e in view["edges"] if e["target"] == "DOC::doc1::chunk_0"]
+        assert set(into) == {"Drug_aspirin", "Gene_cox1"}
+
+    def test_caps_report_what_was_hidden(self, small_graph):
+        from dashboard.components.graph_view import entity_neighbourhood
+
+        view = entity_neighbourhood(*small_graph, "Drug_aspirin", max_neighbours=1)
+        assert view["hidden_neighbours"] == 1
+        assert sum(1 for n in view["nodes"] if n["kind"] == "entity") == 1
+
+    def test_unknown_entity_gives_an_empty_view(self, small_graph):
+        from dashboard.components.graph_view import entity_neighbourhood
+
+        assert entity_neighbourhood(*small_graph, "nope")["nodes"] == []
+
+    def test_figure_nodes_are_clickable_and_typed(self, small_graph):
+        from dashboard.components.graph_view import entity_graph_figure, entity_neighbourhood
+
+        fig = entity_graph_figure(entity_neighbourhood(*small_graph, "Drug_aspirin"))
+        names = {t.name for t in fig.data if t.customdata is not None}
+        assert {"Chemical / drug", "Gene / protein", "Disease", "Source chunk"} <= names
+        ids = {i for t in fig.data if t.customdata is not None for i in t.customdata}
+        assert "Gene_cox1" in ids and "DOC::doc1::chunk_0" in ids

@@ -551,3 +551,231 @@ def render_retrieval_graph(
             "The walk found seed entities but none of the returned chunks were "
             "reached through the graph — in fused mode, the dense leg supplied them all."
         )
+
+
+# ── Entity explorer ───────────────────────────────────────────────────────────
+#
+# The Knowledge Base page's view of the graph itself, as opposed to one query's
+# walk through it. Same visual language as the retrieval graph above: columns
+# read left to right, colour is entity type, green squares are chunks, and
+# every arrow points one or more columns to the right, so the drawing is a DAG.
+#
+#     focus entity  ->  related entities  ->  source chunks
+
+DOC_PREFIX = "DOC::"
+SOURCE_SHORT = "in"  # entity -> chunk it was extracted from
+
+
+def _entity_name(digraph, nid: str) -> str:
+    data = digraph.nodes.get(nid, {}) if nid in digraph else {}
+    return str(data.get("name") or data.get("label") or nid)
+
+
+def entity_neighbourhood(
+    digraph,
+    node_chunks: dict[str, list[str]],
+    focus: str,
+    *,
+    max_neighbours: int = 12,
+    max_chunks: int = 14,
+    chunks_per_neighbour: int = 2,
+) -> dict:
+    """One entity's neighbourhood as a three-column DAG.
+
+    Column 0 is ``focus``; column 1 the entities it shares a relation with,
+    most-connected first; column 2 the chunks those entities were extracted
+    from, the focus entity's own chunks first. Every edge points rightwards
+    and carries the relation in reading direction, with ``reversed`` set when
+    the stored relation runs the other way (so "aspirin -> COX-1: inhibits"
+    but "COX-1 -> aspirin: inhibited by").
+    """
+    if focus not in digraph:
+        return {"focus": focus, "nodes": [], "edges": []}
+
+    def entity_node(nid: str, layer: int, kind: str) -> dict:
+        data = digraph.nodes[nid]
+        return {"id": nid, "label": _entity_name(digraph, nid), "kind": kind,
+                "type": str(data.get("__class__", "Entity")), "layer": layer,
+                "n_chunks": len(node_chunks.get(nid, []))}
+
+    neighbours = {
+        n for n in set(digraph.successors(focus)) | set(digraph.predecessors(focus))
+        if not str(n).startswith(DOC_PREFIX) and n != focus
+    }
+    ranked = sorted(neighbours, key=lambda n: (-len(node_chunks.get(n, [])),
+                                               _entity_name(digraph, n).lower()))
+    shown = ranked[:max_neighbours]
+
+    nodes = [entity_node(focus, 0, "focus")] + [entity_node(n, 1, "entity") for n in shown]
+    edges = []
+    for n in shown:
+        if digraph.has_edge(focus, n):
+            label, rev = digraph.edges[focus, n].get("label", "RELATED_TO"), False
+        else:
+            label, rev = digraph.edges[n, focus].get("label", "RELATED_TO"), True
+        edges.append({"source": focus, "target": n, "label": label, "reversed": rev,
+                      "relation": (f"{_entity_name(digraph, n)} —{label}→ {_entity_name(digraph, focus)}"
+                                   if rev else
+                                   f"{_entity_name(digraph, focus)} —{label}→ {_entity_name(digraph, n)}")})
+
+    # Chunks: the focus entity's own first, then a few per related entity, so
+    # shared chunks (co-occurrence) show up as squares with several arrows in.
+    chunks: list[str] = []
+    for cid in node_chunks.get(focus, []):
+        if cid not in chunks:
+            chunks.append(cid)
+    for n in shown:
+        for cid in node_chunks.get(n, [])[:chunks_per_neighbour]:
+            if cid not in chunks:
+                chunks.append(cid)
+    chunks = chunks[:max_chunks]
+    hidden_chunks = len(set(node_chunks.get(focus, []))) - sum(
+        1 for c in chunks if c in set(node_chunks.get(focus, [])))
+
+    for cid in chunks:
+        nodes.append({"id": f"{DOC_PREFIX}{cid}", "label": cid, "kind": "source",
+                      "type": "Source chunk", "layer": 2, "chunk_id": cid})
+    for ent in [focus, *shown]:
+        for cid in node_chunks.get(ent, []):
+            if cid in chunks:
+                edges.append({"source": ent, "target": f"{DOC_PREFIX}{cid}",
+                              "label": "EXTRACTED_FROM", "reversed": False,
+                              "relation": f"{_entity_name(digraph, ent)} was extracted from {cid}"})
+
+    return {
+        "focus": focus,
+        "nodes": nodes,
+        "edges": edges,
+        "hidden_neighbours": max(0, len(ranked) - len(shown)),
+        "hidden_chunks": max(0, hidden_chunks),
+    }
+
+
+def entity_graph_figure(view: dict) -> go.Figure:
+    """Draw ``entity_neighbourhood`` output."""
+    nodes, edges = view["nodes"], view["edges"]
+    pos = _layout(nodes, edges)
+    by_id = {n["id"]: n for n in nodes}
+    max_chunks = max((n.get("n_chunks", 0) for n in nodes), default=0)
+
+    def size(n: dict) -> float:
+        if n["kind"] == "source":
+            return 18
+        share = (n.get("n_chunks", 0) / max_chunks) if max_chunks else 0.0
+        return (30 if n["kind"] == "focus" else 13) + 16 * math.sqrt(share)
+
+    fig = go.Figure()
+    annotations = []
+    mid_x, mid_y, mid_text, mid_hover = [], [], [], []
+    for e in edges:
+        (x0, y0), (x1, y1) = pos[e["source"]], pos[e["target"]]
+        is_source = e["label"] == "EXTRACTED_FROM"
+        annotations.append(dict(
+            x=x1, y=y1, ax=x0, ay=y0, xref="x", yref="y", axref="x", ayref="y",
+            showarrow=True, arrowhead=3, arrowsize=1.0,
+            arrowwidth=1.4 if is_source else 2,
+            arrowcolor=CONTEXT_EDGE if is_source else PATH_EDGE,
+            standoff=size(by_id[e["target"]]) / 2 + 2,
+            startstandoff=size(by_id[e["source"]]) / 2 + 2, text="",
+        ))
+        if not is_source:  # relation labels only; "extracted from" is implied by the column
+            mid_x.append(x0 + 0.45 * (x1 - x0))
+            mid_y.append(y0 + 0.45 * (y1 - y0))
+            mid_text.append(_short_label(e))
+            mid_hover.append(f"<b>{e['label']}</b><br>{e['relation']}")
+    if mid_x:
+        fig.add_trace(go.Scatter(
+            x=mid_x, y=mid_y, mode="markers+text", text=mid_text,
+            textposition="top center", textfont=dict(size=10),
+            marker=dict(size=9, color="rgba(127,127,127,0.05)"),
+            hovertext=mid_hover, hoverinfo="text", showlegend=False, name="Relations",
+        ))
+
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for n in nodes:
+        groups["Source chunk" if n["kind"] == "source"
+               else TYPE_NAMES.get(n["type"], "Entity")].append(n)
+
+    for name in ["Chemical / drug", "Gene / protein", "Disease", "Entity", "Source chunk"]:
+        members = groups.get(name)
+        if not members:
+            continue
+        fig.add_trace(go.Scatter(
+            x=[pos[m["id"]][0] for m in members],
+            y=[pos[m["id"]][1] for m in members],
+            mode="markers+text", name=name,
+            text=[_truncate(m["label"], 26) for m in members],
+            textposition=["bottom center" if m["kind"] == "source" else "top center"
+                          for m in members],
+            textfont=dict(size=11),
+            marker=dict(
+                size=[size(m) for m in members],
+                color=[CHUNK_COLOR if m["kind"] == "source"
+                       else TYPE_COLORS.get(m["type"], FALLBACK_ENTITY) for m in members],
+                symbol=["square" if m["kind"] == "source" else "circle" for m in members],
+                line=dict(
+                    width=[3.5 if m["kind"] == "focus" else 1 for m in members],
+                    color=["rgba(20,20,20,0.9)" if m["kind"] == "focus"
+                           else "rgba(255,255,255,0.6)" for m in members],
+                ),
+            ),
+            hovertext=[
+                (f"<b>Source chunk</b><br>{m['chunk_id']}<br><i>Click to read it</i>")
+                if m["kind"] == "source" else
+                (f"<b>{m['label']}</b><br>{TYPE_NAMES.get(m['type'], m['type'])}"
+                 f"<br>Extracted from {m.get('n_chunks', 0)} chunk(s)"
+                 + ("<br><i>Focus entity</i>" if m["kind"] == "focus"
+                    else "<br><i>Click to explore it</i>"))
+                for m in members
+            ],
+            hoverinfo="text", customdata=[m["id"] for m in members], legendgroup=name,
+        ))
+
+    layers = sorted({n["layer"] for n in nodes}) or [0]
+    ys = [p[1] for p in pos.values()] or [0.0]
+    top = max(ys) + 0.8
+    for layer, header in ((0, "Entity"), (1, "Related entities"), (2, "Source chunks")):
+        if layer in layers:
+            annotations.append(dict(
+                x=layer, y=top, xref="x", yref="y", text=f"<b>{header}</b>",
+                showarrow=False, font=dict(size=11, color="rgba(127,127,127,0.95)"),
+            ))
+    tallest = max((sum(1 for n in nodes if n["layer"] == L) for L in layers), default=1)
+    fig.update_layout(
+        annotations=annotations,
+        height=max(360, 62 * tallest + 140),
+        margin=dict(l=10, r=10, t=40, b=10),
+        hovermode="closest", dragmode="pan", clickmode="event+select",
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0),
+        xaxis=dict(visible=False, range=[min(layers) - 0.45, max(layers) + 0.6]),
+        yaxis=dict(visible=False, range=[min(ys) - 0.7, top + 0.35]),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+    return fig
+
+
+def render_entity_graph(view: dict, *, key: str) -> str | None:
+    """Draw the entity explorer and return the id of a clicked node, if any."""
+    if not view["nodes"]:
+        st.info("Entity not found in the graph.")
+        return None
+    event = st.plotly_chart(
+        entity_graph_figure(view), width="stretch", key=f"{key}_fig",
+        on_select="rerun", selection_mode="points",
+        config={"displaylogo": False, "scrollZoom": True},
+    )
+    notes = []
+    if view.get("hidden_neighbours"):
+        notes.append(f"{view['hidden_neighbours']} more related entities not shown")
+    if view.get("hidden_chunks"):
+        notes.append(f"{view['hidden_chunks']} more source chunks not shown")
+    st.caption(
+        "Read left to right: the entity, the entities it has a relation with, and "
+        "the chunks they were extracted from. A chunk with several arrows in is "
+        "where entities co-occur. Click an entity to explore it, or a chunk to "
+        "read it; drag to pan and scroll to zoom."
+        + (f" ({'; '.join(notes)}.)" if notes else "")
+    )
+    ids = _selected_ids(event)
+    return ids[0] if ids else None

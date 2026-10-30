@@ -427,3 +427,31 @@ class TestBM25IndexCache:
 
         with pytest.raises(FileNotFoundError, match="BM25 corpus not found"):
             _bm25_index(tmp_path / "missing.jsonl")
+
+
+class TestCollectionListing:
+    """The Knowledge Base page lists every collection, not just BioASQ."""
+
+    def _store(self, tmp_path, name):
+        from pipeline.vectorstore import VectorStore
+
+        return VectorStore(collection_name=name, mode="embedded", path=tmp_path)
+
+    def test_lists_every_collection_with_counts(self, tmp_path):
+        a = self._store(tmp_path, "alpha")
+        b = self._store(tmp_path, "beta")
+        b._collection.add(ids=["x"], documents=["t"], embeddings=[[0.0, 1.0]],
+                          metadatas=[{"dataset": "documents"}])
+        listed = {c["name"]: c for c in a.list_collections()}
+        assert set(listed) >= {"alpha", "beta"}
+        assert listed["beta"]["count"] == 1 and listed["beta"]["space"] == "cosine"
+
+    def test_metadata_values_counts_each_value(self, tmp_path):
+        s = self._store(tmp_path, "docs")
+        s._collection.add(
+            ids=["1", "2", "3"], documents=["a", "b", "c"],
+            embeddings=[[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]],
+            metadatas=[{"source": "a.pdf"}, {"source": "a.pdf"}, {"source": "b.md"}],
+        )
+        assert s.metadata_values("source") == {"a.pdf": 2, "b.md": 1}
+        assert s.metadata_values("missing") == {}
