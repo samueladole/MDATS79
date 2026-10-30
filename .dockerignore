@@ -67,6 +67,7 @@ data/ingestion_manifest.json
 data/documents/
 data/bm25_documents.jsonl
 data/documents_manifest.json
+ragscope-index-*.tar.gz
 telemetry/store/
 experiments/results/
 .cache/

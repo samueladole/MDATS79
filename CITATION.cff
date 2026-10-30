@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use RAGScope in your research, please cite it as below."
+title: "RAGScope: Real-Time Observability and Evaluation Platform for Retrieval-Augmented Generation Systems"
+type: software
+authors:
+  - family-names: Adole
+    given-names: Samuel
+license: MIT
+repository-code: "https://github.com/samueladole/MDATS79"
+keywords:
+  - retrieval-augmented generation
+  - observability
+  - evaluation
+  - RAGAS
+  - hallucination
+  - knowledge graph
+references:
+  - type: thesis
+    title: "Real-Time Observability and Evaluation Platform for Retrieval-Augmented Generation Systems"
+    authors:
+      - family-names: Adole
+        given-names: Samuel
+    thesis-type: "MSc Dissertation"
+    institution:
+      name: "Leeds Beckett University"
+    year: 2026

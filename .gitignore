@@ -18,6 +18,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.research.example
 
 # ── Large data and model files ────────────────────────────────────────────────
 data/raw/
@@ -28,6 +29,8 @@ data/ingestion_manifest.json
 data/documents/
 data/bm25_documents.jsonl
 data/documents_manifest.json
+# Prebuilt index archive (scripts/package_index.py)
+ragscope-index-*.tar.gz
 
 # ── Telemetry and results (large, runtime-generated) ─────────────────────────
 telemetry/store/
