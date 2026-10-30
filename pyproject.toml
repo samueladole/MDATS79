@@ -43,6 +43,7 @@ dependencies = [
     "langchain-ollama>=1.1.0", # LangChain integration for Ollama
     "chromadb>=0.5.0", # Vector store client
     "sentence-transformers>=3.0.0", # Embedding model (all-MiniLM-L6-v2)
+    "torch>=2.4", # Declared directly so [tool.uv.sources] can pick the CPU build
     "rank-bm25>=0.2.2", # BM25 sparse retrieval
     "ragas>=0.4.3", # RAG evaluation framework
     # ── Dashboard ─────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ dependencies = [
     "pandas>=2.2.0",
     "numpy>=1.26.0",
     "datasets>=2.20.0", # HuggingFace Datasets (BioASQ)
+    "pypdf>=6.0", # Text extraction for your own PDFs (--corpus documents)
     # ── NLP utilities ─────────────────────────────────────────────────────────
     "tiktoken>=0.7.0", # Token counting
     # ── HTTP / async ──────────────────────────────────────────────────────────
@@ -65,15 +67,19 @@ dependencies = [
     "loguru>=0.7.2", # Structured logging # Fast JSON serialisation (telemetry)
     "orjson>=3.10.0",
     "statsmodels>=0.14.6",
-    # ── Knowledge graph ───────────────────────────────────────────────────────
-    # Offline graph builder (graph/spikes/build_subset.py). Pinned exactly: the
-    # extraction settings in graph/spikes/pipeline_config.py were worked out
-    # against 1.9.1, and several of its failure modes are silent.
-    "docling-graph==1.9.1",
+    "networkx>=3.0", # Graph retrieval (reads the prebuilt knowledge graph)
 ]
 
 # ── Optional / extras ─────────────────────────────────────────────────────────
 [project.optional-dependencies]
+# Offline knowledge-graph builder (graph/build_graph.py): uv sync --extra graph.
+# Only needed to BUILD the graph; querying it needs networkx alone. Pinned
+# exactly: the extraction settings in graph/builder_config.py were worked out
+# against 1.9.1, and several of its failure modes are silent.
+graph = [
+    "docling-graph==1.9.1",
+    "torchvision", # pulled in by docling; listed so Linux also gets the CPU build
+]
 notebooks = [
     "jupyterlab>=4.2.0",
     "ipywidgets>=8.1.0",
@@ -97,6 +103,19 @@ packages = [
 ]
 
 # ── uv settings ───────────────────────────────────────────────────────────────
+# On Linux (including the Docker image) PyPI's torch is the CUDA build, which
+# pulls several GB of nvidia-* packages that a CPU-only setup never uses. Take
+# the CPU build from PyTorch's own index there instead. macOS and Windows
+# wheels on PyPI are already CPU (or Metal) builds, so they are unchanged.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
 [dependency-groups]
 dev = [
     "pytest>=8.2.0",
