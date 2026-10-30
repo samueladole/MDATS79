@@ -550,10 +550,12 @@ Each concrete client overrides `model_name` and `_build_prompt()` to apply the m
 
 | Client | `model_name` | Chat template |
 |---|---|---|
-| `Llama3Client` | `llama3:8b` | `<\|begin_of_text\|>...<\|eot_id\|>` |
-| `MistralClient` | `mistral:7b` | `<s>[INST] ... [/INST]` |
+| `Llama3Client` | `llama3` | `<\|begin_of_text\|>...<\|eot_id\|>` |
+| `MistralClient` | `mistral` | `<s>[INST] ... [/INST]` |
 
 Applying the correct template is essential — supplying a completion-style prompt to an instruct-tuned model degrades faithfulness and can produce refusals.
+
+`pipeline.generation.build_llm_client(model_tag)` returns one of these two for `llama3` and `mistral`, and an `OllamaClient` using the generic `BaseLLMClient` prompt for any other Ollama tag (for example the CPU default `llama3.2:3b`). The offered tags come from `GENERATOR_MODELS`.
 
 ---
 
@@ -561,8 +563,8 @@ Applying the correct template is essential — supplying a completion-style prom
 
 | Symbol | Type | Description |
 |---|---|---|
-| `ingest_corpus(corpus, ...)` | function | Full ingestion pipeline; returns `IngestionSummary` |
-| `load_bm25_corpus()` | function | Streaming JSONL read → `(ids, texts)` for `HybridRetriever` |
+| `ingest_corpus(corpus, ..., source)` | function | Full ingestion pipeline; returns `IngestionSummary` |
+| `load_bm25_corpus(path)` | function | Streaming JSONL read → `(ids, texts)` for `HybridRetriever`; defaults to the BioASQ corpus |
 | `IngestionSummary` | dataclass | Run statistics written to `data/ingestion_manifest.json` |
 | `DatasetStats` | dataclass | Per-dataset counters (passages loaded, skipped, chunks created) |
 | `BM25_CORPUS_PATH` | `Path` | `data/bm25_corpus.jsonl` |
@@ -572,7 +574,8 @@ Applying the correct template is essential — supplying a completion-style prom
 
 | Flag | Default | Description |
 |---|---|---|
-| `--corpus` | `bioasq` | `bioasq` \| `all` (alias for the same single corpus) |
+| `--corpus` | `bioasq` | `bioasq` \| `all` (alias for the same single corpus) \| `documents` (your own files, own collection) |
+| `--source` | `data/documents` | Folder read by `--corpus documents` |
 | `--chunk-size` | `512` | Max tokens per chunk |
 | `--chunk-overlap` | `64` | Token overlap between consecutive chunks |
 | `--embed-batch-size` | `256` | Chunks per embedding forward pass (RAM control) |
@@ -588,13 +591,15 @@ Applying the correct template is essential — supplying a completion-style prom
 |---|---|---|
 | `RAGPipeline` | class | End-to-end query orchestrator |
 | `RAGPipeline.__init__(llm_model, retrieval_strategy, ...)` | method | Initialises retriever, LLM client, RAGAS runner |
-| `RAGPipeline.query(query_text, ground_truth, ...)` | method | Full pipeline execution; returns `RAGResult` |
+| `RAGPipeline.query(query_text, ground_truth, ...)` | method | Full pipeline execution; returns `RAGResult`. Same as `evaluate(answer(...))` |
+| `RAGPipeline.answer(query_text)` | method | Retrieval and generation only; returns a `DraftAnswer` |
+| `RAGPipeline.evaluate(draft, ground_truth, ...)` | method | RAGAS scoring, telemetry record; returns `RAGResult` |
 | `RAGResult` | dataclass | Complete query result including all scores and telemetry, incl. `evaluation_ms` |
 | `RAGResult.summary()` | method | Formatted terminal output string (includes an Evaluation latency line) |
 
-**`RAGPipeline` constructor behaviour:** if `retrieval_strategy == "hybrid"`, it loads `data/bm25_corpus.jsonl` via `load_bm25_corpus()` and calls `HybridRetriever.build_bm25_index()` immediately. This means the BM25 index build time is incurred once per pipeline instantiation, not per query.
+**`RAGPipeline` constructor behaviour:** the BM25 index (hybrid) and the loaded graph with its label embeddings (graph) are built once per process and shared by every later pipeline, keyed on the file and rebuilt only when the file changes. Before this, the dashboard rebuilt them for every query (about 0.8 s and 0.65 s).
 
-**Timing scope:** `query()` wraps the entire method — retrieval, generation, token counting, *and* RAGAS evaluation — in a single `Timer("evaluation")`-nested-in-`Timer("e2e")` structure, and passes the resulting `e2e_timer.elapsed_ms` straight through to `build_record()` and `RAGResult.e2e_ms`. `evaluation_ms` is timed separately around the RAGAS call so it's visible on its own (e.g. in the dashboard's pipeline flow Sankey) rather than only implicit in the difference between `e2e_ms` and the other stages.
+**Timing scope:** `answer()` times retrieval, generation and token counting; `evaluate()` times the RAGAS call as `evaluation_ms`. `e2e_ms` is the sum of the two, so time a caller spends between them (the dashboard rendering the answer) is not counted as pipeline latency. RAGAS evaluation is included in `e2e_ms` because it can dominate total latency.
 
 ---
 
@@ -754,19 +759,23 @@ Each condition is evaluated against all 200 benchmark queries, producing 800 tot
 
 ## Configuration Reference
 
-All settings live in `.env` (see `.env.example`). Key values:
+All settings live in `.env` (start from `.env.example` for CPU-only machines or `.env.research.example` for the dissertation setup). The defaults below are the code defaults, which match the research configuration. Key values:
 
 | Variable | Default | Used by |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | All LLM clients, RAGAS runner |
-| `DEFAULT_LLM` | `llama3` | `RAGPipeline` default |
+| `GENERATOR_MODELS` | `llama3,mistral` | Generator tags offered in the dashboard and CLI |
+| `DEFAULT_LLM` | `llama3` | `RAGPipeline` default; must be in `GENERATOR_MODELS` |
 | `RETRIEVAL_STRATEGY` | `hybrid` | `RAGPipeline` default |
 | `TOP_K` | `5` | Both retrievers |
 | `HYBRID_DENSE_WEIGHT` | `0.6` | `HybridRetriever` RRF |
 | `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | `EmbeddingGenerator`; also backs `RAGASRunner`'s answer-correctness embeddings |
-| `CHROMA_HOST` | `chromadb` | `VectorStore` |
-| `CHROMA_COLLECTION` | `ragscope_corpus` | `VectorStore` |
+| `CHROMA_MODE` | `http` | `VectorStore`: `embedded` (in-process, `CHROMA_PATH`) or `http` (server) |
+| `CHROMA_HOST` | `chromadb` | `VectorStore` (http mode) |
+| `CHROMA_COLLECTION` | `ragscope_corpus` | `VectorStore`: the BioASQ collection |
+| `DOCUMENTS_COLLECTION` | `ragscope_documents` | Your own documents (`--corpus documents`) |
 | `RAGAS_JUDGE_MODEL` | `qwen2.5:7b` | `RAGASRunner` |
+| `RAGAS_TIMEOUT_SECONDS` | `180` | `RAGASRunner`, per judge call |
 | `TELEMETRY_STORE_DIR` | `./telemetry/store` | `TelemetryLogger` |
 | `EXPERIMENT_RANDOM_SEED` | `42` | Dataset loaders, sampling |
 
