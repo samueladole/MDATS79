@@ -291,9 +291,12 @@ if st.session_state.last_result:
     # ── Pipeline flow ─────────────────────────────────────────────────────────
     st.subheader("Pipeline Flow")
     st.caption(
-        "Every instrumented stage this query passed through link width is that "
-        "stage's actual wall-clock duration. 'Response' absorbs any small residual "
-        "(token counting, telemetry write) not attributed to a named stage."
+        "Where this query's time went, read left to right: the total, its phases, "
+        "then retrieval's own steps. Band width is time taken; hover any band for "
+        "exact figures. Very small stages are drawn slightly wider than their "
+        "true share so they stay visible; the numbers on each label are exact. "
+        "'Other overhead' is time not attributed to a named stage (token "
+        "counting, writing the telemetry record)."
     )
     pipeline_flow_sankey(
         result.retrieval_telemetry,

@@ -92,9 +92,12 @@ st.divider()
 # ── Pipeline flow ─────────────────────────────────────────────────────────────
 st.subheader("Pipeline Flow")
 st.caption(
-    "Every instrumented stage this query passed through link width is that "
-    "stage's actual wall-clock duration. 'Response' absorbs any small residual "
-    "(token counting, telemetry write) not attributed to a named stage."
+    "Where this query's time went, read left to right: the total, its phases, "
+    "then retrieval's own steps. Band width is time taken; hover any band for "
+    "exact figures. Very small stages are drawn slightly wider than their "
+    "true share so they stay visible; the numbers on each label are exact. "
+    "'Other overhead' is time not attributed to a named stage (token "
+    "counting, writing the telemetry record)."
 )
 retrieval_telemetry = {
     "strategy": record.get("retrieval_strategy", "dense"),
@@ -103,6 +106,9 @@ retrieval_telemetry = {
     "dense_search_ms": record.get("dense_search_ms", 0.0),
     "bm25_search_ms": record.get("bm25_search_ms", 0.0),
     "rrf_fusion_ms": record.get("rrf_fusion_ms", 0.0),
+    "graph_seed_ms": record.get("graph_seed_ms", 0.0),
+    "graph_traverse_ms": record.get("graph_traverse_ms", 0.0),
+    "graph_score_ms": record.get("graph_score_ms", 0.0),
 }
 pipeline_flow_sankey(
     retrieval_telemetry,
@@ -114,7 +120,7 @@ pipeline_flow_sankey(
 if record.get("evaluation_ms", 0.0) == 0.0 and record.get("context_relevance") is not None:
     st.caption(
         ":material/warning: This record predates per-stage evaluation timing — RAGAS ran (scores are "
-        "present) but its duration wasn't captured separately, so 'Response' absorbs it."
+        "present) but its duration wasn't captured separately, so 'Other overhead' absorbs it."
     )
 st.divider()
 

@@ -1,8 +1,16 @@
 """
-RAGScope — Latency Chart Components
-======================================
-The pipeline flow Sankey: one query's stage-by-stage latency, drawn on the
-Live Monitor and Query Explorer pages.
+RAGScope — Pipeline Flow Chart
+================================
+A Sankey diagram of where one query's time went, drawn on the Live Monitor
+and Query Explorer pages.
+
+It reads left to right as a whole splitting into its parts:
+
+    End to end  ->  Retrieval / Generation / Evaluation / Other  ->  retrieval steps
+
+so every band's width is a share of the query's total time, and the bands
+leaving a node add up to that node. Node positions are fixed rather than left
+to Plotly, so labels never collide however small a stage is.
 """
 
 from __future__ import annotations
@@ -10,62 +18,34 @@ from __future__ import annotations
 import plotly.graph_objects as go
 import streamlit as st
 
-# Fixed per-stage colours for the pipeline flow Sankey — a stage is always
-# this same colour regardless of retrieval strategy, so e.g. "LLM Generation"
-# reads the same whether the query used dense or hybrid retrieval.
-#
-# Colours are grouped by pipeline *phase* rather than assigned per-stage, so
-# retrieval and generation are visually unmistakable at a glance: every
-# retrieval sub-stage (embedding, search, fusion) is a shade of blue, LLM
-# generation is amber, RAGAS evaluation is red — three clearly different
-# hues, not a per-stage rainbow. Retrieval's own shades (light → dark) still
-# let its individual sub-stages be told apart without breaking the grouping.
-_NEUTRAL = "rgba(127,127,127,0.55)"
-_RETRIEVAL_EMBED = "#7fb3e8"   # lightest blue — query embedding
-_RETRIEVAL_SEARCH = "#2a78d6"  # mid blue — vector / dense search
-_RETRIEVAL_SPARSE = "#1f5fae"  # darker blue — BM25 sparse search
-_RETRIEVAL_FUSION = "#123a70"  # darkest blue — RRF fusion
-_GENERATION = "#eda100"        # amber — clearly distinct from the blue family
-_EVALUATION = "#e34948"        # red/coral
-
-STAGE_COLORS = {
-    "Query": _NEUTRAL,
-    "Embed Query": _RETRIEVAL_EMBED,
-    "Vector Search": _RETRIEVAL_SEARCH,
-    "Dense Search": _RETRIEVAL_SEARCH,
-    "BM25 Search": _RETRIEVAL_SPARSE,
-    "RRF Fusion": _RETRIEVAL_FUSION,
-    "LLM Generation": _GENERATION,
-    "RAGAS Evaluation": _EVALUATION,
-    "Response": _NEUTRAL,
+# Colour by phase: retrieval in blues (light to dark through its steps),
+# generation amber, evaluation coral. The same stage is always the same colour.
+TOTAL_COLOR = "#6b7280"
+OTHER_COLOR = "#9ca3af"
+PHASE_COLORS = {
+    "Retrieval": "#2a78d6",
+    "Generation": "#eda100",
+    "Evaluation": "#e34948",
+    "Other": OTHER_COLOR,
 }
+STEP_COLORS = ["#7fb3e8", "#4f93df", "#2a78d6", "#1f5fae", "#174c8f", "#123a70"]
 
-# Which phase each stage belongs to — drives the small phase caption on each
-# Sankey node and the legend below the chart. Query/Response sit outside any
-# phase (they're the pipeline's start/overhead-catch-all, not work RAGScope
-# attributes to retrieval, generation, or evaluation).
-STAGE_PHASE = {
-    "Embed Query": "RETRIEVAL",
-    "Vector Search": "RETRIEVAL",
-    "Dense Search": "RETRIEVAL",
-    "BM25 Search": "RETRIEVAL",
-    "RRF Fusion": "RETRIEVAL",
-    "Entity Seeding": "RETRIEVAL",
-    "Graph Traversal": "RETRIEVAL",
-    "Chunk Scoring": "RETRIEVAL",
-    "LLM Generation": "GENERATION",
-    "RAGAS Evaluation": "EVALUATION",
+#: Bands thinner than this share of the drawing are widened to it, so a 0.1 ms
+#: step is still visible. Labels and hovers always show the true time.
+MIN_SHARE = 0.012
+#: Retrieval is broken down further in the right-hand column, so its band gets
+#: a larger minimum: otherwise its steps fan out as hairlines.
+MIN_RETRIEVAL_SHARE = 0.04
+
+# Retrieval steps per strategy: (label, telemetry key).
+_STEPS = {
+    "dense": [("Query embedding", "embed_query_ms"), ("Vector search", "vector_search_ms")],
+    "hybrid": [("Query embedding", "embed_query_ms"), ("Dense search", "dense_search_ms"),
+               ("BM25 search", "bm25_search_ms"), ("Rank fusion (RRF)", "rrf_fusion_ms")],
+    "graph": [("Query embedding", "embed_query_ms"), ("Dense search", "dense_search_ms"),
+              ("Entity seeding", "graph_seed_ms"), ("Graph traversal", "graph_traverse_ms"),
+              ("Chunk scoring", "graph_score_ms"), ("Rank fusion (RRF)", "rrf_fusion_ms")],
 }
-
-
-def _translucent(color: str, alpha: float = 0.35) -> str:
-    """Return ``color`` (hex or rgba(...)) at a reduced alpha, for Sankey links."""
-    if color.startswith("rgba"):
-        r, g, b = (p.strip() for p in color[color.index("(") + 1 : color.index(")")].split(",")[:3])
-        return f"rgba({r},{g},{b},{alpha})"
-    hex_color = color.lstrip("#")
-    r, g, b = (int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
-    return f"rgba({r},{g},{b},{alpha})"
 
 
 def _is_dark_theme() -> bool:
@@ -76,6 +56,158 @@ def _is_dark_theme() -> bool:
         return False
 
 
+def _fmt_ms(ms: float) -> str:
+    """Seconds above one second, milliseconds below: '40.96 s', '217 ms', '0.08 ms'."""
+    if ms >= 1000:
+        return f"{ms / 1000:,.2f} s"
+    if ms >= 10:
+        return f"{ms:,.0f} ms"
+    return f"{ms:.2f} ms" if ms < 1 else f"{ms:.1f} ms"
+
+
+def _fmt_pct(share: float) -> str:
+    pct = 100 * share
+    if pct == 0:
+        return "0%"
+    return "<0.1%" if pct < 0.1 else f"{pct:.1f}%"
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
+def _floored(values: list[float], total: float) -> list[float]:
+    """Display widths: each at least MIN_SHARE of ``total``."""
+    floor = MIN_SHARE * total
+    return [max(v, floor) for v in values]
+
+
+def _stack(heights: list[float], gap: float = 0.06, top: float = 0.04,
+           bottom: float = 0.04) -> list[float]:
+    """Centres (0 = top, 1 = bottom) for nodes stacked in one column."""
+    usable = 1 - top - bottom - gap * (len(heights) - 1)
+    total = sum(heights) or 1.0
+    y, out = top, []
+    for h in heights:
+        span = usable * h / total
+        out.append(y + span / 2)
+        y += span + gap
+    return out
+
+
+def pipeline_flow_figure(
+    retrieval_telemetry: dict,
+    generation_ms: float,
+    evaluation_ms: float,
+    e2e_ms: float,
+    ran_evaluation: bool,
+    *,
+    dark: bool = False,
+) -> go.Figure:
+    """Build the pipeline flow Sankey for one query (see the module docstring)."""
+    strategy = retrieval_telemetry.get("strategy", "dense")
+    steps = [(label, float(retrieval_telemetry.get(key, 0.0) or 0.0))
+             for label, key in _STEPS.get(strategy, _STEPS["dense"])]
+    retrieval_ms = sum(v for _, v in steps)
+
+    phases = [("Retrieval", retrieval_ms), ("Generation", float(generation_ms or 0.0))]
+    if ran_evaluation:
+        phases.append(("Evaluation", float(evaluation_ms or 0.0)))
+    # Whatever e2e_ms does not attribute to a named stage (token counting,
+    # writing the telemetry record, Python glue) is shown, not dropped, so the
+    # phases always add up to the total.
+    other = max(float(e2e_ms or 0.0) - sum(v for _, v in phases), 0.0)
+    phases.append(("Other", other))
+    total = float(e2e_ms) if e2e_ms and e2e_ms > 0 else max(sum(v for _, v in phases), 1.0)
+
+    # Display widths. Phases are floored against the total; retrieval's steps
+    # are floored against retrieval's own width, then scaled to fill it, so
+    # the bands leaving the Retrieval node match the band entering it.
+    phase_w = _floored([v for _, v in phases], total)
+    phase_w[0] = max(phase_w[0], MIN_RETRIEVAL_SHARE * total)
+    retr_w = phase_w[0]
+    raw = [max(v, MIN_SHARE * retr_w * 4) for _, v in steps]
+    step_w = [retr_w * r / sum(raw) for r in raw] if sum(raw) else [retr_w / len(steps)] * len(steps)
+
+    text = "#e8e8e3" if dark else "#1f2328"
+    muted = "rgba(232,232,227,0.62)" if dark else "rgba(31,35,40,0.6)"
+
+    def label(name: str, ms: float, share: float | None) -> str:
+        detail = _fmt_ms(ms) + ("" if share is None else f"  ·  {_fmt_pct(share)}")
+        return f"<b>{name}</b><br><span style='color:{muted}'>{detail}</span>"
+
+    names = {"Retrieval": f"Retrieval ({strategy})", "Generation": "Generation (LLM)",
+             "Evaluation": "Evaluation (RAGAS)", "Other": "Other overhead"}
+
+    labels = [label("End to end", total, None)]
+    colors = [TOTAL_COLOR]
+    xs, ys = [0.001], [0.5]
+    hovers = [f"<b>End to end</b><br>{_fmt_ms(total)}"]
+
+    phase_y = _stack(phase_w)
+    for (name, ms), y in zip(phases, phase_y, strict=True):
+        labels.append(label(names[name], ms, ms / total))
+        colors.append(PHASE_COLORS[name])
+        xs.append(0.40)
+        ys.append(y)
+        hovers.append(f"<b>{names[name]}</b><br>{_fmt_ms(ms)}, {_fmt_pct(ms / total)} of the query")
+
+    # Retrieval's steps are spread evenly down the right column rather than
+    # stacked inside retrieval's sliver of height, which is what keeps their
+    # labels apart. Their bands fan out from the Retrieval node.
+    first_step = len(labels)
+    spacing = min(0.22, 0.88 / max(len(steps) - 1, 1))
+    step_y = [0.06 + i * spacing for i in range(len(steps))]
+    for i, ((name, ms), y) in enumerate(zip(steps, step_y, strict=True)):
+        labels.append(label(name, ms, ms / total))
+        colors.append(STEP_COLORS[min(i, len(STEP_COLORS) - 1)])
+        xs.append(0.999)
+        ys.append(y)
+        share_r = ms / retrieval_ms if retrieval_ms else 0.0
+        hovers.append(f"<b>{name}</b><br>{_fmt_ms(ms)}, {_fmt_pct(share_r)} of retrieval, "
+                      f"{_fmt_pct(ms / total)} of the query")
+
+    sources, targets, values, link_colors, link_hover = [], [], [], [], []
+    for i, ((name, ms), w) in enumerate(zip(phases, phase_w, strict=True), start=1):
+        sources.append(0)
+        targets.append(i)
+        values.append(w)
+        link_colors.append(_rgba(PHASE_COLORS[name], 0.32))
+        link_hover.append(f"{names[name]}: {_fmt_ms(ms)} ({_fmt_pct(ms / total)})")
+    for j, ((name, ms), w) in enumerate(zip(steps, step_w, strict=True)):
+        sources.append(1)
+        targets.append(first_step + j)
+        values.append(w)
+        link_colors.append(_rgba(STEP_COLORS[min(j, len(STEP_COLORS) - 1)], 0.38))
+        link_hover.append(f"{name}: {_fmt_ms(ms)}")
+
+    fig = go.Figure(go.Sankey(
+        arrangement="fixed",
+        node=dict(
+            label=labels, color=colors, x=xs, y=ys,
+            pad=18, thickness=14, line=dict(width=0),
+            customdata=hovers, hovertemplate="%{customdata}<extra></extra>",
+        ),
+        link=dict(
+            source=sources, target=targets, value=values, color=link_colors,
+            customdata=link_hover, hovertemplate="%{customdata}<extra></extra>",
+        ),
+        textfont=dict(size=14, color=text,
+                      family="Inter, system-ui, -apple-system, 'Segoe UI', sans-serif"),
+    ))
+    fig.update_layout(
+        height=460,
+        margin=dict(l=8, r=8, t=8, b=8),
+        font=dict(color=text),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        hoverlabel=dict(font_size=13),
+    )
+    return fig
+
+
 def pipeline_flow_sankey(
     retrieval_telemetry: dict,
     generation_ms: float,
@@ -83,141 +215,13 @@ def pipeline_flow_sankey(
     e2e_ms: float,
     ran_evaluation: bool,
 ) -> None:
+    """Draw the pipeline flow Sankey for one query in Streamlit.
+
+    ``ran_evaluation`` False omits the Evaluation phase entirely rather than
+    showing a misleading near-zero band.
     """
-    Render a Sankey diagram of one query's full pipeline execution.
-
-    Every instrumented stage — query embedding, retrieval (dense, or
-    dense+BM25+RRF fusion for hybrid), LLM generation, and RAGAS evaluation —
-    appears as a node; each link's width is that stage's actual wall-clock
-    duration for *this* query, not an aggregate. Stages run sequentially in
-    the current implementation (matching how they're actually instrumented
-    in ``pipeline/retrieval/*.py``), so this is a straight chain rather than
-    parallel branches, even for hybrid retrieval where BM25 search doesn't
-    itself depend on the query embedding.
-
-    Parameters
-    ----------
-    retrieval_telemetry : The ``retrieval_telemetry`` dict from a ``RAGResult``
-                          (or an equivalent dict reconstructed from a stored
-                          telemetry record).
-    generation_ms       : LLM generation wall-clock time.
-    evaluation_ms       : RAGAS evaluation wall-clock time (0 if skipped).
-    e2e_ms              : Total end-to-end wall-clock time for the query.
-    ran_evaluation      : Whether RAGAS evaluation actually ran — when False,
-                          the Evaluation node is omitted entirely rather than
-                          shown as a (misleading) near-zero-width stage.
-    """
-    strategy = retrieval_telemetry.get("strategy", "dense")
-
-    stages: list[tuple[str, float]] = [
-        ("Query", 0.0),
-        ("Embed Query", retrieval_telemetry.get("embed_query_ms", 0.0)),
-    ]
-    if strategy == "hybrid":
-        stages += [
-            ("Dense Search", retrieval_telemetry.get("dense_search_ms", 0.0)),
-            ("BM25 Search", retrieval_telemetry.get("bm25_search_ms", 0.0)),
-            ("RRF Fusion", retrieval_telemetry.get("rrf_fusion_ms", 0.0)),
-        ]
-    elif strategy == "graph":
-        stages += [
-            ("Dense Search", retrieval_telemetry.get("dense_search_ms", 0.0)),
-            ("Entity Seeding", retrieval_telemetry.get("graph_seed_ms", 0.0)),
-            ("Graph Traversal", retrieval_telemetry.get("graph_traverse_ms", 0.0)),
-            ("Chunk Scoring", retrieval_telemetry.get("graph_score_ms", 0.0)),
-            ("RRF Fusion", retrieval_telemetry.get("rrf_fusion_ms", 0.0)),
-        ]
-    else:
-        stages.append(("Vector Search", retrieval_telemetry.get("vector_search_ms", 0.0)))
-
-    stages.append(("LLM Generation", generation_ms))
-    if ran_evaluation:
-        stages.append(("RAGAS Evaluation", evaluation_ms))
-
-    # The final link absorbs whatever's left of e2e_ms after the named stages
-    # (token counting, telemetry write, python glue) — kept visible rather
-    # than silently dropped, so the diagram's total always equals e2e_ms.
-    accounted = sum(v for _, v in stages)
-    overhead = max(e2e_ms - accounted, 0.0)
-    stages.append(("Response", overhead))
-
-    total = e2e_ms if e2e_ms > 0 else max(accounted, 1.0)
-    dark = _is_dark_theme()
-    # Plotly's Sankey renders to a self-contained SVG canvas — it does not
-    # inherit the page's CSS text colour, so with a transparent chart
-    # background the default label colour goes illegible against a dark
-    # Streamlit theme. Pin it explicitly based on the detected theme instead.
-    label_color = "#f5f5f2" if dark else "#1a1a1a"
-    phase_label_color = "rgba(245,245,242,0.65)" if dark else "rgba(26,26,26,0.6)"
-    node_line_color = "rgba(255,255,255,0.30)" if dark else "rgba(0,0,0,0.20)"
-
-    # Each node's label carries its phase (RETRIEVAL / GENERATION / EVALUATION)
-    # as a small caption line above the stage name — on top of the phase
-    # colour-coding below, so which phase a stage belongs to is legible even
-    # without colour (e.g. on hover, or for colour-blind readers).
-    labels = []
-    for name, value in stages:
-        phase = STAGE_PHASE.get(name)
-        phase_line = (
-            f"<span style='font-size:9px;letter-spacing:0.05em;color:{phase_label_color}'>{phase}</span><br>"
-            if phase
-            else ""
-        )
-        labels.append(f"{phase_line}<b>{name}</b><br>{value:,.0f} ms · {value / total * 100:.1f}%")
-    node_colors = [STAGE_COLORS.get(name, "#95a5a6") for name, _ in stages]
-
-    n = len(stages)
-    sources = list(range(n - 1))
-    targets = list(range(1, n))
-    # Link i (stage[i] -> stage[i+1]) is coloured and sized by the stage it
-    # leads into, so a link's width directly reads as "how long that stage took".
-    values = [max(stages[i + 1][1], 0.05) for i in range(n - 1)]
-    link_colors = [_translucent(node_colors[i + 1], alpha=0.45) for i in range(n - 1)]
-
-    fig = go.Figure(
-        go.Sankey(
-            arrangement="snap",
-            node=dict(
-                label=labels,
-                color=node_colors,
-                pad=30,
-                thickness=24,
-                line=dict(color=node_line_color, width=1),
-            ),
-            link=dict(
-                source=sources,
-                target=targets,
-                value=values,
-                color=link_colors,
-                hovertemplate="<b>%{target.label}</b><extra></extra>",
-            ),
-            textfont=dict(size=13, color=label_color, family="system-ui, -apple-system, sans-serif"),
-        )
+    fig = pipeline_flow_figure(
+        retrieval_telemetry, generation_ms, evaluation_ms, e2e_ms, ran_evaluation,
+        dark=_is_dark_theme(),
     )
-    fig.update_layout(
-        height=420,
-        margin=dict(l=10, r=10, t=10, b=10),
-        font=dict(color=label_color),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig, width="stretch")
-
-    # A colour-swatch legend under the chart makes the retrieval/generation/
-    # evaluation grouping explicit even before a viewer reads any node label.
-    def _swatch(color: str, text: str) -> str:
-        return (
-            f'<span style="display:inline-flex;align-items:center;gap:0.35rem;margin-right:1.1rem;">'
-            f'<span style="width:10px;height:10px;border-radius:50%;background:{color};'
-            f'display:inline-block;flex-shrink:0;"></span>'
-            f'<span style="font-size:0.8rem;opacity:0.8;">{text}</span></span>'
-        )
-
-    st.markdown(
-        '<div style="margin-top:-0.5rem;">'
-        + _swatch(_RETRIEVAL_SEARCH, "Retrieval (embed → search → fusion)")
-        + _swatch(_GENERATION, "Generation (LLM)")
-        + _swatch(_EVALUATION, "Evaluation (RAGAS)")
-        + "</div>",
-        unsafe_allow_html=True,
-    )
+    st.plotly_chart(fig, width="stretch", config={"displaylogo": False})
