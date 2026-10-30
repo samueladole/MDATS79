@@ -18,6 +18,8 @@ from __future__ import annotations
 import plotly.graph_objects as go
 import streamlit as st
 
+from dashboard.components.formatting import format_duration
+
 # Colour by phase: retrieval in blues (light to dark through its steps),
 # generation amber, evaluation coral. The same stage is always the same colour.
 TOTAL_COLOR = "#6b7280"
@@ -54,15 +56,6 @@ def _is_dark_theme() -> bool:
         return st.context.theme.type == "dark"
     except Exception:
         return False
-
-
-def _fmt_ms(ms: float) -> str:
-    """Seconds above one second, milliseconds below: '40.96 s', '217 ms', '0.08 ms'."""
-    if ms >= 1000:
-        return f"{ms / 1000:,.2f} s"
-    if ms >= 10:
-        return f"{ms:,.0f} ms"
-    return f"{ms:.2f} ms" if ms < 1 else f"{ms:.1f} ms"
 
 
 def _fmt_pct(share: float) -> str:
@@ -135,7 +128,7 @@ def pipeline_flow_figure(
     muted = "rgba(232,232,227,0.62)" if dark else "rgba(31,35,40,0.6)"
 
     def label(name: str, ms: float, share: float | None) -> str:
-        detail = _fmt_ms(ms) + ("" if share is None else f"  ·  {_fmt_pct(share)}")
+        detail = format_duration(ms) + ("" if share is None else f"  ·  {_fmt_pct(share)}")
         return f"<b>{name}</b><br><span style='color:{muted}'>{detail}</span>"
 
     names = {"Retrieval": f"Retrieval ({strategy})", "Generation": "Generation (LLM)",
@@ -144,7 +137,7 @@ def pipeline_flow_figure(
     labels = [label("End to end", total, None)]
     colors = [TOTAL_COLOR]
     xs, ys = [0.001], [0.5]
-    hovers = [f"<b>End to end</b><br>{_fmt_ms(total)}"]
+    hovers = [f"<b>End to end</b><br>{format_duration(total)}"]
 
     phase_y = _stack(phase_w)
     for (name, ms), y in zip(phases, phase_y, strict=True):
@@ -152,7 +145,7 @@ def pipeline_flow_figure(
         colors.append(PHASE_COLORS[name])
         xs.append(0.40)
         ys.append(y)
-        hovers.append(f"<b>{names[name]}</b><br>{_fmt_ms(ms)}, {_fmt_pct(ms / total)} of the query")
+        hovers.append(f"<b>{names[name]}</b><br>{format_duration(ms)}, {_fmt_pct(ms / total)} of the query")
 
     # Retrieval's steps are spread evenly down the right column rather than
     # stacked inside retrieval's sliver of height, which is what keeps their
@@ -166,7 +159,7 @@ def pipeline_flow_figure(
         xs.append(0.999)
         ys.append(y)
         share_r = ms / retrieval_ms if retrieval_ms else 0.0
-        hovers.append(f"<b>{name}</b><br>{_fmt_ms(ms)}, {_fmt_pct(share_r)} of retrieval, "
+        hovers.append(f"<b>{name}</b><br>{format_duration(ms)}, {_fmt_pct(share_r)} of retrieval, "
                       f"{_fmt_pct(ms / total)} of the query")
 
     sources, targets, values, link_colors, link_hover = [], [], [], [], []
@@ -175,13 +168,13 @@ def pipeline_flow_figure(
         targets.append(i)
         values.append(w)
         link_colors.append(_rgba(PHASE_COLORS[name], 0.32))
-        link_hover.append(f"{names[name]}: {_fmt_ms(ms)} ({_fmt_pct(ms / total)})")
+        link_hover.append(f"{names[name]}: {format_duration(ms)} ({_fmt_pct(ms / total)})")
     for j, ((name, ms), w) in enumerate(zip(steps, step_w, strict=True)):
         sources.append(1)
         targets.append(first_step + j)
         values.append(w)
         link_colors.append(_rgba(STEP_COLORS[min(j, len(STEP_COLORS) - 1)], 0.38))
-        link_hover.append(f"{name}: {_fmt_ms(ms)}")
+        link_hover.append(f"{name}: {format_duration(ms)}")
 
     fig = go.Figure(go.Sankey(
         arrangement="fixed",

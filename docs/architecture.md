@@ -342,6 +342,7 @@ Shared visualisation components live in `dashboard/components/`:
 | Component | Description |
 |---|---|
 | `metric_cards.py` | Modern colour-graded RAGAS scorecard tiles (icon, value, meter bar, quality badge); `similarity_meter_html()` for chunk similarity bars; 6-column telemetry row (adds Evaluation Latency) |
+| `formatting.py` | `format_duration()` — shows a millisecond duration in seconds from one second up ("48.01 s") and milliseconds below ("217 ms"); used by every page that displays latency |
 | `latency_chart.py` | `pipeline_flow_figure()` / `pipeline_flow_sankey()` — a theme-aware Sankey of where one query's time went: end to end → retrieval, generation, evaluation, other → retrieval's steps. Fixed node positions keep labels apart; tiny stages are drawn at a minimum width with exact figures on their labels (Plotly) |
 | `graph_view.py` | Interactive DAGs in one visual language. `render_retrieval_graph()`: the path graph retrieval took for a query (query, seed entities, hops, chunks reached), on Live Monitor, Query Explorer and the Knowledge Base trace view. `entity_neighbourhood()` + `render_entity_graph()`: one entity, its related entities and their source chunks, for the Knowledge Base entity explorer |
 

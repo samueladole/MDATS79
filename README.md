@@ -290,6 +290,7 @@ ragscope/
 │   │   └── 04_knowledge_base.py   # Upload your documents; browse the BioASQ collection and graph
 │   └── components/
 │       ├── theme.py               # Shared icons (Material Symbols / inline SVG) + CSS theme
+│       ├── formatting.py          # Shared number formatting (durations in s or ms)
 │       ├── metric_cards.py        # Metric display components
 │       ├── latency_chart.py       # Latency visualisation
 │       └── graph_view.py          # Interactive graphs: retrieval path and entity explorer

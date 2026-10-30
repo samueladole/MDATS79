@@ -26,6 +26,7 @@ import plotly.express as px
 import streamlit as st
 
 from config.settings import settings
+from dashboard.components.formatting import format_duration
 from dashboard.components.graph_view import (
     DOC_PREFIX,
     TYPE_NAMES,
@@ -395,7 +396,7 @@ with tab_graph:
             m1, m2, m3 = st.columns(3)
             m1.metric("Seed entities", tel.get("graph_seeds_found", 0))
             m2.metric("Chunks reached", len(chunks))
-            m3.metric("Retrieval", f"{tel.get('retrieval_ms', 0.0):.1f} ms")
+            m3.metric("Retrieval", format_duration(tel.get("retrieval_ms", 0.0)))
             render_retrieval_graph(
                 tel.get("graph_path"),
                 chunk_texts={c.chunk_id: c.text for c in chunks},

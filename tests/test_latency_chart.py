@@ -79,3 +79,19 @@ class TestPipelineFlow:
         assert s.arrangement == "fixed"
         step_ys = list(s.node.y[5:])
         assert step_ys == sorted(step_ys) and len(set(step_ys)) == len(step_ys)
+
+
+class TestFormatDuration:
+    @pytest.mark.parametrize("ms,expected", [
+        (48011.1, "48.01 s"),
+        (1000.0, "1.00 s"),
+        (999.4, "999 ms"),
+        (217.33, "217 ms"),
+        (8.25, "8.2 ms"),
+        (0.08, "0.08 ms"),
+        (None, "—"),
+    ])
+    def test_seconds_from_one_second_milliseconds_below(self, ms, expected):
+        from dashboard.components.formatting import format_duration
+
+        assert format_duration(ms) == expected

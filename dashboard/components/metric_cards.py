@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from dashboard.components.formatting import format_duration
 from dashboard.components.theme import icon_html
 from evaluation.hallucination_score import risk_band
 
@@ -189,10 +190,10 @@ def telemetry_row(
 ) -> None:
     """Render a 6-column telemetry row."""
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Retrieval Latency", f"{retrieval_ms:.0f} ms")
-    c2.metric("Generation Latency", f"{generation_ms:.0f} ms")
-    c3.metric("Evaluation Latency", f"{evaluation_ms:.0f} ms")
-    c4.metric("End-to-End Latency", f"{e2e_ms:.0f} ms")
+    c1.metric("Retrieval Latency", format_duration(retrieval_ms))
+    c2.metric("Generation Latency", format_duration(generation_ms))
+    c3.metric("Evaluation Latency", format_duration(evaluation_ms))
+    c4.metric("End-to-End Latency", format_duration(e2e_ms))
     c5.metric("Total Tokens", f"{total_tokens:,}")
     c6.metric("Estimated Cost", f"${estimated_cost:.6f}")
 

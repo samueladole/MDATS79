@@ -60,12 +60,18 @@ RISK_COLORS = {"LOW": "#2ecc71", "MEDIUM": "#f39c12", "HIGH": "#e74c3c", "UNKNOW
 
 TRANSPARENT_LAYOUT = {"plot_bgcolor": "rgba(0,0,0,0)", "paper_bgcolor": "rgba(0,0,0,0)"}
 
+# Latency is recorded in milliseconds; this page shows it in seconds, where
+# benchmark queries (~57 s on average) read far better.
+for _col in ("retrieval_ms", "generation_ms", "evaluation_ms", "e2e_ms"):
+    if _col in df.columns:
+        df[_col.replace("_ms", "_s")] = df[_col] / 1000
+
 METRICS = [
     "context_relevance",
     "answer_faithfulness",
     "answer_correctness",
     "hallucination_risk",
-    "e2e_ms",
+    "e2e_s",
     "total_tokens",
 ]
 QUALITY_METRICS = ["context_relevance", "answer_faithfulness", "answer_correctness"]
@@ -75,6 +81,7 @@ st.subheader("Summary Statistics by Condition")
 st.caption("Mean, standard deviation, and median for each metric, grouped by experimental condition.")
 
 agg = df.groupby("condition")[METRICS].agg(["mean", "std", "median"]).round(3)
+agg = agg.rename(columns={"e2e_s": "e2e_latency_s"}, level=0)
 st.dataframe(agg, width="stretch")
 
 # Grouped bar: mean RAGAS scores by condition, alongside the table above.
@@ -239,22 +246,23 @@ st.caption(
 col_a, col_b = st.columns(2)
 
 with col_a:
-    latency_means = df.groupby("condition")[["retrieval_ms", "generation_ms", "evaluation_ms"]].mean().reset_index()
-    latency_long = latency_means.melt(id_vars="condition", var_name="stage", value_name="ms")
+    latency_means = df.groupby("condition")[["retrieval_s", "generation_s", "evaluation_s"]].mean().reset_index()
+    latency_long = latency_means.melt(id_vars="condition", var_name="stage", value_name="s")
     latency_long["stage"] = latency_long["stage"].map(
-        {"retrieval_ms": "Retrieval", "generation_ms": "Generation", "evaluation_ms": "RAGAS Evaluation"}
+        {"retrieval_s": "Retrieval", "generation_s": "Generation", "evaluation_s": "RAGAS Evaluation"}
     )
     fig_lat = px.bar(
         latency_long,
         x="condition",
-        y="ms",
+        y="s",
         color="stage",
         category_orders={"condition": conditions_present, "stage": ["Retrieval", "Generation", "RAGAS Evaluation"]},
         color_discrete_map={"Retrieval": "#2a78d6", "Generation": "#eda100", "RAGAS Evaluation": "#e74c3c"},
         barmode="stack",
-        labels={"condition": "Condition", "ms": "Mean Latency (ms)", "stage": "Stage"},
+        labels={"condition": "Condition", "s": "Mean latency (s)", "stage": "Stage"},
         title="Mean Latency Breakdown by Condition",
     )
+    fig_lat.update_traces(hovertemplate="%{fullData.name}: %{y:.2f} s<extra></extra>")
     fig_lat.update_layout(height=380, **TRANSPARENT_LAYOUT)
     st.plotly_chart(fig_lat, width="stretch")
 
@@ -278,18 +286,18 @@ with col_b:
     fig_tok.update_layout(height=380, **TRANSPARENT_LAYOUT)
     st.plotly_chart(fig_tok, width="stretch")
 
-if "answer_faithfulness" in df.columns and "e2e_ms" in df.columns:
+if "answer_faithfulness" in df.columns and "e2e_s" in df.columns:
     st.markdown("**Latency vs. Answer Faithfulness**")
     fig2 = px.scatter(
-        df.dropna(subset=["answer_faithfulness", "e2e_ms"]),
-        x="e2e_ms",
+        df.dropna(subset=["answer_faithfulness", "e2e_s"]),
+        x="e2e_s",
         y="answer_faithfulness",
         color="condition",
         category_orders={"condition": conditions_present},
         color_discrete_map=CONDITION_COLORS,
         opacity=0.6,
         trendline="ols",
-        labels={"e2e_ms": "End-to-End Latency (ms)", "answer_faithfulness": "Answer Faithfulness"},
+        labels={"e2e_s": "End-to-end latency (s)", "answer_faithfulness": "Answer Faithfulness"},
         title="Latency vs. Faithfulness (all conditions)",
     )
     fig2.update_layout(height=680, **TRANSPARENT_LAYOUT)
@@ -322,9 +330,9 @@ CORRELATION_LABELS = {
     "answer_faithfulness": "Answer Faithfulness",
     "answer_correctness": "Answer Correctness",
     "hallucination_risk": "Hallucination Risk",
-    "retrieval_ms": "Retrieval Latency (ms)",
-    "generation_ms": "Generation Latency (ms)",
-    "e2e_ms": "E2E Latency (ms)",
+    "retrieval_ms": "Retrieval Latency",
+    "generation_ms": "Generation Latency",
+    "e2e_ms": "E2E Latency",
     "prompt_tokens": "Prompt Tokens",
     "completion_tokens": "Completion Tokens",
     "total_tokens": "Total Tokens",
