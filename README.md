@@ -139,7 +139,7 @@ The platform is organised into six stages, each mapped to a specific research qu
 - 2 × 2 factorial experiment runner with automated result logging
 
 ### 📊 Interactive Dashboard
-- Live metric time series for active query sessions, with results persisted across page interaction
+- Live Monitor results persist across page interaction, so expanding a chunk does not clear the answer
 - Benchmark Results page comparing the four conditions: summary statistics, effect sizes, risk profile, latency and token breakdown, and metric correlations
 - Retrieved document chunk viewer with colour-graded per-chunk similarity scores
 - Sankey diagram of the full pipeline process flow — every instrumented stage (embedding, retrieval sub-stages, generation, RAGAS evaluation) sized by actual wall-clock duration for a single query

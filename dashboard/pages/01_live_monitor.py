@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
 
 import pandas as pd
 import streamlit as st
 
 from config.settings import settings
 from dashboard.components.graph_view import render_retrieval_graph
-from dashboard.components.latency_chart import latency_time_series, pipeline_flow_sankey
+from dashboard.components.latency_chart import pipeline_flow_sankey
 from dashboard.components.metric_cards import (
     ragas_scorecard,
     similarity_meter_html,
@@ -35,7 +34,6 @@ def _answer_box(text: str) -> None:
 st.title(":material/monitor_heart: Live Monitor")
 st.caption("Submit a query and watch the full RAG pipeline execute in real time.")
 
-st.session_state.setdefault("session_history", [])
 st.session_state.setdefault("last_result", None)
 
 # ── Sidebar controls ──────────────────────────────────────────────────────────
@@ -78,12 +76,6 @@ with st.sidebar:
         height=180,
         placeholder="Used for answer_correctness computation.",
     )
-    if st.session_state.session_history:
-        st.divider()
-        if st.button("Clear Session History", icon=":material/delete_sweep:", width="stretch"):
-            st.session_state.session_history = []
-            st.session_state.last_result = None
-            st.rerun()
 
 # ── Query form ────────────────────────────────────────────────────────────────
 query_text = st.text_area(
@@ -159,14 +151,6 @@ if st.session_state.pipeline_running:
             "top_k": top_k,
             "run_eval": run_eval,
         }
-        st.session_state.session_history.append(
-            {
-                "timestamp_utc": datetime.now(UTC).isoformat(),
-                "retrieval_ms": result.retrieval_telemetry.get("retrieval_ms", 0),
-                "generation_ms": result.generation_response.generation_ms,
-                "e2e_ms": result.e2e_ms,
-            }
-        )
         st.session_state.pipeline_notice = "Query complete."
     except Exception as exc:
         st.session_state.pipeline_error = str(exc)
@@ -340,22 +324,5 @@ if st.session_state.last_result:
                   else f"dataset: {chunk.metadata.get('dataset', '?')}")
         with st.expander(f"Chunk {i} — {_where} | {chunk.chunk_id}"):
             st.markdown(chunk.text)
-
-    st.divider()
 else:
     st.info("Run a query above to see the generated answer, evaluation scores, and retrieved chunks.")
-    st.divider()
-
-# ── Session latency history ───────────────────────────────────────────────────
-st.subheader("Pipeline Latency Over Time")
-st.caption(
-    "Latency for queries run in **this dashboard session** only — not the full "
-    "telemetry store, which also contains past benchmark experiment runs."
-)
-if st.session_state.session_history:
-    hist_df = pd.DataFrame(st.session_state.session_history)
-    st.caption(
-        f"{len(hist_df)} quer{'y' if len(hist_df) == 1 else 'ies'} this session · "
-        f"mean end-to-end latency {hist_df['e2e_ms'].mean():.0f} ms"
-    )
-latency_time_series(st.session_state.session_history)

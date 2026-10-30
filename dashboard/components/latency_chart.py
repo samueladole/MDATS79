@@ -1,19 +1,14 @@
 """
 RAGScope — Latency Chart Components
 ======================================
-Plotly-based charts for visualising pipeline latency distributions
-and time series on the Streamlit dashboard.
+The pipeline flow Sankey: one query's stage-by-stage latency, drawn on the
+Live Monitor and Query Explorer pages.
 """
 
 from __future__ import annotations
 
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-
-PURPLE = "#522D80"
-TEAL = "#17a2b8"
-AMBER = "#f39c12"
 
 # Fixed per-stage colours for the pipeline flow Sankey — a stage is always
 # this same colour regardless of retrieval strategy, so e.g. "LLM Generation"
@@ -71,86 +66,6 @@ def _translucent(color: str, alpha: float = 0.35) -> str:
     hex_color = color.lstrip("#")
     r, g, b = (int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
     return f"rgba({r},{g},{b},{alpha})"
-
-
-def latency_time_series(records: list[dict]) -> None:
-    """
-    Render a time-series chart of end-to-end latency per query, overlaid
-    with the retrieval and generation stage breakdown for the same queries.
-
-    Callers are expected to pass a query-scoped set of records (e.g. the
-    current dashboard session's queries) — this function does not filter
-    or scope the input; it plots whatever it's given.
-    """
-    if not records:
-        st.info("No queries yet this session.")
-        return
-
-    df = pd.DataFrame(records)
-    if "timestamp_utc" not in df.columns:
-        st.warning("Telemetry records missing timestamps.")
-        return
-
-    required_cols = ["retrieval_ms", "generation_ms", "e2e_ms"]
-    missing_cols = [c for c in required_cols if c not in df.columns]
-    if missing_cols:
-        st.warning(f"Telemetry records missing: {', '.join(missing_cols)}.")
-        return
-
-    df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"])
-    df = df.sort_values("timestamp_utc").tail(200)
-
-    fig = go.Figure()
-
-    fig.add_trace(
-        go.Scatter(
-            x=df["timestamp_utc"],
-            y=df["retrieval_ms"],
-            name="Retrieval",
-            mode="lines+markers",
-            line=dict(color=TEAL, width=1.5),
-            marker=dict(size=6),
-            fill="tozeroy",
-            fillcolor="rgba(23,162,184,0.15)",
-            hovertemplate="Retrieval: %{y:.0f} ms<extra></extra>",
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df["timestamp_utc"],
-            y=df["generation_ms"],
-            name="Generation",
-            mode="lines+markers",
-            line=dict(color=PURPLE, width=1.5),
-            marker=dict(size=6),
-            fill="tozeroy",
-            fillcolor="rgba(82,45,128,0.15)",
-            hovertemplate="Generation: %{y:.0f} ms<extra></extra>",
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df["timestamp_utc"],
-            y=df["e2e_ms"],
-            name="End-to-End",
-            mode="lines+markers",
-            line=dict(color=AMBER, width=2, dash="dot"),
-            marker=dict(size=6),
-            hovertemplate="End-to-End: %{y:.0f} ms<extra></extra>",
-        )
-    )
-
-    fig.update_layout(
-        xaxis_title="Time (UTC)",
-        yaxis_title="Latency (ms)",
-        legend=dict(orientation="h", y=1.15),
-        height=350,
-        margin=dict(l=0, r=0, t=30, b=0),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        hovermode="x unified",
-    )
-    st.plotly_chart(fig, width="stretch")
 
 
 def _is_dark_theme() -> bool:

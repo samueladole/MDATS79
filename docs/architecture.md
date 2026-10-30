@@ -332,7 +332,7 @@ The dashboard is a four-page Streamlit application providing real-time and retro
 
 | Page | File | Purpose |
 |---|---|---|
-| Live Monitor | `01_live_monitor.py` | Submit queries interactively; results persist across reruns (e.g. expanding a chunk) instead of gating on button state; per-session (not global) latency history; per-query pipeline flow Sankey |
+| Live Monitor | `01_live_monitor.py` | Submit queries interactively; results persist across reruns (e.g. expanding a chunk) instead of gating on button state; the answer appears before evaluation finishes; per-query pipeline flow Sankey |
 | Query Explorer | `02_query_explorer.py` | Per-query drill-down: chunks, scores, latency decomposition, pipeline flow Sankey, raw JSON |
 | Benchmark Results | `03_benchmark_results.py` | Compares the four conditions from the benchmark CSVs: grouped bar of mean RAGAS scores, box plots, hallucination risk band distribution, Cohen's d effect-size chart, latency/token breakdown, Pearson correlation heatmap, per-dataset breakdown |
 | Knowledge Base | `04_knowledge_base.py` | A picker over every ChromaDB collection, then three tabs: **Chunks** (one table that browses, or ranks by semantic search when a query is typed, with a row-selected detail panel); **Upload documents**; **Knowledge graph** (an entity explorer drawn as a left-to-right DAG that re-centres on click, and a retrieval trace for a question using graph retrieval alone) |
@@ -342,7 +342,7 @@ Shared visualisation components live in `dashboard/components/`:
 | Component | Description |
 |---|---|
 | `metric_cards.py` | Modern colour-graded RAGAS scorecard tiles (icon, value, meter bar, quality badge); `similarity_meter_html()` for chunk similarity bars; 6-column telemetry row (adds Evaluation Latency) |
-| `latency_chart.py` | `latency_time_series()` for the session's latency history, and `pipeline_flow_sankey()` — a theme-aware Sankey diagram of one query's full stage-by-stage latency breakdown (Plotly) |
+| `latency_chart.py` | `pipeline_flow_sankey()` — a theme-aware Sankey diagram of one query's full stage-by-stage latency breakdown (Plotly) |
 | `graph_view.py` | Interactive DAGs in one visual language. `render_retrieval_graph()`: the path graph retrieval took for a query (query, seed entities, hops, chunks reached), on Live Monitor, Query Explorer and the Knowledge Base trace view. `entity_neighbourhood()` + `render_entity_graph()`: one entity, its related entities and their source chunks, for the Knowledge Base entity explorer |
 
 **Colour conventions used throughout the dashboard:**
