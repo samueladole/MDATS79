@@ -24,8 +24,8 @@ from evaluation.metrics import compare_conditions
 from telemetry.logger import get_telemetry_logger
 
 # pandas' Styler.background_gradient() needs matplotlib at runtime purely to
-# compute the colormap, and the production image deliberately doesn't ship it
-# (see docs/architecture_simplification_analysis.md §2) — so this table is
+# compute the colormap, and the production image deliberately doesn't ship
+# it, so this table is
 # coloured with the same hand-rolled red→amber→green interpolation used
 # everywhere else in the dashboard instead, via a plain Styler.apply().
 def _cohens_d_background(s: pd.Series) -> list[str]:

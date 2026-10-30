@@ -7,9 +7,8 @@ indexed corpus clusters in embedding space, for the Knowledge Base page.
 
 PCA is implemented directly with numpy's SVD rather than scikit-learn or
 UMAP, to avoid adding a heavy ML dependency for what is purely a dashboard
-visualisation aid (see docs/architecture_simplification_analysis.md for the
-project's broader stance on minimal dependencies — numpy is already a
-project dependency, scikit-learn/umap-learn are not).
+visualisation aid. numpy is already a project dependency;
+scikit-learn and umap-learn are not.
 """
 
 from __future__ import annotations
