@@ -205,7 +205,7 @@ A single benchmark dataset, **BioASQ**, is used for evaluation — accessed via 
 ragscope/
 │
 ├── README.md
-├── pyproject.toml                 # Project metadata & dependencies (uv); extras: graph, notebooks
+├── pyproject.toml                 # Project metadata & dependencies (uv); optional extra: graph
 ├── uv.lock                        # Pinned lockfile — commit this for reproducibility
 ├── .env.example                   # Default configuration: small models, CPU-only, embedded ChromaDB
 ├── .env.research.example          # The dissertation configuration (Llama 3, Mistral, Qwen2.5 7B judge)
@@ -214,11 +214,11 @@ ragscope/
 ├── LICENSE
 │
 ├── docker-compose.yml             # Orchestrates production services: app, chromadb (Ollama runs on the host, not a Compose service)
-├── docker-compose.override.yml    # Local dev overrides (hot-reload, volume mounts) + dev-only jupyter service
+├── docker-compose.override.yml    # Local dev overrides (hot-reload, source mount)
 │
 ├── docker/                        # Per-service Dockerfiles
 │   ├── app/
-│   │   └── Dockerfile             # RAGScope app image (Python 3.12, uv-installed deps); also reused by the dev jupyter service
+│   │   └── Dockerfile             # RAGScope app image (Python 3.12, uv-installed deps)
 │   └── scripts/
 │       └── entrypoint.sh          # Container startup: waits for host Ollama + ChromaDB to be reachable
 │
@@ -292,11 +292,6 @@ ragscope/
 │   ├── run_2x2_factorial.py       # Full 2×2 factorial experiment runner
 │   ├── analyse_results.py         # Statistical analysis (Cohen's d, etc.)
 │   └── results/                   # Experiment output CSVs (git-ignored)
-│
-├── notebooks/                     # Exploratory analysis notebooks (uv sync --extra notebooks)
-│   ├── 01_dataset_exploration.ipynb
-│   ├── 02_retrieval_strategy_comparison.ipynb
-│   └── 03_hallucination_analysis.ipynb
 │
 ├── tests/                         # Unit and integration tests (uv run pytest)
 │
@@ -447,7 +442,7 @@ docker compose down -v       # Stops and removes all volumes (full reset)
 
 ### Option B — Local with uv
 
-Use this path for active development or when you need to run notebooks interactively.
+Use this path for active development, or to run without Docker.
 
 **1. Clone and enter the repository**
 
@@ -777,13 +772,9 @@ The `docker-compose.yml` defines two services:
 | Service | Image | Port | Role |
 |---|---|:---:|---|
 | `ragscope` | `./docker/app/Dockerfile` | 8501 | Main application (pipeline + dashboard) |
-| `chromadb` | `chromadb/chroma:latest` | 8000 | Persistent vector store |
+| `chromadb` | `chromadb/chroma:1.5.9` | 8000 | Persistent vector store |
 
-The `docker-compose.override.yml` (dev mode) adds hot-reload volume mounts to `ragscope` and adds one new service:
-
-| Service | Image | Port | Role |
-|---|---|:---:|---|
-| `jupyter` *(dev only)* | `./docker/app/Dockerfile`, target `jupyter` (separate image, not `ragscope:latest`) | 8888 | Interactive notebook environment for exploratory analysis. `jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets` are baked into this image at **build** time via a dedicated Dockerfile stage — not installed at container start — so `docker compose up` never re-downloads them. |
+The `docker-compose.override.yml` (dev mode) adds a source mount and hot reload to `ragscope`; it adds no services.
 
 ### Common Commands
 
@@ -827,14 +818,14 @@ The override also enables Streamlit's `--server.runOnSave` flag, so the dashboar
 
 ### Dockerfile Summary
 
-`docker/app/Dockerfile` (used by both the `ragscope` and dev-only `jupyter` services) is a two-stage build:
+`docker/app/Dockerfile` (used by the `ragscope` service) is a two-stage build:
 
 ```dockerfile
 # Stage 1 — builder: uv-managed dependency install (cached unless pyproject.toml / uv.lock change)
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 RUN apt-get install -y build-essential gcc g++ zlib1g-dev   # native deps for some packages
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project --no-dev           # deps only, no notebooks extra
+RUN uv sync --frozen --no-install-project --no-dev           # deps only, no optional extras
 COPY . .
 RUN uv sync --frozen --no-dev                                 # then install the project itself
 
@@ -848,7 +839,7 @@ HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 ENTRYPOINT ["/entrypoint.sh"]   # waits for chromadb + host Ollama, then starts Streamlit
 ```
 
-> The `--frozen` flag ensures Docker builds are fully reproducible: the exact versions pinned in `uv.lock` are installed, and the build will fail if the lockfile is out of sync with `pyproject.toml`. The production image deliberately does **not** install the `notebooks` extra (`jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets`) — a separate `builder-notebooks` → `jupyter` stage pair (not shown above) builds those into a distinct image for the dev-only `jupyter` service instead, baked in at build time rather than installed at container start. Both `docker-compose.yml` and `docker-compose.override.yml` pin an explicit `target:` for their respective services, since Docker builds the last stage in a Dockerfile by default when none is given.
+> The `--frozen` flag ensures Docker builds are fully reproducible: the exact versions pinned in `uv.lock` are installed, and the build will fail if the lockfile is out of sync with `pyproject.toml`. The image does not install the optional `graph` extra (docling-graph), which is needed only to build the knowledge graph, not to query it.
 
 ---
 
@@ -910,7 +901,6 @@ Cohen's *d* thresholds: |*d*| < 0.20 negligible, 0.20–0.49 small, 0.50–0.79 
 Full results and analysis:
 
 - Chapter 4 of the dissertation (submitted September 2026)
-- `notebooks/03_hallucination_analysis.ipynb`
 - `experiments/results/`: the benchmark CSV, the analysis report and the figures. This folder is git-ignored; [Running the Benchmark Evaluation](#running-the-benchmark-evaluation) regenerates it.
 
 ---

@@ -98,17 +98,16 @@ The system integrates five concerns into a single cohesive platform:
 
 ## Service Layer (Docker)
 
-The platform is composed of two production Docker services orchestrated via `docker-compose.yml`, plus one development-only service defined in `docker-compose.override.yml`:
+The platform is composed of two Docker services orchestrated via `docker-compose.yml`; `docker-compose.override.yml` adds a source mount and hot reload to `ragscope` for development but no further services:
 
 | Service | Image | Port | Responsibility |
 |---|---|:---:|---|
-| `chromadb` | `chromadb/chroma:latest` | 8000 | Persistent vector store (embedding storage and ANN search) |
+| `chromadb` | `chromadb/chroma:1.5.9` | 8000 | Persistent vector store (embedding storage and ANN search) |
 | `ragscope` | `docker/app/Dockerfile` (target `app`) | 8501 | Main application (pipeline + evaluation + dashboard) |
-| `jupyter` *(dev only)* | `docker/app/Dockerfile` (target `jupyter`) | 8888 | Notebook server for exploratory analysis; only started via the override file |
 
-`docker/app/Dockerfile` is a multi-stage build with two runtime targets sharing one `builder` stage: `app` (production — no notebook dependencies) and `jupyter` (a separate `builder-notebooks` stage syncs the `notebooks` extra, then the `jupyter` runtime stage copies that venv instead of the lean one). Both `docker-compose.yml`'s `ragscope` service and `docker-compose.override.yml`'s `jupyter` service pin an explicit `target:` — Docker builds the *last* stage in the file when no target is given, so once a second runtime stage was added after `app`, leaving `target:` unset on the `ragscope` service would have silently built the wrong (larger, notebook-bundled) stage as the production image. `jupyterlab`/`matplotlib`/`seaborn`/`ipywidgets` are therefore baked in at **build** time for the `jupyter` target — cached like any other Docker layer, so `docker compose up` never re-downloads them — rather than `pip install`-ed at container start, which was tried first but re-ran the full install on every container start since nothing cached it.
+`docker/app/Dockerfile` is a two-stage build: a `builder` stage installs the locked dependencies with uv (without optional extras), and the slim `app` stage copies the resulting virtual environment and runs the dashboard. The CPU-only PyTorch build is selected for Linux in `pyproject.toml`, so the image carries no CUDA libraries.
 
-Ollama is deliberately **not** a Docker service. It runs on the host machine — the operator pulls the required models there once (`ollama pull llama3`, `ollama pull mistral`) before starting the stack — and the `ragscope` (and `jupyter`) containers reach it at `http://host.docker.internal:11434` via the `extra_hosts: host.docker.internal:host-gateway` entry in the compose file. This keeps LLM inference on host compute without an extra virtualisation layer, at the cost of the host needing Ollama installed and running independently of `docker compose up`.
+Ollama is deliberately **not** a Docker service. It runs on the host machine — the operator pulls the required models there once (`ollama pull llama3`, `ollama pull mistral`) before starting the stack — and the `ragscope` container reaches it at `http://host.docker.internal:11434` via the `extra_hosts: host.docker.internal:host-gateway` entry in the compose file. This keeps LLM inference on host compute without an extra virtualisation layer, at the cost of the host needing Ollama installed and running independently of `docker compose up`.
 
 Services communicate over an internal bridge network (`ragscope_net`). The `ragscope` service depends on `chromadb` reaching a healthy state before starting, enforced by a Docker Compose `condition: service_healthy` dependency declaration. It does **not** wait on an Ollama container (there isn't one) — instead, `docker/scripts/entrypoint.sh` polls the host's Ollama HTTP API directly and fails fast with a diagnostic message if no model is available there.
 
