@@ -139,6 +139,26 @@ class RAGResult:
         return "\n".join(lines)
 
 
+@dataclass
+class DraftAnswer:
+    """An answer that has been generated but not yet evaluated or logged.
+
+    Returned by ``RAGPipeline.answer`` and consumed by ``RAGPipeline.evaluate``.
+    ``elapsed_ms`` is the wall-clock time of retrieval plus generation.
+    """
+
+    query: str
+    chunks: list[RetrievedChunk]
+    retrieval_telemetry: dict
+    generation_response: GenerationResponse
+    token_usage: TokenUsage
+    elapsed_ms: float
+
+    @property
+    def answer(self) -> str:
+        return self.generation_response.text
+
+
 # ── Pipeline ──────────────────────────────────────────────────────────────────
 
 
@@ -216,6 +236,10 @@ class RAGPipeline:
         """
         Execute a full RAG query and return a structured result.
 
+        Equivalent to ``evaluate(answer(query_text), ...)``. Callers that want
+        to show the answer before the slow evaluation stage finishes call the
+        two halves themselves.
+
         Parameters
         ----------
         query_text   : The user question.
@@ -227,13 +251,19 @@ class RAGPipeline:
         -------
         RAGResult
         """
-        with Timer("e2e") as e2e_timer:
+        draft = self.answer(query_text, ground_truth=ground_truth)
+        return self.evaluate(
+            draft, ground_truth=ground_truth, query_id=query_id, query_type=query_type
+        )
+
+    def answer(self, query_text: str, ground_truth: str | None = None) -> DraftAnswer:
+        """Retrieve context and generate an answer, without evaluating it."""
+        with Timer("answer") as answer_timer:
             # ── Step 1: Retrieve ───────────────────────────────────────────────
-            with Timer("retrieval") as _r:
-                chunks, retrieval_tel = self._retriever.retrieve(
-                    query=query_text,
-                    top_k=self.top_k,
-                )
+            chunks, retrieval_tel = self._retriever.retrieve(
+                query=query_text,
+                top_k=self.top_k,
+            )
             logger.info(
                 f"Retrieved {len(chunks)} chunks in {retrieval_tel['retrieval_ms']:.1f} ms."
             )
@@ -255,46 +285,68 @@ class RAGPipeline:
             # ── Step 3: Token usage ───────────────────────────────────────────
             token_usage = self._token_counter.from_generation_response(gen_response)
 
-            # ── Step 4: Evaluate ──────────────────────────────────────────────
-            ctx_rel = faith = correctness = risk = None
-            with Timer("evaluation") as eval_timer:
-                if self._ragas and chunks:
-                    scores = self._ragas.evaluate(
-                        query=query_text,
-                        answer=gen_response.text,
-                        contexts=[c.text for c in chunks],
-                        ground_truth=ground_truth,
-                    )
-                    ctx_rel = scores.get("context_relevance")
-                    faith = scores.get("answer_faithfulness")
-                    correctness = scores.get("answer_correctness")
-                    risk = compute_hallucination_risk(
-                        faithfulness=faith,
-                        context_relevance=ctx_rel,
-                    )
-            evaluation_ms = eval_timer.elapsed_ms if self._ragas else 0.0
+        return DraftAnswer(
+            query=query_text,
+            chunks=chunks,
+            retrieval_telemetry=retrieval_tel,
+            generation_response=gen_response,
+            token_usage=token_usage,
+            elapsed_ms=answer_timer.elapsed_ms,
+        )
 
-        e2e_ms = e2e_timer.elapsed_ms
+    def evaluate(
+        self,
+        draft: DraftAnswer,
+        ground_truth: str | None = None,
+        query_id: str | None = None,
+        query_type: str = "unknown",
+    ) -> RAGResult:
+        """Score a draft answer, persist its telemetry record and return the result."""
+        chunks = draft.chunks
+        gen_response = draft.generation_response
+
+        # ── Step 4: Evaluate ──────────────────────────────────────────────────
+        ctx_rel = faith = correctness = risk = None
+        with Timer("evaluation") as eval_timer:
+            if self._ragas and chunks:
+                scores = self._ragas.evaluate(
+                    query=draft.query,
+                    answer=gen_response.text,
+                    contexts=[c.text for c in chunks],
+                    ground_truth=ground_truth,
+                )
+                ctx_rel = scores.get("context_relevance")
+                faith = scores.get("answer_faithfulness")
+                correctness = scores.get("answer_correctness")
+                risk = compute_hallucination_risk(
+                    faithfulness=faith,
+                    context_relevance=ctx_rel,
+                )
+        evaluation_ms = eval_timer.elapsed_ms if self._ragas else 0.0
+
+        # e2e_ms covers retrieval + generation + evaluation. It is the sum of
+        # the two halves' own timers, not the wall clock between them, so time
+        # a caller spends between answer() and evaluate() (the dashboard
+        # rendering the answer) is not counted as pipeline latency. RAGAS
+        # evaluation can dominate total latency, and leaving it out would
+        # silently understate e2e_ms.
+        e2e_ms = round(draft.elapsed_ms + eval_timer.elapsed_ms, 2)
 
         # ── Step 5: Build + persist telemetry record ──────────────────────────
-        # e2e_ms is passed through from the timer that wraps the whole method
-        # (retrieval + generation + evaluation) rather than recomputed from
-        # retrieval_ms + generation_ms alone — RAGAS evaluation can dominate
-        # total latency, and omitting it here would silently understate e2e_ms.
         record = build_record(
             query_id=query_id,
-            query=query_text,
+            query=draft.query,
             dataset=self.dataset,
             query_type=query_type,
             llm_model=self.llm_model,
             retrieval_strategy=self.retrieval_strategy,
             retrieved_chunks=chunks,
-            retrieval_telemetry=retrieval_tel,
+            retrieval_telemetry=draft.retrieval_telemetry,
             answer=gen_response.text,
             generation_ms=gen_response.generation_ms,
             evaluation_ms=evaluation_ms,
             e2e_ms=e2e_ms,
-            token_usage=token_usage,
+            token_usage=draft.token_usage,
             context_relevance=ctx_rel,
             answer_faithfulness=faith,
             answer_correctness=correctness,
@@ -305,12 +357,12 @@ class RAGPipeline:
         tel_path = self._tel_logger.log(record)
 
         return RAGResult(
-            query=query_text,
+            query=draft.query,
             answer=gen_response.text,
             retrieved_chunks=chunks,
-            retrieval_telemetry=retrieval_tel,
+            retrieval_telemetry=draft.retrieval_telemetry,
             generation_response=gen_response,
-            token_usage=token_usage,
+            token_usage=draft.token_usage,
             context_relevance=ctx_rel,
             answer_faithfulness=faith,
             answer_correctness=correctness,

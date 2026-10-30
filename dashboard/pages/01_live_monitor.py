@@ -21,6 +21,16 @@ from dashboard.components.metric_cards import (
     similarity_meter_html,
     telemetry_row,
 )
+
+
+def _answer_box(text: str) -> None:
+    st.markdown(
+        f'<div style="background:rgba(82,45,128,0.08);padding:1rem;'
+        f'border-left:4px solid #522D80;border-radius:4px;">{text}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 st.title(":material/monitor_heart: Live Monitor")
 st.caption("Submit a query and watch the full RAG pipeline execute in real time.")
 
@@ -101,15 +111,24 @@ if st.session_state.pipeline_running:
     from pipeline.rag import RAGPipeline
 
     try:
-        with st.spinner("Running RAG pipeline …"):
+        with st.spinner("Retrieving context and generating the answer …"):
             pipeline = RAGPipeline(
                 llm_model=llm_choice,
                 retrieval_strategy=retrieval_choice,
                 top_k=top_k,
                 run_evaluation=run_eval,
             )
-            result = pipeline.query(
-                query_text=query_text,
+            draft = pipeline.answer(query_text, ground_truth=ground_truth.strip() or None)
+        # Evaluation is most of the wait (three judge-model calls), so the
+        # answer is shown as soon as it exists rather than after scoring.
+        if run_eval:
+            st.subheader("Generated Answer")
+            _answer_box(draft.answer)
+        with st.spinner(
+            "Scoring the answer with RAGAS …" if run_eval else "Saving telemetry …"
+        ):
+            result = pipeline.evaluate(
+                draft,
                 ground_truth=ground_truth.strip() or None,
                 query_type=query_type_choice,
             )
@@ -241,11 +260,7 @@ if st.session_state.last_result:
 
     # ── Answer ────────────────────────────────────────────────────────────────
     st.subheader("Generated Answer")
-    st.markdown(
-        f'<div style="background:rgba(82,45,128,0.08);padding:1rem;'
-        f'border-left:4px solid #522D80;border-radius:4px;">{result.answer}</div>',
-        unsafe_allow_html=True,
-    )
+    _answer_box(result.answer)
     st.divider()
 
     # ── RAGAS Scores ──────────────────────────────────────────────────────────

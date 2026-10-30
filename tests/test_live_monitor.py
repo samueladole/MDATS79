@@ -42,12 +42,13 @@ def _result(query: str):
 
 @pytest.fixture
 def stub_pipeline(monkeypatch):
-    """Replace RAGPipeline. ``mode`` selects how the stub's query() behaves:
+    """Replace RAGPipeline. ``mode`` selects how the stub behaves:
 
-    - "ok":    returns a result
-    - "error": raises, as a failed Ollama call would
-    - "stop":  calls st.stop() — freezes the page mid-run, so the test can
-               inspect exactly what was rendered while the pipeline was busy
+    - "ok":           returns a result
+    - "error":        answer() raises, as a failed Ollama call would
+    - "stop":         answer() calls st.stop() — freezes the page mid-run, so
+                      the test can inspect what was rendered while it was busy
+    - "stop_in_eval": freezes the page during evaluation instead
     """
     calls = {"n": 0, "mode": "ok"}
 
@@ -55,7 +56,7 @@ def stub_pipeline(monkeypatch):
         def __init__(self, *args, **kwargs):
             pass
 
-        def query(self, query_text, **kwargs):
+        def answer(self, query_text, **kwargs):
             import streamlit as st
 
             calls["n"] += 1
@@ -63,7 +64,16 @@ def stub_pipeline(monkeypatch):
                 st.stop()
             if calls["mode"] == "error":
                 raise RuntimeError("ollama unreachable")
-            return _result(query_text)
+            from types import SimpleNamespace
+
+            return SimpleNamespace(query=query_text, answer="stub answer")
+
+        def evaluate(self, draft, **kwargs):
+            import streamlit as st
+
+            if calls["mode"] == "stop_in_eval":
+                st.stop()
+            return _result(draft.query)
 
     import pipeline.rag
 
@@ -129,3 +139,12 @@ class TestRunButton:
         assert stub_pipeline["n"] == 0
         assert at.button(key=BUTTON).disabled is False
         assert any("enter a query" in w.value for w in at.warning)
+
+
+class TestAnswerBeforeEvaluation:
+    def test_answer_is_shown_while_evaluation_runs(self, stub_pipeline):
+        """Evaluation is most of the wait; the answer must not wait for it."""
+        stub_pipeline["mode"] = "stop_in_eval"
+        at = _submit(_app())
+        assert any("stub answer" in m.value for m in at.markdown)
+        assert at.button(key=BUTTON).disabled is True
