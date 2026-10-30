@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,7 +49,15 @@ class Settings(BaseSettings):
     )
     default_llm: str = Field(
         default="llama3",
-        description="Default LLM model name for interactive queries.",
+        description="Default generator model for interactive queries. Must be in GENERATOR_MODELS.",
+    )
+    generator_models: str = Field(
+        default="llama3,mistral",
+        description=(
+            "Comma-separated Ollama model tags offered as generators in the dashboard "
+            "and CLI. llama3 and mistral are the dissertation models; any other tag "
+            "(e.g. llama3.2:3b) works with the generic prompt."
+        ),
     )
 
     # ── Retrieval ──────────────────────────────────────────────────────────────
@@ -171,13 +179,21 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator("default_llm")
-    @classmethod
-    def validate_default_llm(cls, v: str) -> str:
-        allowed = {"llama3", "mistral"}
-        if v not in allowed:
-            raise ValueError(f"default_llm must be one of {allowed}, got '{v}'")
-        return v
+    @property
+    def generator_model_list(self) -> list[str]:
+        """GENERATOR_MODELS as a list, in the order given."""
+        return [m.strip() for m in self.generator_models.split(",") if m.strip()]
+
+    @model_validator(mode="after")
+    def validate_default_llm(self) -> Settings:
+        models = self.generator_model_list
+        if not models:
+            raise ValueError("GENERATOR_MODELS must name at least one model")
+        if self.default_llm not in models:
+            raise ValueError(
+                f"DEFAULT_LLM '{self.default_llm}' is not in GENERATOR_MODELS {models}"
+            )
+        return self
 
     @field_validator("chroma_mode")
     @classmethod

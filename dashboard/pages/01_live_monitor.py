@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 import pandas as pd
 import streamlit as st
 
+from config.settings import settings
 from dashboard.components.graph_view import render_retrieval_graph
 from dashboard.components.latency_chart import latency_time_series, pipeline_flow_sankey
 from dashboard.components.metric_cards import (
@@ -40,7 +41,11 @@ st.session_state.setdefault("last_result", None)
 # ── Sidebar controls ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.subheader("Pipeline Configuration")
-    llm_choice = st.selectbox("LLM Model", ["llama3", "mistral"], index=0)
+    _models = settings.generator_model_list
+    llm_choice = st.selectbox(
+        "LLM Model", _models, index=_models.index(settings.default_llm),
+        help="Set the choices with GENERATOR_MODELS in .env.",
+    )
     retrieval_choice = st.selectbox(
         "Retrieval Strategy", ["hybrid", "dense", "graph"], index=0,
         help="graph: seeds entities from the query, traverses the knowledge "

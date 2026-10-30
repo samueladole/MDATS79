@@ -105,3 +105,36 @@ class TestEmbeddingGeneratorInterface:
         # We can't call the actual model in unit tests, so just verify
         # the module-level singleton is None before first call.
         assert emb_mod._generator is None
+
+
+class TestGeneratorModels:
+    """GENERATOR_MODELS lets a CPU machine use small models without code changes."""
+
+    def test_list_is_parsed_in_order(self):
+        from config.settings import Settings
+
+        s = Settings(generator_models=" llama3.2:3b , qwen2.5:3b ", default_llm="qwen2.5:3b")
+        assert s.generator_model_list == ["llama3.2:3b", "qwen2.5:3b"]
+
+    def test_default_must_be_offered(self):
+        from pydantic import ValidationError
+
+        from config.settings import Settings
+
+        with pytest.raises(ValidationError, match="not in GENERATOR_MODELS"):
+            Settings(generator_models="llama3.2:3b", default_llm="llama3")
+
+    def test_research_models_keep_their_own_prompt_templates(self):
+        from pipeline.generation import build_llm_client
+        from pipeline.generation.llama3 import Llama3Client
+        from pipeline.generation.mistral import MistralClient
+
+        assert type(build_llm_client("llama3")) is Llama3Client
+        assert type(build_llm_client("mistral")) is MistralClient
+
+    def test_any_other_tag_gets_the_generic_client(self):
+        from pipeline.generation import OllamaClient, build_llm_client
+
+        client = build_llm_client("llama3.2:3b")
+        assert isinstance(client, OllamaClient)
+        assert client.model_name == "llama3.2:3b"

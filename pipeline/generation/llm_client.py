@@ -2,7 +2,7 @@
 RAGScope — LLM Client Base
 ============================
 Base class and shared logic for all LLM generation backends.
-Concrete implementations (Llama3Client, MistralClient) inherit from this.
+Concrete implementations (Llama3Client, MistralClient, OllamaClient) inherit from this.
 
 All clients communicate with the Ollama HTTP API, which serves models
 locally. No external API keys or network calls leave the research environment.

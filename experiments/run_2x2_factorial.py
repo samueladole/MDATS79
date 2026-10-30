@@ -65,7 +65,7 @@ def main(
         help="Conditions to run: 'all' or comma-separated e.g. 'llama3_dense,mistral_hybrid'",
     ),
     llm: str = typer.Option(
-        "", help="LLM for single-condition run: llama3 | mistral (overrides --conditions)"
+        "", help="Ollama model tag for a single-condition run, e.g. llama3 (overrides --conditions)"
     ),
     retrieval: str = typer.Option(
         "", help="Retrieval for single-condition run: dense | hybrid (overrides --conditions)"
@@ -93,7 +93,9 @@ def main(
     else:
         selected_conditions = []
         for token in conditions.split(","):
-            parts = token.strip().split("_")
+            # Split on the LAST underscore: model tags may contain '.', ':' and
+            # '_' (llama3.2:3b), strategy names never do.
+            parts = token.strip().rsplit("_", 1)
             if len(parts) == 2:
                 selected_conditions.append((parts[0], parts[1]))
 

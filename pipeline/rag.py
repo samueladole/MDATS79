@@ -37,9 +37,7 @@ from loguru import logger
 
 from config.settings import settings
 from pipeline.embeddings import get_embedding_generator
-from pipeline.generation.llama3 import Llama3Client
-from pipeline.generation.llm_client import BaseLLMClient, GenerationResponse
-from pipeline.generation.mistral import MistralClient
+from pipeline.generation import BaseLLMClient, GenerationResponse, build_llm_client
 from pipeline.retrieval import BaseRetriever, build_retriever
 from pipeline.vectorstore import RetrievedChunk, get_vector_store
 from telemetry.logger import TelemetryLogger, build_record, get_telemetry_logger
@@ -57,7 +55,6 @@ except ImportError:
     _RAGAS_AVAILABLE = False
 
 
-LLMChoice = Literal["llama3", "mistral"]
 RetrievalChoice = Literal["dense", "hybrid", "graph"]
 
 app = typer.Typer(add_completion=False)
@@ -168,7 +165,7 @@ class RAGPipeline:
 
     Parameters
     ----------
-    llm_model          : ``"llama3"`` or ``"mistral"``.
+    llm_model          : Ollama model tag. Defaults to ``settings.default_llm``.
     retrieval_strategy : ``"dense"`` or ``"hybrid"``.
     top_k              : Number of chunks to retrieve per query.
     run_evaluation     : Whether to run RAGAS metrics after generation.
@@ -179,7 +176,7 @@ class RAGPipeline:
 
     def __init__(
         self,
-        llm_model: LLMChoice = "llama3",
+        llm_model: str | None = None,
         retrieval_strategy: RetrievalChoice = "hybrid",
         top_k: int | None = None,
         run_evaluation: bool = True,
@@ -187,6 +184,7 @@ class RAGPipeline:
         dataset: str = "interactive",
         experiment_id: str | None = None,
     ) -> None:
+        llm_model = llm_model or settings.default_llm
         self.llm_model = llm_model
         self.retrieval_strategy = retrieval_strategy
         self.top_k = top_k or settings.top_k
@@ -197,7 +195,7 @@ class RAGPipeline:
         self._token_counter = TokenCounter()
 
         # ── LLM client ────────────────────────────────────────────────────────
-        self._llm: BaseLLMClient = Llama3Client() if llm_model == "llama3" else MistralClient()
+        self._llm: BaseLLMClient = build_llm_client(llm_model)
         logger.info(f"LLM client: {self._llm}")
 
         # ── Retriever ─────────────────────────────────────────────────────────
@@ -394,7 +392,7 @@ def _risk_label(v: float | None) -> str:
 @app.command()
 def main(
     query: str = typer.Argument(..., help="The question to ask the RAG system."),
-    llm: LLMChoice = typer.Option("llama3", help="LLM model: llama3 | mistral"),
+    llm: str = typer.Option("", help="Ollama model tag, e.g. llama3, mistral, llama3.2:3b. Defaults to DEFAULT_LLM."),
     retrieval: RetrievalChoice = typer.Option("hybrid", help="Retrieval strategy: dense | hybrid"),
     top_k: int = typer.Option(5, help="Number of chunks to retrieve."),
     ground_truth: str = typer.Option("", help="Optional reference answer for evaluation."),
@@ -405,7 +403,7 @@ def main(
     logger.add(sys.stderr, level="INFO", format="{time:HH:mm:ss} | {level:<8} | {message}")
 
     pipeline = RAGPipeline(
-        llm_model=llm,
+        llm_model=llm or None,
         retrieval_strategy=retrieval,
         top_k=top_k,
         run_evaluation=not no_eval,
