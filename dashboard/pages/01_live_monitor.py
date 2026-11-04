@@ -18,6 +18,7 @@ from dashboard.components.graph_view import render_retrieval_graph
 from dashboard.components.latency_chart import pipeline_flow_sankey
 from dashboard.components.metric_cards import ragas_scorecard, telemetry_row
 from dashboard.components.passages import answer_html, render_passages
+from pipeline.knowledge_base import get_knowledge_base
 
 
 def _answer_box(text: str) -> None:
@@ -49,13 +50,15 @@ with st.sidebar:
         "LLM Model", _models, index=_models.index(settings.default_llm),
         help="Set the choices with GENERATOR_MODELS in .env.",
     )
+    _has_graph = get_knowledge_base(knowledge_base).has_graph
     retrieval_choice = st.selectbox(
         "Retrieval Strategy",
-        ["hybrid", "dense", "graph"] if knowledge_base == "bioasq" else ["hybrid", "dense"],
+        ["hybrid", "dense", "graph"] if _has_graph else ["hybrid", "dense"],
         index=0,
         help="graph: seeds entities from the query, traverses the knowledge "
-             "graph, and fuses the result with dense retrieval. Only the BioASQ "
-             "benchmark has a knowledge graph.",
+             "graph, and fuses the result with dense retrieval. It is offered once "
+             "a knowledge graph has been built for the selected knowledge base "
+             "(Knowledge Base page → Knowledge graph).",
     )
     query_type_choice = st.selectbox(
         "Query Type",

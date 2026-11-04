@@ -70,12 +70,60 @@ class TestPublish:
         assert m["published"] is False
         assert builder.GRAPH_PATH.read_text() == "LIVE"
 
+    def test_never_replaces_a_graph_with_an_empty_one(self, builder):
+        builder.GRAPH_PATH.write_text("LIVE")
+        builder.MANIFEST_PATH.write_text(json.dumps({"chunks_ok": 298}))
+        m = builder.publish(["1::chunk_0", "2::chunk_0"], corpus_size=2, label="sample",
+                            force=True)  # --publish-only with nothing saved
+        assert m["published"] is False
+        assert builder.GRAPH_PATH.read_text() == "LIVE"
+
     def test_a_finished_build_always_publishes(self, builder):
         builder.GRAPH_PATH.write_text("LIVE")
         builder.MANIFEST_PATH.write_text(json.dumps({"chunks_ok": 298}))
         _save(builder, "1::chunk_0", ["Aspirin"])
         builder.publish(["1::chunk_0"], corpus_size=1, label="all")
         assert builder.GRAPH_PATH.read_text() != "LIVE"
+
+
+class TestSample:
+    def test_even_stride_length_filter_and_file_order(self, tmp_path):
+        import builder_config
+
+        corpus = tmp_path / "corpus.jsonl"
+        # 300 rows -> stride 18; every third sampled row is too short to keep.
+        rows = [{"id": f"{i}::chunk_0", "text": ("short" if i % 54 == 0 else "x" * 300)}
+                for i in range(300)]
+        corpus.write_text("".join(json.dumps(r) + "\n" for r in rows))
+        picked = builder_config.select_sample(10, corpus)
+        assert len(picked) == 10
+        assert all(200 < len(text) < 2000 for _, text in picked)
+        stems = [cid.replace("::", "__") for cid, _ in picked]
+        assert stems == sorted(stems)
+        assert picked == builder_config.select_sample(10, corpus)  # deterministic
+
+
+class TestKnowledgeBaseScope:
+    def test_documents_build_uses_its_own_corpus_and_folder(self, tmp_path, monkeypatch):
+        import build_graph as bg
+
+        from pipeline.knowledge_base import KnowledgeBase
+
+        kb = KnowledgeBase(
+            name="documents", label="My documents", collection="t_docs",
+            bm25_path=tmp_path / "bm25_documents.jsonl", manifest_path=tmp_path / "m.json",
+            graph_path=tmp_path / "graph" / "documents" / "graph.json",
+            node_chunks_path=tmp_path / "graph" / "documents" / "node_to_chunks.json",
+        )
+        kb.bm25_path.write_text(json.dumps({"id": "doc-1-p1::chunk_0", "text": "Aspirin."}) + "\n")
+        monkeypatch.setattr("pipeline.knowledge_base.get_knowledge_base", lambda name: kb)
+        for name in ("CORPUS_PATH", "GRAPH_PATH", "NODE_CHUNKS_PATH", "MANIFEST_PATH",
+                     "EXTRACTIONS_DIR", "WORK_DIR"):
+            monkeypatch.setattr(bg, name, getattr(bg, name))  # restored after the test
+        bg.use_knowledge_base("documents")
+        assert kb.graph_path == bg.GRAPH_PATH
+        assert kb.graph_dir / "extractions" == bg.EXTRACTIONS_DIR
+        assert bg.target_chunks(all_chunks=True) == [("doc-1-p1::chunk_0", "Aspirin.")]
 
 
 class TestClearGraph:
@@ -106,9 +154,14 @@ class TestClearDocuments:
 
         kb = KnowledgeBase(name="documents", label="My documents", collection="t_docs",
                            bm25_path=tmp_path / "bm25.jsonl",
-                           manifest_path=tmp_path / "manifest.json", supports_graph=False)
+                           manifest_path=tmp_path / "manifest.json",
+                           graph_path=tmp_path / "graph" / "graph.json",
+                           node_chunks_path=tmp_path / "graph" / "node_to_chunks.json")
         kb.bm25_path.write_text("x")
         kb.manifest_path.write_text("{}")
+        kb.graph_dir.mkdir()
+        kb.graph_path.write_text("{}")
+        (kb.graph_dir / "extractions").mkdir()
 
         class Store:
             was_reset = False
@@ -128,7 +181,48 @@ class TestClearDocuments:
         report = maintenance.clear_documents()
         assert Store.was_reset
         assert not kb.bm25_path.exists() and not kb.manifest_path.exists()
+        assert not kb.graph_dir.exists(), "the documents graph goes with its chunks"
         assert files.exists() and "153 chunks" in report.removed[0]
+
+
+class TestBackgroundBuild:
+    @pytest.fixture
+    def kb(self, tmp_path):
+        from pipeline.knowledge_base import KnowledgeBase
+
+        return KnowledgeBase(
+            name="documents", label="My documents", collection="t_docs",
+            bm25_path=tmp_path / "bm25.jsonl", manifest_path=tmp_path / "m.json",
+            graph_path=tmp_path / "graph" / "graph.json",
+            node_chunks_path=tmp_path / "graph" / "node_to_chunks.json",
+        )
+
+    def test_a_stale_pid_file_is_not_a_running_build(self, kb):
+        from pipeline import graph_jobs
+
+        kb.graph_dir.mkdir()
+        (kb.graph_dir / "build.pid").write_text("999999999")
+        assert graph_jobs.running_pid(kb) is None
+        assert graph_jobs.stop_build(kb) is False
+
+    def test_progress_counts_saved_extractions_for_this_corpus(self, kb):
+        from pipeline import graph_jobs
+
+        kb.bm25_path.write_text("".join(json.dumps({"id": f"d{i}::chunk_0", "text": "t"}) + "\n"
+                                        for i in range(4)))
+        (kb.graph_dir / "extractions").mkdir(parents=True)
+        for name in ("d0__chunk_0", "d1__chunk_0", "removed-file__chunk_0"):
+            (kb.graph_dir / "extractions" / f"{name}.json").write_text("{}")
+        status = graph_jobs.build_status(kb)
+        assert (status.extracted, status.total, status.running) == (2, 4, False)
+
+    def test_explains_what_is_missing_instead_of_starting(self, kb, monkeypatch):
+        from pipeline import graph_jobs
+
+        monkeypatch.setattr(graph_jobs, "docling_installed", lambda: False)
+        assert "uv sync --extra graph" in graph_jobs.start_build(kb)
+        monkeypatch.setattr(graph_jobs, "docling_installed", lambda: True)
+        assert "Index the documents first" in graph_jobs.start_build(kb)
 
 
 def test_extraction_goes_to_the_configured_ollama(tmp_path):

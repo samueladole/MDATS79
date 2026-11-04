@@ -43,7 +43,7 @@ from builder_config import (  # noqa: E402
     GRAPH_PATH,
     NODE_CHUNKS_PATH,
     REPO_ROOT,
-    SAMPLE_DIR,
+    select_sample,
 )
 
 from config.settings import settings  # noqa: E402
@@ -70,10 +70,6 @@ MAX_OUTPUT_TOKENS = 2048
 GLEANING = 0
 
 
-def _chunk_id(path: Path) -> str:
-    return path.stem.replace("__chunk_", "::chunk_")
-
-
 def _select_chunks(n: int) -> list[tuple[str, str]]:
     """The first n sample chunks our graph extracted successfully, as (id, text).
 
@@ -84,10 +80,9 @@ def _select_chunks(n: int) -> list[tuple[str, str]]:
     ok = {str(node["id"])[len("DOC::"):] for node in graph["nodes"]
           if str(node["id"]).startswith("DOC::")}
     picked = []
-    for path in sorted(SAMPLE_DIR.glob("*.md")):
-        cid = _chunk_id(path)
+    for cid, text in select_sample():
         if cid in ok:
-            picked.append((cid, path.read_text()))
+            picked.append((cid, text))
         if len(picked) == n:
             break
     return picked

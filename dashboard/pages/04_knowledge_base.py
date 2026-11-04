@@ -6,9 +6,11 @@ The data behind the RAG pipeline, in three tabs:
 * **Chunks** — browse any ChromaDB collection, or search it by meaning, and
   open a chunk to read it with its metadata.
 * **Upload documents** — add your own PDF and text files. They are indexed in
-  their own collection, never in the BioASQ benchmark collection.
-* **Knowledge graph** — explore an entity's neighbourhood, or trace how graph
-  retrieval walks the graph for a question, both as left-to-right DAGs.
+  their own collection, never in the BioASQ benchmark collection, and a
+  knowledge graph is then built over them in the background.
+* **Knowledge graph** — for either knowledge base, explore an entity's
+  neighbourhood, or trace how graph retrieval walks the graph for a question,
+  both as left-to-right DAGs.
 
 A collection picker at the top selects which ChromaDB collection the Chunks
 tab shows; every collection on the server is listed, not only BioASQ.
@@ -45,13 +47,12 @@ FRIENDLY = {
 }
 
 
-GRAPH_REBUILD_HELP = """Build or rebuild the graph from the command line (it needs Ollama and
-`uv sync --extra graph`):
+GRAPH_REBUILD_HELP = """Build or rebuild the BioASQ graph from the command line (it needs Ollama
+and `uv sync --extra graph`):
 
 ```bash
-uv run python graph/sample_chunks.py 300      # pick the 300-chunk sample
-uv run python graph/build_graph.py            # sample: ~1 hour
-uv run python graph/build_graph.py --all      # whole corpus: ~100 hours, resumable
+uv run python graph/build_graph.py            # the 300-chunk sample: about 1 hour
+uv run python graph/build_graph.py --all      # whole corpus: about 100 hours, resumable
 uv run python graph/build_graph.py --publish-only   # restore from saved extractions
 ```
 
@@ -59,6 +60,16 @@ A whole-corpus build saves every chunk as it goes: stop it with Ctrl-C and run
 the same command again to resume. The graph is published as it grows, so this
 page and graph retrieval work throughout. See the README, *Building the
 Knowledge Graph*."""
+
+DOCUMENTS_GRAPH_HELP = """Your documents' graph is built in the background each time you press
+**Save and index**, with the same extractor and schema as the BioASQ graph
+(docling-graph, `llama3.2`). Only new chunks are extracted, so adding a file
+costs only that file's chunks. Expect 12-20 seconds per chunk. Command-line
+equivalent:
+
+```bash
+uv run python graph/build_graph.py --kb documents
+```"""
 
 
 # ── Data access (cached) ──────────────────────────────────────────────────────
@@ -269,21 +280,31 @@ with tab_upload:
         "Add files", type=["pdf", "txt", "md"], accept_multiple_files=True,
         key="documents_upload",
     )
+    for level, message in st.session_state.pop("kb_upload_flash", []):
+        getattr(st, level)(message)
+
     if st.button("Save and index", icon=":material/library_add:", type="primary",
                  disabled=not (uploads or files)):
+        from pipeline.graph_jobs import start_build, stop_build
+
         folder.mkdir(parents=True, exist_ok=True)
         for upload in uploads or []:
             # Keep only the base name, so an upload cannot write outside the folder.
             (folder / Path(upload.name).name).write_bytes(upload.getbuffer())
+        flash = []
         try:
+            stop_build(kb)  # a build over the old chunks would miss the new ones
             with st.spinner("Reading and indexing documents …"):
                 summary = ingest_corpus("documents", source=folder)
-            st.success(
-                f"Indexed {summary.total_passages:,} pages and files as "
-                f"{summary.total_chunks:,} chunks."
-            )
+            flash.append(("success", f"Indexed {summary.total_passages:,} pages and files as "
+                                     f"{summary.total_chunks:,} chunks."))
+            started = start_build(kb)
+            flash.append(("info", "Building the knowledge graph for your documents in the "
+                                  "background. Follow it on the **Knowledge graph** tab.")
+                         if started == "started" else ("warning", f"Knowledge graph: {started}"))
         except ValueError as exc:
-            st.warning(str(exc))
+            flash.append(("warning", str(exc)))
+        st.session_state.kb_upload_flash = flash
         _collections.clear()
         st.rerun()
 
@@ -304,6 +325,7 @@ with tab_upload:
     with st.expander("Clear my documents", icon=":material/delete_sweep:"):
         st.caption(
             "Empties the My documents collection (its chunks, BM25 file and manifest) "
+            "and removes its knowledge graph (entities, relations and chunks covered), "
             "so you can index again from scratch. The BioASQ benchmark is not touched. "
             "Command-line equivalent: `uv run python scripts/reset_data.py --documents`."
         )
@@ -316,23 +338,79 @@ with tab_upload:
             report = clear_documents(delete_files=also_files)
             _collections.clear()
             _metadata_values.clear()
+            _graph.clear()
             st.success("Removed: " + "; ".join(report.removed))
 
 
 # ── Knowledge graph ───────────────────────────────────────────────────────────
 
+
+def _build_progress(kb) -> None:
+    """A build's progress, refreshed every few seconds while it runs."""
+    from pipeline.graph_jobs import build_status, running_pid, stop_build
+
+    flag = f"kg_was_running_{kb.name}"
+
+    @st.fragment(run_every=5)
+    def _panel():
+        if running_pid(kb) is None:
+            if st.session_state.get(flag):  # it just finished: show the new graph
+                st.session_state[flag] = False
+                st.rerun()
+            return
+        st.session_state[flag] = True
+        status = build_status(kb)
+        done = status.extracted / status.total if status.total else 0.0
+        with st.container(border=True):
+            st.progress(done, text=f"Building the knowledge graph: {status.extracted:,} of "
+                                   f"{status.total:,} chunks extracted. It is published as it "
+                                   "grows; reload the page to see the latest graph.")
+            if status.log_tail:
+                st.code(status.log_tail, language=None)
+            if st.button("Stop the build", key=f"kg_stop_{kb.name}", icon=":material/stop:"):
+                stop_build(kb)
+                st.rerun()
+
+    _panel()
+
+
 with tab_graph:
-    gp, ncp = Path(settings.graph_path), Path(settings.graph_node_chunks_path)
-    if not gp.exists() or not ncp.exists():
-        st.info(f"No knowledge graph found at `{gp}`, so graph retrieval is unavailable. "
-                "Fetch the prebuilt index (`scripts/fetch_index.py`) or build one.")
-        st.markdown(GRAPH_REBUILD_HELP)
+    from pipeline.knowledge_base import get_knowledge_base
+
+    _graph_kbs = {"BioASQ benchmark": "bioasq", "My documents": "documents"}
+    kb_choice = st.segmented_control(
+        "Graph for", list(_graph_kbs), default="BioASQ benchmark", key="kg_kb",
+        help="Each knowledge base has its own graph. The BioASQ graph is the one behind "
+             "the published results; your documents' graph is built when you index them.",
+    ) or "BioASQ benchmark"
+    kb = get_knowledge_base(_graph_kbs[kb_choice])
+    help_text = GRAPH_REBUILD_HELP if kb.name == "bioasq" else DOCUMENTS_GRAPH_HELP
+
+    _build_progress(kb)
+    gp, ncp = kb.graph_path, kb.node_chunks_path
+    if not kb.has_graph:
+        st.info(f"No knowledge graph has been built for **{kb.label}** yet, so graph "
+                "retrieval is unavailable for it."
+                + (" Fetch the prebuilt index (`scripts/fetch_index.py`) or build one."
+                   if kb.name == "bioasq" else
+                   " Index your documents on the **Upload documents** tab, or build it now."))
+        if kb.name == "documents" and kb.bm25_path.exists():
+            from pipeline.graph_jobs import running_pid, start_build
+
+            if not running_pid(kb) and st.button("Build the graph", type="primary",
+                                                 icon=":material/hub:", key="kg_build_empty"):
+                msg = start_build(kb)
+                if msg != "started":
+                    st.warning(msg)
+                else:
+                    st.rerun()
+        st.markdown(help_text)
         st.stop()
 
     stamp = (gp.stat().st_mtime_ns, ncp.stat().st_mtime_ns)
     digraph, node_chunks, entities = _graph(str(gp), str(ncp), stamp)
     covered = len({c for v in node_chunks.values() for c in v})
-    corpus = by_name.get(settings.chroma_collection, {}).get("count", 0)
+    corpus = by_name.get(kb.collection, {}).get("count", 0)
     ent_ids = set(entities["id"])
     ent_ent = sum(1 for u, v in digraph.edges if u in ent_ids and v in ent_ids)
     coverage = 100 * covered / corpus if corpus else 0.0
@@ -344,13 +422,16 @@ with tab_graph:
                    "to the chunk it came from (co-occurrence).")
     g3.metric("Chunks covered", f"{covered:,}")
     g4.metric("Corpus coverage", f"{coverage:.1f}%",
-              help="Share of the BioASQ collection the graph spans. Graph retrieval "
+              help=f"Share of the {kb.label} collection the graph spans. Graph retrieval "
                    "can only reach chunks inside it.")
-    if coverage < 99.5:
+    if coverage < 99.5 and not st.session_state.get(f"kg_was_running_{kb.name}"):
         st.caption(
-            f":material/warning: The graph covers {coverage:.1f}% of the BioASQ corpus, and "
-            "graph retrieval can only reach chunks inside it. Build the whole corpus with "
-            "`graph/build_graph.py --all` (about 100 hours; see *Manage the graph* below)."
+            f":material/warning: The graph covers {coverage:.1f}% of the {kb.label} corpus, "
+            "and graph retrieval can only reach chunks inside it. "
+            + ("Build the whole corpus with `graph/build_graph.py --all` (about 100 hours; see "
+               "*Manage the graph* below)." if kb.name == "bioasq" else
+               "Chunks the extractor failed on are left out; *Manage the graph* below "
+               "rebuilds it.")
         )
 
     mode = st.segmented_control(
@@ -361,6 +442,7 @@ with tab_graph:
     if mode == "Explore an entity":
         if "kg_focus" not in st.session_state or st.session_state.kg_focus not in digraph:
             st.session_state.kg_focus = entities.iloc[0]["id"] if len(entities) else None
+            st.session_state.kg_last_pick = None
 
         list_col, graph_col = st.columns([2, 5])
         with list_col:
@@ -377,7 +459,7 @@ with tab_graph:
             table = st.dataframe(
                 shown[["Entity", "Type", "Relations", "Chunks"]], hide_index=True,
                 width="stretch", height=520, on_select="rerun", selection_mode="single-row",
-                key=f"kg_table_{term}_{type_choice}",
+                key=f"kg_table_{kb.name}_{term}_{type_choice}",
             )
             st.caption(f"{len(shown):,} shown, most-connected first. Select one to explore it.")
             rows = table.selection.rows if table and table.selection else []
@@ -400,14 +482,14 @@ with tab_graph:
                 clicked = render_entity_graph(view, key=f"kg_{hashlib.md5(focus.encode()).hexdigest()[:8]}")
                 if clicked and clicked.startswith(DOC_PREFIX):
                     cid = clicked[len(DOC_PREFIX):]
-                    found = get_vector_store(settings.chroma_collection).get_by_ids([cid]).get(cid)
+                    found = get_vector_store(kb.collection).get_by_ids([cid]).get(cid)
                     with st.container(border=True):
                         st.markdown(f"**{cid}**")
                         in_chunk = [n["label"] for n in view["nodes"]
                                     if n["kind"] != "source" and cid in node_chunks.get(n["id"], [])]
                         if in_chunk:
                             st.caption("Entities shown that come from this chunk: " + ", ".join(in_chunk))
-                        st.text(found.text if found else "Chunk text not found in the BioASQ collection.")
+                        st.text(found.text if found else f"Chunk text not found in the {kb.label} collection.")
                 elif clicked and clicked != focus and clicked in digraph:
                     st.session_state.kg_focus = clicked
                     st.rerun()
@@ -423,7 +505,9 @@ with tab_graph:
             from pipeline.retrieval.graph import GraphRetriever
 
             with st.spinner("Walking the graph…"):
-                retriever = GraphRetriever(top_k=5, fuse_dense=False)
+                retriever = GraphRetriever(
+                    graph_path=gp, node_chunks_path=ncp, top_k=5, fuse_dense=False,
+                    vector_store=get_vector_store(kb.collection))
                 chunks, tel = retriever.retrieve(question, top_k=5)
             m1, m2, m3 = st.columns(3)
             m1.metric("Seed entities", tel.get("graph_seeds_found", 0))
@@ -432,7 +516,7 @@ with tab_graph:
             render_retrieval_graph(
                 tel.get("graph_path"),
                 chunk_texts={c.chunk_id: c.text for c in chunks},
-                key=f"kg_trace_{hashlib.md5(question.encode()).hexdigest()[:8]}",
+                key=f"kg_trace_{kb.name}_{hashlib.md5(question.encode()).hexdigest()[:8]}",
             )
 
     # ── Graph statistics ──────────────────────────────────────────────────────
@@ -453,11 +537,12 @@ with tab_graph:
                 height=240, margin=dict(l=0, r=0, t=40, b=0)),
             width="stretch",
         )
-        manifest = gp.parent / "manifest.json"
+        manifest = kb.graph_manifest_path
         if manifest.exists():
             man = json.loads(manifest.read_text())
             st.json({
                 "scope": man.get("scope", "sample"),
+                "chunks_in_scope": man.get("chunks_in_scope", man.get("chunks_attempted")),
                 "extractor": man.get("extractor"),
                 "chunks_attempted": man.get("chunks_attempted"),
                 "chunks_ok": man.get("chunks_ok"),
@@ -472,18 +557,32 @@ with tab_graph:
 
     # ── Manage the graph ──────────────────────────────────────────────────────
     with st.expander("Manage the graph: rebuild or clear", icon=":material/build:"):
-        st.markdown(GRAPH_REBUILD_HELP)
-        st.markdown("**Clear the graph** so you can rebuild it. Graph retrieval is "
-                    "unavailable until a new graph is built.")
-        drop_saved = st.checkbox(
-            "Also delete the saved extractions (the next build re-extracts every chunk)",
-            key="clear_graph_extractions")
-        sure_graph = st.checkbox("I understand this cannot be undone", key="clear_graph_sure")
-        if st.button("Clear the graph", type="primary", disabled=not sure_graph,
-                     icon=":material/delete:", key="clear_graph_btn"):
-            from pipeline.maintenance import clear_graph
+        st.markdown(help_text)
+        if kb.name == "documents":
+            from pipeline.graph_jobs import running_pid, start_build
 
-            report = clear_graph(delete_extractions=drop_saved)
-            _graph.clear()
-            st.success("Removed: " + "; ".join(report.removed)
-                       + ("" if not report.kept else ". Kept: " + "; ".join(report.kept)))
+            st.markdown("**Rebuild** extracts any chunk not yet in the graph, including "
+                        "ones that failed before, and republishes it. **Clear my documents** "
+                        "on the *Upload documents* tab removes this graph along with the chunks.")
+            if st.button("Rebuild the graph", icon=":material/refresh:", key="kg_rebuild_docs",
+                         disabled=running_pid(kb) is not None):
+                msg = start_build(kb)
+                if msg != "started":
+                    st.warning(msg)
+                else:
+                    st.rerun()
+        else:
+            st.markdown("**Clear the graph** so you can rebuild it. Graph retrieval is "
+                        "unavailable until a new graph is built.")
+            drop_saved = st.checkbox(
+                "Also delete the saved extractions (the next build re-extracts every chunk)",
+                key="clear_graph_extractions")
+            sure_graph = st.checkbox("I understand this cannot be undone", key="clear_graph_sure")
+            if st.button("Clear the graph", type="primary", disabled=not sure_graph,
+                         icon=":material/delete:", key="clear_graph_btn"):
+                from pipeline.maintenance import clear_graph
+
+                report = clear_graph(delete_extractions=drop_saved)
+                _graph.clear()
+                st.success("Removed: " + "; ".join(report.removed)
+                           + ("" if not report.kept else ". Kept: " + "; ".join(report.kept)))

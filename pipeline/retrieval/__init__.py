@@ -27,6 +27,7 @@ def _build_dense(
     embedder: "EmbeddingGenerator | None" = None,
     top_k: int | None = None,
     bm25_corpus_path: "Path | None" = None,  # noqa: ARG001 - hybrid only
+    graph_paths: "tuple[Path, Path] | None" = None,  # noqa: ARG001 - graph only
 ) -> BaseRetriever:
     from pipeline.retrieval.dense import DenseRetriever
 
@@ -72,6 +73,7 @@ def _build_hybrid(
     embedder: "EmbeddingGenerator | None" = None,
     top_k: int | None = None,
     bm25_corpus_path: "Path | None" = None,
+    graph_paths: "tuple[Path, Path] | None" = None,  # noqa: ARG001 - graph only
 ) -> BaseRetriever:
     from pipeline.retrieval.hybrid import HybridRetriever
 
@@ -90,6 +92,7 @@ def _build_graph(
     embedder: "EmbeddingGenerator | None" = None,
     top_k: int | None = None,
     bm25_corpus_path: "Path | None" = None,  # noqa: ARG001 - hybrid only
+    graph_paths: "tuple[Path, Path] | None" = None,
 ) -> BaseRetriever:
     # Imported lazily: loading the graph artefacts is graph-specific and
     # networkx should not be imported by callers using another strategy.
@@ -97,7 +100,10 @@ def _build_graph(
 
     from config.settings import settings
 
+    graph_path, node_chunks_path = graph_paths or (None, None)
     return GraphRetriever(
+        graph_path=graph_path,
+        node_chunks_path=node_chunks_path,
         vector_store=store,
         embedding_generator=embedder,
         top_k=top_k,
@@ -120,12 +126,15 @@ def build_retriever(
     embedder: "EmbeddingGenerator | None" = None,
     top_k: int | None = None,
     bm25_corpus_path: "Path | None" = None,
+    graph_paths: "tuple[Path, Path] | None" = None,
 ) -> BaseRetriever:
     """
     Construct the retriever for ``strategy``, fully initialised.
 
-    ``bm25_corpus_path`` selects the BM25 corpus for hybrid retrieval and
-    defaults to the BioASQ corpus; it must match the collection in ``store``.
+    ``bm25_corpus_path`` selects the BM25 corpus for hybrid retrieval, and
+    ``graph_paths`` (graph, node-to-chunks index) the knowledge graph for graph
+    retrieval. Both default to the BioASQ benchmark's and must match the
+    collection in ``store``.
 
     Raises
     ------
@@ -144,7 +153,7 @@ def build_retriever(
         ) from None
 
     return factory(store=store, embedder=embedder, top_k=top_k,
-                   bm25_corpus_path=bm25_corpus_path)
+                   bm25_corpus_path=bm25_corpus_path, graph_paths=graph_paths)
 
 
 # Fail loudly at import time if the registry and the canonical name list drift

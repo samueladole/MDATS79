@@ -7,19 +7,21 @@ Clear your documents or the knowledge graph, so you can rebuild them.
 
 Options
 -------
-    --documents             empty the "My documents" collection, its BM25 file and manifest
+    --documents             empty the "My documents" collection, its BM25 file,
+                            manifest and knowledge graph
     --delete-document-files also delete the uploaded files in data/documents/
-    --graph                 remove the graph files graph retrieval reads
+    --graph                 remove the BioASQ graph files graph retrieval reads
                             (entities, relations, chunks covered)
     --delete-extractions    also delete the saved per-chunk extractions, so the
                             next build re-extracts everything (hours to days)
-    --delete-sample         also delete the 300-chunk sample in data/graph/sample/
     --yes                   do not ask for confirmation
 
 Nothing here touches the BioASQ benchmark index. To rebuild:
 
-    documents: Knowledge Base page -> Upload documents -> Save and index,
-               or uv run python pipeline/ingestion.py --corpus documents
+    documents: Knowledge Base page -> Upload documents -> Save and index
+               (this also rebuilds their graph), or
+               uv run python pipeline/ingestion.py --corpus documents
+               uv run python graph/build_graph.py --kb documents
     graph:     uv run python graph/build_graph.py           (300-chunk sample, ~1 h)
                uv run python graph/build_graph.py --all     (whole corpus, ~100 h)
                uv run python graph/build_graph.py --publish-only  (from saved extractions)
@@ -40,7 +42,6 @@ def main() -> int:
     parser.add_argument("--delete-document-files", action="store_true")
     parser.add_argument("--graph", action="store_true")
     parser.add_argument("--delete-extractions", action="store_true")
-    parser.add_argument("--delete-sample", action="store_true")
     parser.add_argument("--yes", action="store_true")
     args = parser.parse_args()
 
@@ -50,12 +51,11 @@ def main() -> int:
 
     plan = []
     if args.documents:
-        plan.append("your documents' index (ChromaDB collection, BM25 file, manifest)"
+        plan.append("your documents' index (ChromaDB collection, BM25 file, manifest, graph)"
                     + (" AND the uploaded files" if args.delete_document_files else ""))
     if args.graph:
-        plan.append("the knowledge graph (graph, node-to-chunk index, manifest)"
-                    + (" AND the saved extractions" if args.delete_extractions else "")
-                    + (" AND the sample" if args.delete_sample else ""))
+        plan.append("the BioASQ knowledge graph (graph, node-to-chunk index, manifest)"
+                    + (" AND the saved extractions" if args.delete_extractions else ""))
     print("This will delete:\n  - " + "\n  - ".join(plan))
     if not args.yes and input("Continue? [y/N] ").strip().lower() not in ("y", "yes"):
         print("Cancelled.")
@@ -70,8 +70,7 @@ def main() -> int:
     if args.documents:
         reports.append(clear_documents(delete_files=args.delete_document_files))
     if args.graph:
-        reports.append(clear_graph(delete_extractions=args.delete_extractions,
-                                   delete_sample=args.delete_sample))
+        reports.append(clear_graph(delete_extractions=args.delete_extractions))
     for r in reports:
         for item in r.removed:
             print(f"removed  {item}")

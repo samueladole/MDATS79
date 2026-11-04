@@ -120,7 +120,9 @@ class TestDocumentsIngestion:
         kb = KnowledgeBase(
             name="documents", label="My documents", collection="test_documents",
             bm25_path=tmp_path / "bm25_documents.jsonl",
-            manifest_path=tmp_path / "documents_manifest.json", supports_graph=False,
+            manifest_path=tmp_path / "documents_manifest.json",
+            graph_path=tmp_path / "graph" / "graph.json",
+            node_chunks_path=tmp_path / "graph" / "node_to_chunks.json",
         )
         requested = []
         store = _FakeStore()
@@ -145,13 +147,24 @@ class TestDocumentsIngestion:
         assert bio.collection != docs.collection
         assert bio.bm25_path != docs.bm25_path
         assert bio.manifest_path != docs.manifest_path
+        assert bio.graph_path != docs.graph_path
+        assert bio.graph_dir != docs.graph_dir
 
-    def test_graph_retrieval_is_refused_for_documents(self):
-        from pipeline.rag import RAGPipeline
+    def test_graph_retrieval_is_refused_until_a_graph_is_built(self, tmp_path, monkeypatch):
+        import pipeline.rag as rag
+        from pipeline.knowledge_base import KnowledgeBase
 
-        with pytest.raises(ValueError, match="Graph retrieval needs a knowledge graph"):
-            RAGPipeline(retrieval_strategy="graph", knowledge_base="documents",
-                        run_evaluation=False)
+        kb = KnowledgeBase(
+            name="documents", label="My documents", collection="test_documents",
+            bm25_path=tmp_path / "bm25.jsonl", manifest_path=tmp_path / "m.json",
+            graph_path=tmp_path / "graph" / "graph.json",
+            node_chunks_path=tmp_path / "graph" / "node_to_chunks.json",
+        )
+        assert not kb.has_graph
+        monkeypatch.setattr(rag, "get_knowledge_base", lambda name: kb)
+        with pytest.raises(ValueError, match="none has been built for 'My documents'"):
+            rag.RAGPipeline(retrieval_strategy="graph", knowledge_base="documents",
+                            run_evaluation=False)
 
 
 def test_empty_folder_leaves_the_collection_alone(tmp_path, monkeypatch):

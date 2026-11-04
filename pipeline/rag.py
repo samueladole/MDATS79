@@ -159,10 +159,12 @@ class RAGPipeline:
 
         # ── Retriever ─────────────────────────────────────────────────────────
         kb = get_knowledge_base(knowledge_base)
-        if retrieval_strategy == "graph" and not kb.supports_graph:
+        if retrieval_strategy == "graph" and not kb.has_graph:
             raise ValueError(
-                f"Graph retrieval needs a knowledge graph, and there is none for "
-                f"'{kb.label}'. Use dense or hybrid retrieval."
+                f"Graph retrieval needs a knowledge graph, and none has been built for "
+                f"'{kb.label}' yet. Build it on the Knowledge Base page or with "
+                f"`uv run python graph/build_graph.py --kb {kb.name}`, or use dense or "
+                f"hybrid retrieval."
             )
         self.knowledge_base = kb.name
         store = get_vector_store(kb.collection)
@@ -177,6 +179,7 @@ class RAGPipeline:
             embedder=embedder,
             top_k=self.top_k,
             bm25_corpus_path=kb.bm25_path,
+            graph_paths=(kb.graph_path, kb.node_chunks_path),
         )
 
         logger.info(

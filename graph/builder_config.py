@@ -7,6 +7,7 @@ it, because several failure modes are silent.
 It also holds every path the graph scripts use. They all come from the project
 settings, so the builder writes exactly where the retriever reads.
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -22,14 +23,45 @@ def _in_repo(path: Path) -> Path:
     return path if path.is_absolute() else REPO_ROOT / path
 
 
+# The BioASQ benchmark's graph. graph/build_graph.py --kb documents switches
+# every path to the documents knowledge base (see pipeline/knowledge_base.py).
 GRAPH_PATH = _in_repo(settings.graph_path)                    # data/graph/graph.json
 NODE_CHUNKS_PATH = _in_repo(settings.graph_node_chunks_path)  # data/graph/node_to_chunks.json
 GRAPH_DIR = GRAPH_PATH.parent
 MANIFEST_PATH = GRAPH_DIR / "manifest.json"
-SAMPLE_DIR = GRAPH_DIR / "sample"                 # one .md file per sampled chunk
 EXTRACTIONS_DIR = GRAPH_DIR / "extractions"       # one saved result per extracted chunk
-WORK_DIR = GRAPH_DIR / "work"                     # scratch files for --all builds
+WORK_DIR = GRAPH_DIR / "work"                     # one temporary file per chunk in flight
 CORPUS_PATH = REPO_ROOT / "data" / "bm25_corpus.jsonl"
+
+#: Size of the corpus-principled sample behind the published graph.
+SAMPLE_SIZE = 300
+
+
+def select_sample(n: int = SAMPLE_SIZE, corpus_path: Path = CORPUS_PATH) -> list[tuple[str, str]]:
+    """The n-chunk sample, as (chunk_id, text), read straight from the corpus.
+
+    Sampling is corpus-principled: an even stride across the whole corpus,
+    with no reference to the benchmark queries (a subset seeded from gold
+    passages would give an oracle graph that flatters any later retrieval
+    comparison). The stride oversamples by 1.6x so that, after keeping only
+    chunks of 200-2,000 characters, exactly n remain.
+
+    This reproduces the 300 chunks of the published graph exactly. Results are
+    ordered by file-safe chunk id, the order the builder has always used.
+    """
+    with corpus_path.open() as fh:
+        total = sum(1 for _ in fh)
+    stride = max(1, total // int(n * 1.6))
+    picked: list[tuple[str, str]] = []
+    with corpus_path.open() as fh:
+        for i, line in enumerate(fh):
+            if i % stride == 0:
+                record = json.loads(line)
+                if 200 < len(record["text"]) < 2000:
+                    picked.append((record["id"], record["text"]))
+            if len(picked) >= n:
+                break
+    return sorted(picked[:n], key=lambda p: p[0].replace("::", "__"))
 
 # The Ollama address: the project's setting, unless the shell sets
 # OLLAMA_BASE_URL. It is passed to docling-graph explicitly (llm_overrides

@@ -7,10 +7,20 @@ the per-chunk graphs are composed into one corpus graph. Every node records
 which chunks it came from; that provenance index is what lets the retriever
 map graph hits back to passages.
 
-Two scopes:
+Scopes:
 
-    uv run python graph/build_graph.py           # the 300-chunk sample (~1 h)
-    uv run python graph/build_graph.py --all     # the whole corpus (~100 h)
+    uv run python graph/build_graph.py                 # BioASQ: the 300-chunk sample
+    uv run python graph/build_graph.py --all           # BioASQ: the whole corpus
+    uv run python graph/build_graph.py --kb documents  # your documents (all of them)
+
+The sample is chosen from data/bm25_corpus.jsonl on the fly (see
+builder_config.select_sample); it is the same 300 chunks as the published graph.
+
+Times on an Apple M5 with llama3.2: 12-20 s per chunk, so about 1 h for the
+sample and about 100 h for the whole corpus. Keep Ollama's default serving
+(one request at a time): letting it serve requests in parallel
+(OLLAMA_NUM_PARALLEL=4 with flash attention) made extraction twice as slow and
+changed the extracted entities (README, *Why not parallel serving*).
 
 A whole-corpus build takes days, so the builder is resumable. Each chunk's
 result is saved to ``data/graph/extractions/`` as soon as it is extracted; a
@@ -23,8 +33,12 @@ batches (for example overnight).
 
 Options
 -------
-    --all                 every chunk in data/bm25_corpus.jsonl
-    --concurrency N       requests sent to Ollama at once (default 8)
+    --kb NAME             knowledge base: bioasq (default) or documents
+    --all                 every BioASQ chunk, not the sample
+    --sample N            sample size when not --all (default 300)
+    --concurrency N       chunks in flight at once (default 4). Ollama still runs
+                          one model call at a time; the overlap hides docling's
+                          own processing between calls
     --limit N             extract at most N new chunks this run
     --retry-failed        retry chunks that failed in an earlier run
     --publish-every N     re-publish the graph every N chunks (default 500)
@@ -57,9 +71,10 @@ from builder_config import (  # noqa: E402
     GRAPH_PATH,
     MANIFEST_PATH,
     NODE_CHUNKS_PATH,
-    SAMPLE_DIR,
+    SAMPLE_SIZE,
     WORK_DIR,
     build_config,
+    select_sample,
 )
 
 # Entity names the extractor emits when it finds nothing. Left in, these merge
@@ -111,10 +126,6 @@ def stem(chunk_id: str) -> str:
     return chunk_id.replace("::", "__")
 
 
-def chunk_id_from_stem(name: str) -> str:
-    return name.replace("__chunk_", "::chunk_")
-
-
 def _saved(chunk_id: str) -> Path:
     return EXTRACTIONS_DIR / f"{stem(chunk_id)}.json"
 
@@ -146,22 +157,50 @@ def extract_one(chunk_id: str, text: str) -> dict:
 # ── Scope ─────────────────────────────────────────────────────────────────────
 
 
-def target_chunks(all_chunks: bool) -> list[tuple[str, str]]:
-    """(chunk_id, text) for every chunk in scope, in corpus order."""
-    if all_chunks:
-        if not CORPUS_PATH.exists():
-            sys.exit(f"{CORPUS_PATH} not found: run ingestion or scripts/fetch_index.py first")
-        out = []
-        with CORPUS_PATH.open() as fh:
-            for line in fh:
-                if line.strip():
-                    rec = json.loads(line)
-                    out.append((rec["id"], rec["text"]))
-        return out
-    docs = sorted(SAMPLE_DIR.glob("*.md"))
-    if not docs:
-        sys.exit(f"no chunks in {SAMPLE_DIR}: run graph/sample_chunks.py first, or use --all")
-    return [(chunk_id_from_stem(p.stem), p.read_text()) for p in docs]
+def use_knowledge_base(name: str) -> None:
+    """Point every path at the knowledge base ``name``'s corpus and graph folder."""
+    global CORPUS_PATH, GRAPH_PATH, NODE_CHUNKS_PATH, MANIFEST_PATH, EXTRACTIONS_DIR, WORK_DIR
+    from pipeline.knowledge_base import get_knowledge_base
+
+    kb = get_knowledge_base(name)
+    CORPUS_PATH = kb.bm25_path
+    GRAPH_PATH, NODE_CHUNKS_PATH = kb.graph_path, kb.node_chunks_path
+    MANIFEST_PATH = kb.graph_manifest_path
+    EXTRACTIONS_DIR = kb.graph_dir / "extractions"
+    WORK_DIR = kb.graph_dir / "work"
+
+
+def target_chunks(all_chunks: bool, sample: int = SAMPLE_SIZE) -> list[tuple[str, str]]:
+    """(chunk_id, text) for every chunk in scope."""
+    if not CORPUS_PATH.exists():
+        sys.exit(f"{CORPUS_PATH} not found: index the corpus first "
+                 "(scripts/fetch_index.py, pipeline/ingestion.py or the Knowledge Base page)")
+    if not all_chunks:
+        return select_sample(sample, CORPUS_PATH)
+    out = []
+    with CORPUS_PATH.open() as fh:
+        for line in fh:
+            if line.strip():
+                rec = json.loads(line)
+                out.append((rec["id"], rec["text"]))
+    return out
+
+
+# ── One build at a time ───────────────────────────────────────────────────────
+
+
+def _lock_path() -> Path:
+    return GRAPH_PATH.parent / "build.pid"
+
+
+def running_build_pid() -> int | None:
+    """PID of a build still running for this graph, or None."""
+    try:
+        pid = int(_lock_path().read_text().strip())
+        os.kill(pid, 0)  # raises if no such process
+        return pid
+    except (OSError, ValueError):
+        return None
 
 
 # ── Publishing ────────────────────────────────────────────────────────────────
@@ -208,7 +247,9 @@ def publish(scope: list[str], corpus_size: int, label: str, *, force: bool = Fal
 
     ok_now = len(scope) - pending - len(failures)
     live = _live_chunks()
-    if pending and not force and ok_now < live:
+    # Never replace a graph with an empty one (for example --publish-only with
+    # no saved extractions), and keep a larger graph while a build is under way.
+    if (ok_now == 0 and live) or (pending and not force and ok_now < live):
         print(f"  kept the live graph ({live:,} chunks) until this build overtakes it "
               f"({ok_now:,} so far)", flush=True)
         return {"chunks_ok": ok_now, "corpus_coverage_pct":
@@ -267,17 +308,24 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0].isdigit():  # legacy form: build_graph.py 8
         argv = ["--concurrency", argv[0], *argv[1:]]
     parser = argparse.ArgumentParser(description="Build the knowledge graph for graph retrieval.")
-    parser.add_argument("--all", action="store_true", help="every chunk in the corpus")
-    parser.add_argument("--concurrency", type=int, default=8)
+    parser.add_argument("--kb", choices=["bioasq", "documents"], default="bioasq",
+                        help="knowledge base to build the graph for")
+    parser.add_argument("--all", action="store_true", help="every BioASQ chunk, not the sample")
+    parser.add_argument("--sample", type=int, default=SAMPLE_SIZE,
+                        help=f"sample size when not --all (default {SAMPLE_SIZE})")
+    parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--limit", type=int, default=None, help="at most N new chunks this run")
     parser.add_argument("--retry-failed", action="store_true")
     parser.add_argument("--publish-every", type=int, default=500)
     parser.add_argument("--publish-only", action="store_true")
     args = parser.parse_args(argv)
 
-    chunks = target_chunks(args.all)
+    if args.kb != "bioasq":
+        use_knowledge_base(args.kb)
+        args.all = True  # a documents graph always covers every chunk
+    chunks = target_chunks(args.all, args.sample)
     scope = [cid for cid, _ in chunks]
-    label = "all" if args.all else "sample"
+    label = args.kb if args.kb != "bioasq" else "all" if args.all else "sample"
     corpus_size = sum(1 for _ in CORPUS_PATH.open()) if CORPUS_PATH.exists() else 0
 
     if args.publish_only:
@@ -292,9 +340,19 @@ def main(argv: list[str] | None = None) -> int:
         sys.exit("docling-graph is not installed. It is an optional extra:\n"
                  "  uv sync --extra graph")
 
+    other = running_build_pid()
+    if other and other != os.getpid():
+        sys.exit(f"a graph build for this knowledge base is already running (pid {other})")
     EXTRACTIONS_DIR.mkdir(parents=True, exist_ok=True)
     WORK_DIR.mkdir(parents=True, exist_ok=True)
+    _lock_path().write_text(str(os.getpid()))
+    try:
+        return _extract_and_publish(args, chunks, scope, label, corpus_size)
+    finally:
+        _lock_path().unlink(missing_ok=True)
 
+
+def _extract_and_publish(args, chunks, scope, label, corpus_size) -> int:
     def needs_work(cid: str) -> bool:
         path = _saved(cid)
         if not path.exists():
