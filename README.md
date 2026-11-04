@@ -810,7 +810,13 @@ uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
 
 # 3. Print the results as Markdown tables, and save them to share
 uv run python graph/lightrag_compare.py report --out lightrag_report.md
+
+# Or run one question through both systems and see what each returns
+uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+    python graph/lightrag_compare.py query "What causes Pendred's syndrome?"
 ```
+
+The `query` command prints each system's time and top chunks, and marks the chunks both returned. Only the 50 compared chunks are searchable, so ask about a topic they cover; [graph/lightrag_results.md](graph/lightrag_results.md#try-a-single-question) lists some and shows example output.
 
 - `build --n 100` uses more chunks.
 - LightRAG keeps its store in `data/graph/lightrag/store/` and skips chunks already in it. To repeat the build from scratch, delete `data/graph/lightrag/` first, otherwise the build time it reports is meaningless.

@@ -21,6 +21,8 @@ OpenTelemetry pin keeps the version ChromaDB was locked with):
     uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
         python graph/lightrag_compare.py compare
     uv run python graph/lightrag_compare.py report      # tables to share
+    uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+        python graph/lightrag_compare.py query "What is amifostine used for?"
 
 Outputs go to data/graph/lightrag/. ``report`` prints the results as Markdown
 tables (``--out FILE`` also saves them); graph/lightrag_results.md is the
@@ -298,6 +300,65 @@ async def _compare() -> dict:
     return results
 
 
+async def _query(question: str, modes: list[str], top_k: int) -> None:
+    """Run one question through both systems and print what each returns."""
+    from lightrag import QueryParam
+    from loguru import logger
+
+    from pipeline.retrieval.graph import GraphRetriever
+
+    logger.remove()
+    build = json.loads(BUILD_STATS.read_text())
+    if not OURS_GRAPH.exists():
+        _restrict_our_graph(build["chunk_ids"])
+
+    def show(chunks: list[tuple[str, str]], other: set[str]) -> None:
+        if not chunks:
+            print("    (nothing returned)")
+        for rank, (cid, text) in enumerate(chunks, 1):
+            both = "  [both]" if cid in other else ""
+            snippet = " ".join((text or "").split())[:110]
+            print(f"    {rank}. {cid}{both}\n       {snippet}")
+
+    ours = GraphRetriever(graph_path=OURS_GRAPH, node_chunks_path=OURS_NODE_CHUNKS,
+                          top_k=top_k, fuse_dense=False)
+    ours.retrieve(question, top_k=top_k)  # warm-up: loads the graph and embedder
+    t0 = time.perf_counter()
+    chunks, tel = ours.retrieve(question, top_k=top_k)
+    ours_ms = (time.perf_counter() - t0) * 1000
+    ours_hits = [(c.chunk_id, c.text) for c in chunks]
+
+    rag = _make_rag(cache=False)
+    await rag.initialize_storages()
+    # Warm-up, untimed: loads the extractor model so the first mode is not
+    # charged for it.
+    await rag.aquery_data(question, param=QueryParam(mode="local", top_k=40, chunk_top_k=top_k,
+                                                     enable_rerank=False))
+    lightrag = {}
+    for mode in modes:
+        param = QueryParam(mode=mode, top_k=40, chunk_top_k=top_k, enable_rerank=False)
+        t0 = time.perf_counter()
+        out = await rag.aquery_data(question, param=param)
+        ms = (time.perf_counter() - t0) * 1000
+        got = (out.get("data") or {}).get("chunks") or []
+        lightrag[mode] = (ms, (out.get("metadata") or {}).get("keywords"),
+                          [(c.get("file_path"), c.get("content")) for c in got][:top_k])
+    await rag.finalize_storages()
+
+    found_by_lightrag = {cid for _, _, hits in lightrag.values() for cid, _ in hits}
+    print(f"\nQuestion: {question}\n")
+    seeds = ", ".join(s["label"] for s in tel.get("graph_seed_labels", [])) or "none"
+    print(f"RAGScope graph retriever (graph-only): {ours_ms:.1f} ms, seed entities: {seeds}")
+    show(ours_hits, found_by_lightrag)
+    ours_ids = {cid for cid, _ in ours_hits}
+    for mode, (ms, kw, hits) in lightrag.items():
+        print(f"\nLightRAG {mode}: {ms:,.1f} ms"
+              + ("" if mode == "naive" else f" (includes the LLM keyword call), keywords: {kw}"))
+        show(hits, ours_ids)
+    print("\n[both] marks a chunk the other system also returned. Only the 50 chunks in "
+          "build_stats.json are searchable; ask about one of them for a meaningful result.")
+
+
 def _report() -> str:
     """The saved build and comparison results as Markdown tables."""
     res = json.loads(RESULTS.read_text())
@@ -363,6 +424,11 @@ def main() -> int:
     b = sub.add_parser("build", help="build LightRAG over the sample chunks")
     b.add_argument("--n", type=int, default=50, help="number of chunks (default 50)")
     sub.add_parser("compare", help="time and compare retrieval")
+    q = sub.add_parser("query", help="run one question through both systems")
+    q.add_argument("question")
+    q.add_argument("--modes", nargs="+", default=["naive", "local", "mix"],
+                   choices=["naive", "local", "global", "hybrid", "mix"])
+    q.add_argument("--top-k", type=int, default=5)
     r = sub.add_parser("report", help="print the saved results as Markdown tables")
     r.add_argument("--out", type=Path, default=None, help="also write the tables to this file")
     args = parser.parse_args()
@@ -377,6 +443,11 @@ def main() -> int:
         return 0
 
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    if args.cmd == "query":
+        if not BUILD_STATS.exists():
+            sys.exit(f"{BUILD_STATS} not found: run the build step first")
+        asyncio.run(_query(args.question, args.modes, args.top_k))
+        return 0
     if args.cmd == "build":
         print(json.dumps(asyncio.run(_build(args.n)), indent=2))
     else:
