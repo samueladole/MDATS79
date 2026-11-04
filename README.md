@@ -783,6 +783,7 @@ The first form removes the graph files (entities, relations and chunks covered) 
 | Build cost | Seconds per chunk, failed chunks, entities and relations |
 | Retrieval latency | Median and 95th percentile over the 200 benchmark queries. LightRAG runs in its `naive`, `local` and `mix` modes, both as shipped (an LLM call per query extracts keywords) and with the keywords supplied, which isolates the graph lookup. This platform's retriever runs graph-only. |
 | Behaviour | How often each returns anything, and the overlap of their top 5 chunks |
+| Hit rate | On your own documents, when your questions name the file (and page) holding the answer: how often each system returns it in its top 5 |
 
 **Why the comparison is fair.** Both systems get the same input and models:
 
@@ -791,7 +792,9 @@ The first form removes the graph files (entities, relations and chunks covered) 
 - **Same embedder:** `all-MiniLM-L6-v2`.
 - **Same graph scope:** this platform's graph is cut down to those 50 chunks, so both search the same material.
 
-**Before you run it**
+It runs on the BioASQ sample behind the published results (below), or [on your own documents](#lightrag-on-your-documents).
+
+**Before you run it (BioASQ)**
 
 1. **The sample graph is the live BioASQ graph.** The comparison reads `data/graph/graph.json`. It ships with the prebuilt index (`scripts/fetch_index.py`), or `graph/build_graph.py` builds it. If you have since built the whole corpus, the selected chunks are the same, but the cut-down graph may differ slightly. Restore the sample graph for an exact rerun.
 2. **Ollama is running, with `llama3.2` pulled** and its default one-call-at-a-time serving (`OLLAMA_NUM_PARALLEL` unset). The published timings were measured that way. The script sends LightRAG two requests at a time; more only turned waiting into timeouts.
@@ -819,7 +822,7 @@ uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
 The `query` command prints each system's time and top chunks, and marks the chunks both returned. Only the 50 compared chunks are searchable, so ask about a topic they cover; [graph/lightrag_results.md](graph/lightrag_results.md#try-a-single-question) lists some and shows example output.
 
 - `build --n 100` uses more chunks.
-- LightRAG keeps its store in `data/graph/lightrag/store/` and skips chunks already in it. To repeat the build from scratch, delete `data/graph/lightrag/` first, otherwise the build time it reports is meaningless.
+- `build` starts from an empty LightRAG store each time, so its build time is always a full build.
 
 **Outputs**
 
@@ -829,8 +832,50 @@ The `query` command prints each system's time and top chunks, and marks the chun
 | `data/graph/lightrag/compare_results.json` | Every latency and overlap figure |
 | `data/graph/lightrag/ours_graph.json` | This platform's graph cut down to the same chunks |
 | The `report` output | The results as tables, ready to paste or send |
+| `data/graph/lightrag/documents/` | The same files for a run on your own documents |
 
-**Published result** (Apple M5, Ollama on the GPU):
+<a id="lightrag-on-your-documents"></a>
+**On your own documents**
+
+The same comparison runs on files you upload, even a single one, with no BioASQ data or example papers needed.
+
+1. **Index a file.** Use **Knowledge Base → Upload documents → Save and index**, or `uv run python pipeline/ingestion.py --corpus documents --source path/to/folder`. PDF, `.txt` and `.md` all work.
+2. **Write your questions** in a text file, one per line. To score hits, add the file (and optionally the page) that holds the answer after a `|`:
+
+   ```text
+   # my_questions.txt
+   Which enzyme does metformin activate? | metformin_notes.md
+   What dose did the trial use? | trial.pdf, page 3
+   What does the paper conclude?
+   ```
+
+3. **Run it:**
+
+   ```bash
+   # Build RAGScope's graph (docling-graph) and LightRAG over the same chunks
+   uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+       python graph/lightrag_compare.py build --kb documents
+
+   # Time and score both on your questions
+   uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+       python graph/lightrag_compare.py compare --kb documents --questions my_questions.txt
+
+   # Tables to share, including the hit rate and a row per question
+   uv run python graph/lightrag_compare.py report --kb documents --out my_report.md
+
+   # Or one question, with each chunk's file and page
+   uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+       python graph/lightrag_compare.py query --kb documents "Which enzyme does metformin activate?"
+   ```
+
+Notes on the documents run:
+
+- **One command builds both sides.** `build --kb documents` first brings RAGScope's graph over your documents up to date. That needs `uv sync --extra graph`, and chunks already extracted are skipped. It then builds LightRAG over every chunk docling-graph extracted. A one-file test took 7.9 s per chunk for RAGScope and 18.1 s for LightRAG.
+- **Hit rate.** A question scores a hit when its expected file (and page, if given) is among a system's top 5 chunks. Questions without a `|` count towards latency and return rates only.
+- **Separate results.** They go to `data/graph/lightrag/documents/`, so the BioASQ results stay as published. After adding or removing files, run `build --kb documents` again. **Clear my documents** removes these results along with the documents.
+- **Small corpora.** With only a few chunks, every system tends to find the answer, so a small run shows speed and behaviour more than quality. For a quality comparison, use several documents and questions whose answers sit on specific pages.
+
+**Published result, BioASQ** (Apple M5, Ollama on the GPU):
 
 | | Median per query |
 |---|---:|

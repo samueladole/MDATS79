@@ -134,7 +134,7 @@ uv run python graph/lightrag_compare.py report --out lightrag_report.md
 
 - `report` prints the build, latency and return-rate tables above, filled from the saved results. It needs neither Ollama nor LightRAG.
 - `build --n 100` uses more chunks.
-- LightRAG keeps its store in `data/graph/lightrag/store/` and skips chunks already in it. To repeat the build from scratch, delete `data/graph/lightrag/` first. Otherwise the build time it reports is meaningless.
+- `build` starts from an empty LightRAG store each time, replacing the previous one, so its build time is always a full build.
 - The 200 queries come from `experiments/results/benchmark_20260813_033105.csv`, which is in the repository.
 
 ### Try a single question
@@ -152,6 +152,46 @@ This runs the question through RAGScope's graph retriever and through LightRAG's
 
 Only the 50 chunks are searchable. Ask about something they cover, for example amifostine, Pendred's syndrome, HDAC inhibitors or the Notch receptor. `build_stats.json` lists their IDs. A question outside them shows how each system behaves with no answer available: RAGScope's retriever returns nothing, and LightRAG returns its nearest neighbours.
 
+### Run it on your own documents
+
+The same comparison runs on files you upload, even a single one, with no BioASQ data or example papers needed.
+
+1. **Index a file.** Use **Knowledge Base → Upload documents → Save and index**, or `uv run python pipeline/ingestion.py --corpus documents --source path/to/folder`. PDF, `.txt` and `.md` all work.
+2. **Write your questions** in a text file, one per line. To score hits, add the file (and optionally the page) that holds the answer after a `|`:
+
+   ```text
+   # my_questions.txt
+   Which enzyme does metformin activate? | metformin_notes.md
+   What dose did the trial use? | trial.pdf, page 3
+   What does the paper conclude?
+   ```
+
+3. **Run it:**
+
+   ```bash
+   # Build RAGScope's graph (docling-graph) and LightRAG over the same chunks
+   uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+       python graph/lightrag_compare.py build --kb documents
+
+   # Time and score both on your questions
+   uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+       python graph/lightrag_compare.py compare --kb documents --questions my_questions.txt
+
+   # Tables to share, including the hit rate and a row per question
+   uv run python graph/lightrag_compare.py report --kb documents --out my_report.md
+
+   # Or one question, with each chunk's file and page
+   uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+       python graph/lightrag_compare.py query --kb documents "Which enzyme does metformin activate?"
+   ```
+
+Notes on the documents run:
+
+- **One command builds both sides.** `build --kb documents` first brings RAGScope's graph over your documents up to date. That needs `uv sync --extra graph`, and chunks already extracted are skipped. It then builds LightRAG over every chunk docling-graph extracted. A one-file test took 7.9 s per chunk for RAGScope and 18.1 s for LightRAG.
+- **Hit rate.** A question scores a hit when its expected file (and page, if given) is among a system's top 5 chunks. Questions without a `|` count towards latency and return rates only.
+- **Separate results.** They go to `data/graph/lightrag/documents/`, so the BioASQ results stay as published. After adding or removing files, run `build --kb documents` again. **Clear my documents** removes these results along with the documents.
+- **Small corpora.** With only a few chunks, every system tends to find the answer, so a small run shows speed and behaviour more than quality. For a quality comparison, use several documents and questions whose answers sit on specific pages.
+
 ### Outputs
 
 | File | Contents |
@@ -160,5 +200,6 @@ Only the 50 chunks are searchable. Ask about something they cover, for example a
 | `data/graph/lightrag/compare_results.json` | Every latency, return-rate and overlap figure |
 | `data/graph/lightrag/ours_graph.json`, `ours_node_to_chunks.json` | RAGScope's graph cut down to the same 50 chunks |
 | `data/graph/lightrag/store/` | LightRAG's own store |
+| `data/graph/lightrag/documents/` | The same files for a run on your own documents |
 
 Timings depend on the hardware and on what else the machine is doing, so a rerun will not match the figures above to the millisecond. The ratios between the systems are what the comparison rests on.

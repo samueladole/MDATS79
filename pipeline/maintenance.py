@@ -5,7 +5,8 @@ Two independent resets, used by ``scripts/reset_data.py`` and the dashboard's
 Knowledge Base page:
 
 * **Your documents** — the ``ragscope_documents`` collection in ChromaDB, its
-  BM25 file, its manifest and its knowledge graph (``data/graph/documents/``).
+  BM25 file, its manifest, its knowledge graph (``data/graph/documents/``) and
+  any LightRAG comparison run over it (``data/graph/lightrag/documents/``).
   The uploaded files in ``data/documents/`` are kept unless asked for, so
   "Save and index" rebuilds everything from them.
 * **The BioASQ knowledge graph** — the graph files graph retrieval reads
@@ -76,6 +77,8 @@ def clear_documents(*, delete_files: bool = False) -> ResetReport:
     # A build in progress is stopped first, or it would publish the old graph.
     stop_build(kb)
     report.remove(kb.graph_dir)
+    # So is a LightRAG comparison run over them (graph/lightrag_compare.py --kb documents).
+    report.remove(kb.graph_dir.parent / "lightrag" / "documents")
     folder = _in_repo(settings.documents_dir)
     if delete_files:
         report.remove(folder)

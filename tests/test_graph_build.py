@@ -162,6 +162,8 @@ class TestClearDocuments:
         kb.graph_dir.mkdir()
         kb.graph_path.write_text("{}")
         (kb.graph_dir / "extractions").mkdir()
+        compared = tmp_path / "lightrag" / "documents"
+        compared.mkdir(parents=True)
 
         class Store:
             was_reset = False
@@ -182,6 +184,7 @@ class TestClearDocuments:
         assert Store.was_reset
         assert not kb.bm25_path.exists() and not kb.manifest_path.exists()
         assert not kb.graph_dir.exists(), "the documents graph goes with its chunks"
+        assert not compared.exists(), "so does a LightRAG comparison over them"
         assert files.exists() and "153 chunks" in report.removed[0]
 
 
