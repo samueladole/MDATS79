@@ -129,3 +129,13 @@ class TestClearDocuments:
         assert Store.was_reset
         assert not kb.bm25_path.exists() and not kb.manifest_path.exists()
         assert files.exists() and "153 chunks" in report.removed[0]
+
+
+def test_extraction_goes_to_the_configured_ollama(tmp_path):
+    """docling-graph ignores OLLAMA_BASE_URL, so the builder must pass it explicitly."""
+    import os
+
+    import builder_config
+
+    conf = builder_config.build_config(tmp_path / "chunk.md")
+    assert conf["llm_overrides"]["connection"]["base_url"] == os.environ["OLLAMA_BASE_URL"]

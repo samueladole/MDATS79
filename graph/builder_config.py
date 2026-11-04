@@ -31,9 +31,10 @@ EXTRACTIONS_DIR = GRAPH_DIR / "extractions"       # one saved result per extract
 WORK_DIR = GRAPH_DIR / "work"                     # scratch files for --all builds
 CORPUS_PATH = REPO_ROOT / "data" / "bm25_corpus.jsonl"
 
-# docling-graph reads the Ollama address from the environment rather than from
-# our settings, so pass the project's value through. A value already set in the
-# shell still wins.
+# The Ollama address: the project's setting, unless the shell sets
+# OLLAMA_BASE_URL. It is passed to docling-graph explicitly (llm_overrides
+# below), because docling-graph 1.9.1 ignores the environment variable: its
+# built-in default, http://localhost:11434, takes precedence over it.
 os.environ.setdefault("OLLAMA_BASE_URL", settings.ollama_base_url)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
@@ -71,6 +72,7 @@ def build_config(source_file: Path, *, model: str = EXTRACTOR_MODEL,
         "llm_input_format": "markdown",
         "provenance": "detailed",
         "llm_overrides": {
+            "connection": {"base_url": os.environ["OLLAMA_BASE_URL"]},
             # Default max_output_tokens is 131072, which exceeds the model's
             # context window and aborts before any LLM call is made.
             "max_output_tokens": 8192,
