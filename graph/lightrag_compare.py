@@ -20,8 +20,11 @@ OpenTelemetry pin keeps the version ChromaDB was locked with):
         python graph/lightrag_compare.py build
     uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
         python graph/lightrag_compare.py compare
+    uv run python graph/lightrag_compare.py report      # tables to share
 
-Outputs go to data/graph/lightrag/ and the report to graph/lightrag_results.md.
+Outputs go to data/graph/lightrag/. ``report`` prints the results as Markdown
+tables (``--out FILE`` also saves them); graph/lightrag_results.md is the
+written-up analysis of the 27 October 2026 run.
 """
 
 from __future__ import annotations
@@ -295,13 +298,83 @@ async def _compare() -> dict:
     return results
 
 
+def _report() -> str:
+    """The saved build and comparison results as Markdown tables."""
+    res = json.loads(RESULTS.read_text())
+    b, ours, lr = res["build"], res["ours"], res["lightrag"]
+    manifest = GRAPH_DIR / "manifest.json"
+    ours_build = json.loads(manifest.read_text()) if manifest.exists() else {}
+    ours_s = ours_build.get("mean_seconds_per_extraction", ours_build.get("s_per_chunk", "?"))
+
+    def ms(x):
+        return f"{x:,.1f} ms"
+
+    lines = [
+        f"## LightRAG vs RAGScope graph retriever ({b['chunks']} chunks, "
+        f"{res['queries']} queries, extractor {b['extractor']})",
+        "",
+        "### Build",
+        "",
+        "| | RAGScope (docling-graph) | LightRAG |",
+        "|---|---:|---:|",
+        f"| Seconds per chunk | {ours_s} | {b['s_per_chunk']} |",
+        f"| Failed chunks | {len(ours_build.get('failures', []) or [])} of "
+        f"{ours_build.get('chunks_attempted', '?')} | {b['failed_chunks']} of {b['chunks']} |",
+        f"| Graph on these chunks | {res['ours_subgraph']['nodes']:,} nodes, "
+        f"{res['ours_subgraph']['edges']:,} edges | {b['entities']:,} entities, "
+        f"{b['relations']:,} relations |",
+        "",
+        "### Retrieval latency",
+        "",
+        "| | Median | 95th percentile |",
+        "|---|---:|---:|",
+        f"| RAGScope graph retriever (graph-only) | {ms(ours['median_ms'])} | {ms(ours['p95_ms'])} |",
+    ]
+    for mode in ("naive", "local", "mix"):
+        if mode not in lr:
+            continue
+        a = lr[mode]["with_llm_keywords"]
+        shipped = " (vector search, no graph)" if mode == "naive" else ", as shipped (LLM keyword call)"
+        lines.append(f"| LightRAG `{mode}`{shipped} | {ms(a['median_ms'])} | {ms(a['p95_ms'])} |")
+        if "keywords_supplied" in lr[mode]:
+            k = lr[mode]["keywords_supplied"]
+            lines.append(f"| LightRAG `{mode}`, keywords supplied | {ms(k['median_ms'])} | "
+                         f"{ms(k['p95_ms'])} |")
+    lines += [
+        "",
+        "### What each returns",
+        "",
+        "| | Queries with at least one chunk | Mean top-5 overlap with RAGScope |",
+        "|---|---:|---:|",
+        f"| RAGScope graph retriever | {ours['nonempty_pct']}% | |",
+    ]
+    for mode in ("naive", "local", "mix"):
+        if mode in lr:
+            ov = lr[mode].get("overlap_with_ours")
+            lines.append(f"| LightRAG `{mode}` | {lr[mode]['with_llm_keywords']['nonempty_pct']}% | "
+                         f"{'' if ov is None else ov} |")
+    lines += ["", "Non-empty rates describe behaviour, not quality: see graph/lightrag_results.md."]
+    return "\n".join(lines) + "\n"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="LightRAG baseline comparison")
     sub = parser.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="build LightRAG over the sample chunks")
     b.add_argument("--n", type=int, default=50, help="number of chunks (default 50)")
     sub.add_parser("compare", help="time and compare retrieval")
+    r = sub.add_parser("report", help="print the saved results as Markdown tables")
+    r.add_argument("--out", type=Path, default=None, help="also write the tables to this file")
     args = parser.parse_args()
+
+    if args.cmd == "report":
+        if not RESULTS.exists():
+            sys.exit(f"{RESULTS} not found: run the build and compare steps first")
+        text = _report()
+        print(text)
+        if args.out:
+            args.out.write_text(text)
+        return 0
 
     os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
     if args.cmd == "build":

@@ -503,22 +503,26 @@ Extracts entities and relations per chunk with docling-graph (`uv sync --extra g
 
 | Option | Meaning |
 |---|---|
-| *(none)* | Build over the sample in `data/graph/sample/` (300 chunks, ~1 h on an Apple M5 GPU) |
-| `--all` | Build over every chunk in `data/bm25_corpus.jsonl` (30,850 chunks, ~100 h) |
+| *(none)* | Build over the 300-chunk sample, selected from `data/bm25_corpus.jsonl` by `builder_config.select_sample()` (about 1 h on an Apple M5 GPU) |
+| `--sample N` | A sample of N chunks instead of 300 |
+| `--all` | Build over every chunk in `data/bm25_corpus.jsonl` (30,850 chunks, about 100 h) |
+| `--kb documents` | Build your documents' graph, from `data/bm25_documents.jsonl` into `data/graph/documents/` |
 | `--limit N` | Extract at most N new chunks this run |
 | `--retry-failed` | Retry chunks whose extraction failed earlier |
 | `--publish-every N` | Re-publish the graph every N chunks (default 500) |
 | `--publish-only` | Rebuild the graph files from saved extractions, without the model |
-| `--concurrency N` | Concurrent Ollama requests (default 8) |
+| `--concurrency N` | Concurrent Ollama requests (default 4) |
 
-Each chunk's result is saved to `data/graph/extractions/` as it completes, so builds resume after interruption. `publish()` composes the saved extractions into `graph.json`, `node_to_chunks.json` and `manifest.json`, written atomically; a build still in progress never replaces a larger live graph.
+Each chunk's result is saved to the graph folder's `extractions/` as it completes, so builds resume after interruption. `publish()` composes the saved extractions into `graph.json`, `node_to_chunks.json` and `manifest.json`, written atomically. A build still in progress never replaces a larger live graph, and no publish replaces a graph with an empty one. A `build.pid` file stops two builds of the same graph running at once.
+
+Each `KnowledgeBase` (`pipeline/knowledge_base.py`) names its graph files (`graph_path`, `node_chunks_path`), and `RAGPipeline` passes them to `build_retriever(..., graph_paths=...)`, so graph retrieval works for any knowledge base whose graph has been built (`KnowledgeBase.has_graph`). `pipeline/graph_jobs.py` starts, monitors and stops builds as background processes for the dashboard; **Save and index** uses it to build your documents' graph.
 
 ### `pipeline/maintenance.py` and `scripts/reset_data.py`
 
 | Symbol | Description |
 |---|---|
-| `clear_documents(delete_files=False)` | Empty the `ragscope_documents` collection and remove its BM25 file and manifest; optionally delete the uploaded files |
-| `clear_graph(delete_extractions=False, delete_sample=False)` | Remove the graph files; optionally the saved extractions (forcing re-extraction) and the sample |
+| `clear_documents(delete_files=False)` | Empty the `ragscope_documents` collection and remove its BM25 file, manifest and knowledge graph (stopping a build in progress); optionally delete the uploaded files |
+| `clear_graph(delete_extractions=False)` | Remove the BioASQ graph files; optionally the saved extractions (forcing re-extraction) |
 
 `scripts/reset_data.py --documents / --graph` is the command-line front end (with confirmation); the Knowledge Base page offers the same with a confirmation checkbox. Neither touches the BioASQ index.
 

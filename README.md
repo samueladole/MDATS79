@@ -42,6 +42,7 @@
   - [Running the Benchmark Evaluation](#running-the-benchmark-evaluation)
   - [Asking Questions About Your Own Documents](#asking-questions-about-your-own-documents)
   - [Building the Knowledge Graph (Graph Retrieval)](#building-the-knowledge-graph-graph-retrieval)
+  - [Comparing Graph Retrieval with LightRAG](#comparing-graph-retrieval-with-lightrag)
 - [Docker Reference](#docker-reference)
 - [Evaluation Metrics](#evaluation-metrics)
 - [Experimental Design](#experimental-design)
@@ -243,13 +244,14 @@ ragscope/
 │   │   ├── chunker.py             # Text chunking strategies
 │   │   └── cleaner.py             # Text normalisation utilities
 │   ├── documents/                 # Your own files for --corpus documents (git-ignored)
-│   ├── graph/                     # Knowledge graph used by graph retrieval (git-ignored)
+│   ├── graph/                     # Knowledge graphs used by graph retrieval (git-ignored)
 │   └── raw/                       # Downloaded datasets (git-ignored)
 │
 ├── pipeline/                      # Core RAG pipeline
 │   ├── ingestion.py               # Document ingestion orchestrator
-│   ├── knowledge_base.py          # BioASQ benchmark vs. your documents: collection + BM25 file
+│   ├── knowledge_base.py          # BioASQ benchmark vs. your documents: collection, BM25 file, graph
 │   ├── maintenance.py             # Clearing your documents' index and the knowledge graph
+│   ├── graph_jobs.py              # Background graph builds started from the dashboard
 │   ├── embeddings.py              # Embedding generation wrapper
 │   ├── vectorstore.py             # ChromaDB interface (embedded or server)
 │   ├── retrieval/
@@ -264,9 +266,8 @@ ragscope/
 │   └── rag.py                     # End-to-end query pipeline orchestrator
 │
 ├── graph/                         # Offline knowledge-graph builder (uv sync --extra graph)
-│   ├── sample_chunks.py           # Pick the chunks to extract
-│   ├── build_graph.py             # Extract entities and relations; resumable, sample or --all
-│   ├── builder_config.py          # Extraction settings and paths
+│   ├── build_graph.py             # Extract entities and relations; resumable; sample, --all or --kb documents
+│   ├── builder_config.py          # Extraction settings, paths and the 300-chunk sample
 │   ├── biomed_template.py         # Biomedical entity and relation schema
 │   ├── lightrag_compare.py        # LightRAG baseline comparison
 │   └── lightrag_results.md        # Its results
@@ -289,7 +290,7 @@ ragscope/
 │   │   ├── 01_live_monitor.py     # Ask a question; answer, scores, pipeline flow Sankey, graph path
 │   │   ├── 02_query_explorer.py   # Per-query drill-down view + pipeline flow Sankey
 │   │   ├── 03_benchmark_results.py # Benchmark results: the four conditions compared
-│   │   └── 04_knowledge_base.py   # Upload your documents; browse the BioASQ collection and graph
+│   │   └── 04_knowledge_base.py   # Upload your documents; browse the collections and graphs
 │   └── components/
 │       ├── theme.py               # Shared icons (Material Symbols / inline SVG) + CSS theme
 │       ├── formatting.py          # Shared number formatting (durations in s or ms)
@@ -337,7 +338,7 @@ ollama pull qwen2.5:3b                     # RAGAS judge
 # 4. Configuration and data
 cp .env.example .env                       # CPU defaults
 uv run python scripts/fetch_index.py       # prebuilt index (~350 MB), checked against its SHA-256
-                                           # (or build it: uv run python pipeline/ingestion.py --corpus all, 20–40 min)
+                                           # (or build it: uv run python pipeline/ingestion.py --corpus all, ~3 min)
 
 # 5. Dashboard
 uv run streamlit run dashboard/app.py      # http://localhost:8501
@@ -440,7 +441,7 @@ docker compose exec ragscope python pipeline/ingestion.py \
   --chunk-overlap 64
 ```
 
-> This embeds the 30,850 BioASQ chunks using `all-MiniLM-L6-v2`. Expect 20–40 minutes on CPU. Progress is displayed in the terminal. The vectors go to the `chroma_data` volume, and the BM25 corpus to `data/` on your machine, which Compose mounts into the container.
+> This embeds the 30,850 BioASQ chunks with `all-MiniLM-L6-v2`. The build behind the published index took **159 s** on an Apple M5 laptop, embedding on its CPU at about 180 chunks per second; chunking and writing to ChromaDB take seconds. The first run also downloads the BioASQ dataset and the embedding model. In Docker on macOS, expect it to take longer: the container gets only part of the CPU and cannot use the Apple GPU. Progress is displayed in the terminal. The vectors go to the `chroma_data` volume, and the BM25 corpus to `data/` on your machine, which Compose mounts into the container.
 
 **6. Stop all services**
 
@@ -510,7 +511,7 @@ uv run chroma run --path ./data/chroma_store --port 8000
 ```bash
 uv run python scripts/fetch_index.py                       # prebuilt, ~350 MB
 # or
-uv run python pipeline/ingestion.py --corpus all --chunk-size 512 --chunk-overlap 64   # 20–40 min on CPU
+uv run python pipeline/ingestion.py --corpus all --chunk-size 512 --chunk-overlap 64   # ~3 min on an Apple M5 CPU
 ```
 
 **6. Run tests to verify setup**
@@ -541,6 +542,9 @@ The settings most often changed:
 | `RAGAS_TIMEOUT_SECONDS` | Time allowed per judge call, including time queued behind the other metrics. 180 by default; 600 in the CPU profile. |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` locally; Docker sets `host.docker.internal` itself. |
 | `RETRIEVAL_STRATEGY`, `TOP_K` | Default retrieval strategy (`dense`, `hybrid`, `graph`) and passages per query. |
+| `EMBEDDING_DEVICE` | `cpu` (default), `mps` (Apple GPU) or `cuda` (NVIDIA GPU). See the note below. |
+
+> **Embedding on a GPU.** `EMBEDDING_DEVICE=mps` embeds about twice as fast as the CPU on an Apple M5 (the full corpus in 1.4 instead of 2.8 minutes). GPU arithmetic can change vectors in their last digits, though, so the prebuilt index and the published results use `cpu`, and queries are embedded on the same device as the index. Use a GPU when you rebuild for your own purposes or index your own documents. Keep `cpu` when reproducing the published numbers.
 
 See the comments in either file for the rest.
 
@@ -570,7 +574,7 @@ The dashboard provides four views at `http://localhost:8501`:
 - **Knowledge Base** — three tabs over a picker that lists every ChromaDB collection (the BioASQ benchmark, your documents, and any other):
   - **Chunks:** browse a collection, or type a query to rank its chunks by meaning; select a row to read the chunk and its metadata
   - **Upload documents:** add PDF and text files (see below)
-  - **Knowledge graph:** *Explore an entity* draws it, its related entities and their source chunks left to right, and clicking any entity re-centres on it; *Trace a question* runs graph retrieval (no LLM, milliseconds) and draws the path it took, as on the Live Monitor
+  - **Knowledge graph:** for the BioASQ benchmark or your documents, *Explore an entity* draws it, its related entities and their source chunks left to right, and clicking any entity re-centres on it; *Trace a question* runs graph retrieval (no LLM, milliseconds) and draws the path it took, as on the Live Monitor
 
 > With hybrid and graph retrieval, passage scores are Reciprocal Rank Fusion values (around 0.016) that only order the passages, so the dashboard shows each passage's rank rather than a similarity. Answer correctness needs a reference answer, so it shows N/A for an ad-hoc question unless you enter one in the sidebar.
 
@@ -639,7 +643,7 @@ uv run python pipeline/ingestion.py --corpus documents
 - Only the PDF's text layer is read, so scanned PDFs are skipped with a warning.
 - The collection is rebuilt from the folder on every run: to remove a file, delete it and ingest again.
 - Answer correctness needs a reference answer, so it shows N/A for your own questions.
-- Graph retrieval is available for the BioASQ benchmark only, because the knowledge graph is built over that corpus.
+- A knowledge graph is built over your documents in the background after **Save and index**, so graph retrieval works for them too (see [Building the Knowledge Graph](#building-the-knowledge-graph-graph-retrieval)). It needs `uv sync --extra graph` and `ollama pull llama3.2`; without them, dense and hybrid retrieval still work. Its progress shows on **Knowledge Base → Knowledge graph → My documents**.
 
 **To start over:** open **Knowledge Base → Upload documents → Clear my documents**, or run:
 
@@ -648,11 +652,13 @@ uv run python scripts/reset_data.py --documents                           # keep
 uv run python scripts/reset_data.py --documents --delete-document-files   # removes them too
 ```
 
-This empties the `ragscope_documents` collection (its chunks), its BM25 file and its manifest. The BioASQ benchmark is never touched. Press **Save and index** (or rerun the ingestion command) to rebuild.
+This empties the `ragscope_documents` collection (its chunks), its BM25 file and its manifest, and deletes your documents' knowledge graph (entities, relations and chunks covered, in `data/graph/documents/`). The BioASQ benchmark and its graph are never touched. Press **Save and index** (or rerun the ingestion command, then `graph/build_graph.py --kb documents`) to rebuild.
 
 ### Building the Knowledge Graph (Graph Retrieval)
 
-The `graph` retrieval strategy reads a knowledge graph of biomedical entities (diseases, genes and proteins, chemicals and drugs) and their relations, extracted from the corpus offline. Dense and hybrid retrieval do not need it. The prebuilt index from `scripts/fetch_index.py` includes the 300-chunk sample graph.
+The `graph` retrieval strategy reads a knowledge graph of biomedical entities (diseases, genes and proteins, chemicals and drugs) and their relations, extracted offline by [docling-graph](https://github.com/IBM/docling-graph) with `llama3.2`. Dense and hybrid retrieval do not need it.
+
+Each knowledge base has its own graph: the BioASQ graph in `data/graph/`, the one behind the published results, and your documents' graph in `data/graph/documents/`. Both use the same extractor and schema. The prebuilt index from `scripts/fetch_index.py` includes the 300-chunk BioASQ sample graph.
 
 **How graph retrieval works**
 
@@ -668,17 +674,17 @@ The Live Monitor and Query Explorer draw the path the walk took, and **Knowledge
 | `GRAPH_NODE_CHUNKS_PATH` | `data/graph/node_to_chunks.json` | Which chunks each entity was extracted from |
 | `GRAPH_FUSE_DENSE` | `true` | Fuse with dense retrieval, or return graph-only results |
 
-**Two graph sizes**
+**Graph sizes and build times**
 
-| | Sample | Whole corpus |
-|---|---|---|
-| Chunks | 300, picked at an even stride with no reference to the benchmark queries | All 30,850 |
-| Corpus coverage | about 1% | 100% |
-| Time on an Apple M5 MacBook Pro (Ollama on the GPU) | about 1 hour | **about 100 hours (roughly 4 days)** |
-| Time on a CPU only | several hours | weeks; not practical |
-| Command | `graph/build_graph.py` | `graph/build_graph.py --all` |
+| | BioASQ sample | BioASQ whole corpus | Your documents |
+|---|---|---|---|
+| Chunks | 300, picked at an even stride with no reference to the benchmark queries | All 30,850 | All of them |
+| Corpus coverage | about 1% | 100% | 100% |
+| Apple M5 (Ollama on the GPU) | about 1 hour | **about 100 hours (roughly 4 days)** | 12–20 s per chunk |
+| CPU only | several hours | weeks; not practical | several times slower |
+| Command | `graph/build_graph.py` | `graph/build_graph.py --all` | `graph/build_graph.py --kb documents`, or automatic |
 
-The estimates come from the measured sustained rate of 11.8 s per chunk (`llama3.2`, 3B). Individual chunks vary widely, and raising the concurrency beyond about 2 barely helps, because one request already keeps the GPU busy.
+The times come from the sample build's sustained rate of 11.8 s per chunk (`llama3.2`, 3B); a later 24-chunk test ran at 19–20 s per chunk. Individual chunks vary widely. The CPU figures are rough guides, not measurements.
 
 **Before you start**
 
@@ -692,11 +698,10 @@ ollama pull llama3.2        # the extractor model, ~2 GB
 **Build the sample (about 1 hour)**
 
 ```bash
-uv run python graph/sample_chunks.py 300    # writes the sample to data/graph/sample/
-uv run python graph/build_graph.py          # extracts it and publishes the graph
+uv run python graph/build_graph.py          # extracts the 300-chunk sample and publishes the graph
 ```
 
-This reproduces the shipped graph: extraction runs at temperature 0 with a fixed seed.
+The builder picks the sample from `data/bm25_corpus.jsonl` itself: every 64th chunk, keeping those of 200–2,000 characters, until it has 300. These are the same 300 chunks as the shipped graph, and the build reproduces it: extraction runs at temperature 0 with a fixed seed. `--sample N` builds a different size.
 
 **Build the whole corpus (about 100 hours, resumable)**
 
@@ -710,8 +715,35 @@ uv run python graph/build_graph.py --all
 - **Progress.** The log prints chunks done, chunks per second and the time left every 25 chunks.
 - **Failures.** A chunk that fails extraction (malformed model output) is recorded and skipped; 2 of 300 failed in the sample build. `--retry-failed` tries them again.
 - **Keep the machine awake.** On macOS, `caffeinate -i uv run python graph/build_graph.py --all` stops the laptop sleeping during the build.
+- **One at a time.** A second build of the same graph refuses to start while one is running.
 
-Other options: `--concurrency N` (default 8), `--publish-every N` (default 500) and `--publish-only`, which rebuilds the graph files from the saved extractions in seconds without calling the model.
+Other options: `--concurrency N` (chunks in flight at once, default 4), `--publish-every N` (default 500) and `--publish-only`, which rebuilds the graph files from the saved extractions in seconds without calling the model. It never replaces a graph with an empty one.
+
+<a id="why-not-parallel-serving"></a>
+**Why not parallel serving?**
+
+Ollama runs one model call at a time by default, and graph building keeps that default. Allowing parallel calls looks like an easy speed-up, so it was measured: the same 24 chunks, extracted three times through docling-graph with `--concurrency 4`.
+
+| Ollama serving | Seconds per chunk | Entities extracted |
+|---|---:|---:|
+| Default (one call at a time) | 19.5 | 155 |
+| Parallel (`OLLAMA_NUM_PARALLEL=4`, `OLLAMA_FLASH_ATTENTION=1`) | **41.0** | 169 |
+| Default, repeated | 20.2 | 155 |
+
+Parallel serving was twice as slow on the Apple M5. It also changed the output on 4 of the 24 chunks: some entities came back duplicated or reworded. The two default runs were identical, chunk for chunk. So keep the default, both for speed and so a rebuild reproduces the published graph. `--concurrency` still helps a little (about 1.4 times), because docling-graph's own processing overlaps the model calls.
+
+A faster path to full coverage would need a lighter extractor than docling-graph. A direct structured-output call to the same model ran at 2.6 s per chunk in a 12-chunk test, about four times faster. Its graph would be comparable but not identical, though, and the published results were produced with docling-graph, so the platform keeps docling-graph.
+
+**Your documents' graph**
+
+**Save and index** on **Knowledge Base → Upload documents** starts a build in the background. Only chunks not yet extracted are sent to the model, so adding one file costs only that file's chunks. **Knowledge Base → Knowledge graph → My documents** shows the progress, with a button to stop it, and the graph appears there and in the Live Monitor (*Retrieval Strategy → graph*) as soon as it is published. From the command line:
+
+```bash
+uv run python pipeline/ingestion.py --corpus documents     # index the files
+uv run python graph/build_graph.py --kb documents          # build their graph
+```
+
+The Docker image does not include docling-graph, so in Docker the documents are indexed but their graph is not built. Run the second command on the host instead: `./data` is shared with the container.
 
 **Output**
 
@@ -721,6 +753,7 @@ Other options: `--concurrency N` (default 8), `--publish-every N` (default 500) 
 | `data/graph/node_to_chunks.json` | For each entity, the chunk IDs it was extracted from |
 | `data/graph/manifest.json` | Build statistics: scope, chunks extracted and still to do, failures, coverage, entity and relation counts, time per extraction |
 | `data/graph/extractions/` | One saved result per extracted chunk; what makes builds resumable |
+| `data/graph/documents/` | The same files for your documents' graph, plus `build.log` from the last background build |
 
 Files are replaced atomically, so the retriever never reads a half-written graph. To build somewhere else, set `GRAPH_PATH` and `GRAPH_NODE_CHUNKS_PATH`; the builder and the retriever both read them.
 
@@ -739,16 +772,69 @@ uv run python scripts/reset_data.py --graph --delete-extractions    # start from
 
 The first form removes the graph files (entities, relations and chunks covered) but keeps `data/graph/extractions/`, so `graph/build_graph.py --publish-only` restores the graph in seconds. The second also deletes the saved extractions, so the next build re-extracts every chunk. The same controls are under **Knowledge Base → Knowledge graph → Manage the graph**. Neither touches the BioASQ index.
 
-**Compared with LightRAG.** [graph/lightrag_results.md](graph/lightrag_results.md) compares this retriever with [LightRAG](https://github.com/HKUDS/LightRAG) on the same 50 chunks, extraction model and embedder:
-- **Build:** this retriever's graph builds 3 times faster.
-- **Query:** it answers in 5.8 ms (median), while LightRAG's graph modes take about 0.8 s, because they call the LLM on every query.
+### Comparing Graph Retrieval with LightRAG
 
-To rerun the comparison:
+[LightRAG](https://github.com/HKUDS/LightRAG) is an established GraphRAG system. `graph/lightrag_compare.py` runs it against this platform's graph retriever, as a baseline for the paper. The full analysis of the 27 October 2026 run is in [graph/lightrag_results.md](graph/lightrag_results.md).
+
+**What it measures**
+
+| | |
+|---|---|
+| Build cost | Seconds per chunk, failed chunks, entities and relations |
+| Retrieval latency | Median and 95th percentile over the 200 benchmark queries. LightRAG runs in its `naive`, `local` and `mix` modes, both as shipped (an LLM call per query extracts keywords) and with the keywords supplied, which isolates the graph lookup. This platform's retriever runs graph-only. |
+| Behaviour | How often each returns anything, and the overlap of their top 5 chunks |
+
+**Why the comparison is fair.** Both systems get the same input and models:
+
+- **Same chunks:** the first 50 of the 300-chunk sample that this platform's builder extracted successfully.
+- **Same extractor:** `llama3.2` at temperature 0 with seed 42, with one extraction call per chunk; LightRAG's second "gleaning" pass is off.
+- **Same embedder:** `all-MiniLM-L6-v2`.
+- **Same graph scope:** this platform's graph is cut down to those 50 chunks, so both search the same material.
+
+**Before you run it**
+
+1. **The sample graph is the live BioASQ graph.** The comparison reads `data/graph/graph.json`. It ships with the prebuilt index (`scripts/fetch_index.py`), or `graph/build_graph.py` builds it. If you have since built the whole corpus, the selected chunks are the same, but the cut-down graph may differ slightly. Restore the sample graph for an exact rerun.
+2. **Ollama is running, with `llama3.2` pulled** and its default one-call-at-a-time serving (`OLLAMA_NUM_PARALLEL` unset). The published timings were measured that way. The script sends LightRAG two requests at a time; more only turned waiting into timeouts.
+3. **No install is needed.** LightRAG is not a project dependency: `uv run --with` adds it for the one command. The OpenTelemetry pin keeps the version ChromaDB needs.
+
+**Run it**
 
 ```bash
-uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 python graph/lightrag_compare.py build
-uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 python graph/lightrag_compare.py compare
+# 1. Build LightRAG over the 50 chunks (~30 minutes on an Apple M5)
+uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+    python graph/lightrag_compare.py build
+
+# 2. Time both retrievers on the 200 benchmark queries (~10 minutes)
+uv run --with lightrag-hku==1.5.7 --with opentelemetry-api==1.40.0 \
+    python graph/lightrag_compare.py compare
+
+# 3. Print the results as Markdown tables, and save them to share
+uv run python graph/lightrag_compare.py report --out lightrag_report.md
 ```
+
+- `build --n 100` uses more chunks.
+- LightRAG keeps its store in `data/graph/lightrag/store/` and skips chunks already in it. To repeat the build from scratch, delete `data/graph/lightrag/` first, otherwise the build time it reports is meaningless.
+
+**Outputs**
+
+| File | Contents |
+|---|---|
+| `data/graph/lightrag/build_stats.json` | LightRAG's build: chunk IDs, time, failures, entities, relations |
+| `data/graph/lightrag/compare_results.json` | Every latency and overlap figure |
+| `data/graph/lightrag/ours_graph.json` | This platform's graph cut down to the same chunks |
+| The `report` output | The results as tables, ready to paste or send |
+
+**Published result** (Apple M5, Ollama on the GPU):
+
+| | Median per query |
+|---|---:|
+| This platform's graph retriever | **5.8 ms** |
+| LightRAG `local` / `mix`, as shipped | 823 / 828 ms |
+| LightRAG `local` / `mix`, keywords supplied | 15 / 24 ms |
+
+The build took 11.8 s per chunk here, against 35.4 s for LightRAG. LightRAG is slower because it calls the language model on every query, and even its graph lookup alone is 3–4 times slower. Its default settings also failed with a 3B extractor; [graph/lightrag_results.md](graph/lightrag_results.md) explains the settings that made it work.
+
+> **Read the "returns anything" rates as behaviour, not quality.** The 50 chunks are 0.16% of the corpus, so almost no benchmark query has its answer among them. This retriever returns nothing unless the query names an entity in the graph. LightRAG nearly always returns its nearest neighbours, relevant or not. Comparing answer quality needs both graphs built over the chunks that hold the gold passages for a fixed set of queries.
 
 ---
 
