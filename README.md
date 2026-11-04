@@ -269,7 +269,7 @@ ragscope/
 │   ├── build_graph.py             # Extract entities and relations; resumable; sample, --all or --kb documents
 │   ├── builder_config.py          # Extraction settings, paths and the 300-chunk sample
 │   ├── biomed_template.py         # Biomedical entity and relation schema
-│   ├── lightrag_compare.py        # LightRAG baseline comparison
+│   ├── lightrag_compare.py        # LightRAG comparison
 │   └── lightrag_results.md        # Its results
 │
 ├── telemetry/                     # Instrumentation layer
@@ -774,7 +774,7 @@ The first form removes the graph files (entities, relations and chunks covered) 
 
 ### Comparing Graph Retrieval with LightRAG
 
-[LightRAG](https://github.com/HKUDS/LightRAG) is an established GraphRAG system. `graph/lightrag_compare.py` runs it against this platform's graph retriever, as a baseline for the paper. The full analysis of the 27 October 2026 run is in [graph/lightrag_results.md](graph/lightrag_results.md).
+[LightRAG](https://github.com/HKUDS/LightRAG) is an established GraphRAG system. `graph/lightrag_compare.py` runs it against this platform's graph retriever, with the same chunks and models. The full analysis of the 27 October 2026 run is in [graph/lightrag_results.md](graph/lightrag_results.md).
 
 **What it measures**
 
@@ -1066,7 +1066,7 @@ Found since submission:
 | System Architecture | ✅ Complete | `docs/architecture.md`, `docs/images/ragscope_system_architecture.svg` |
 | Platform Implementation | ✅ Complete | `pipeline/`, `evaluation/`, `dashboard/` |
 | Benchmark Experiment | ✅ Complete | `experiments/results/` |
-| LightRAG Baseline Comparison | ✅ Complete | `graph/lightrag_results.md` |
+| LightRAG Comparison | ✅ Complete | `graph/lightrag_results.md` |
 | Dissertation | ✅ Complete | — |
 | Publication | 🔄 In progress | — |
 

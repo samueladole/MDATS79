@@ -1,5 +1,5 @@
 """
-LightRAG as a GraphRAG baseline for the docling-graph retriever.
+LightRAG compared with RAGScope's docling-graph retriever.
 
 Builds LightRAG (default in-memory / local-file storage: JSON key-value store,
 NanoVectorDB, NetworkX) over the same chunks our graph was built from, with the
@@ -598,7 +598,7 @@ def _report() -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="LightRAG baseline comparison")
+    parser = argparse.ArgumentParser(description="Compare LightRAG with RAGScope's graph retriever")
     kb = argparse.ArgumentParser(add_help=False)
     kb.add_argument("--kb", choices=["bioasq", "documents"], default="bioasq",
                     help="BioASQ benchmark (default) or your uploaded documents")

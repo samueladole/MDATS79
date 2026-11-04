@@ -1,4 +1,4 @@
-# LightRAG as a GraphRAG baseline
+# LightRAG compared with RAGScope's graph retriever
 
 This compares [LightRAG](https://github.com/HKUDS/LightRAG) 1.5.7 with RAGScope's graph retriever. It was run on 27 October 2026 with `graph/lightrag_compare.py`. The raw numbers are in `data/graph/lightrag/build_stats.json` and `compare_results.json`. [How to reproduce](#how-to-reproduce) explains how to rerun it, or try a single question.
 
@@ -7,8 +7,6 @@ This compares [LightRAG](https://github.com/HKUDS/LightRAG) 1.5.7 with RAGScope'
 - **Graph modes:** they call the LLM on every query to extract keywords. That makes them about 140 times slower than our graph retriever on an Apple GPU, and slower still on a CPU.
 - **Graph lookup alone:** even with the keywords supplied, it is 3 to 4 times slower than ours.
 - **Build:** it takes 3 times as long.
-
-Its value to the paper is as an established GraphRAG baseline, not as a faster engine.
 
 **Provenance.** RAGScope's side of the comparison is the docling-graph graph behind the dissertation's results (Chapter 4, Section 4.9), restricted to the same 50 chunks. The platform still builds its graphs with docling-graph. A different extractor would produce a comparable but not identical graph, so these figures hold for docling-graph specifically.
 
@@ -101,12 +99,6 @@ LightRAG local: 779.8 ms (includes the LLM keyword call),
 ```
 
 Both systems rank the Pendred's syndrome abstract first. RAGScope's retriever stops there, because only that chunk mentions the entity. LightRAG fills its five slots with the nearest other chunks, about Schindler disease, blepharospasm, Miller-Fisher syndrome and impetigo. Each LightRAG graph mode also spends about 0.8 s asking the model for keywords.
-
-## Recommendation
-
-- **Keep RAGScope's retriever as the graph strategy.** It is faster to build and to query, and it needs no LLM at query time. That is also why it was designed without one: any gain cannot be attributed to LLM query understanding.
-- **Report LightRAG in the paper** as the established GraphRAG baseline, with the build and latency numbers above.
-- **For a quality comparison,** build both graphs over the chunks that hold the gold passages for a fixed set of queries, and compare retrieval hit rates on those queries.
 
 ## How to reproduce
 
