@@ -37,7 +37,7 @@ INDEX_URL = (
     "https://github.com/samueladole/MDATS79/releases/download/index-v1/"
     "ragscope-index-v1.tar.gz"
 )
-INDEX_SHA256 = "2aeba9ad8ddaa8ce0f404726db56e2d216fb020584f44124ba6a0ee9ddf10b1f"
+INDEX_SHA256 = "e4b4fac80b4b5dd7038028e3afb208a970efb1bfb3986cb3296fd0dda38b1b04"
 
 #: Top-level entries the archive may contain. Anything else is refused.
 EXPECTED = {"chroma_store", "bm25_corpus.jsonl", "ingestion_manifest.json", "graph"}

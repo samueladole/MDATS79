@@ -337,7 +337,7 @@ ollama pull qwen2.5:3b                     # RAGAS judge
 
 # 4. Configuration and data
 cp .env.example .env                       # CPU defaults
-uv run python scripts/fetch_index.py       # prebuilt index (~350 MB), checked against its SHA-256
+uv run python scripts/fetch_index.py       # prebuilt index (~260 MB), checked against its SHA-256
                                            # (or build it: uv run python pipeline/ingestion.py --corpus all, ~3 min)
 
 # 5. Dashboard
@@ -509,7 +509,7 @@ uv run chroma run --path ./data/chroma_store --port 8000
 **5. Get the index: download it, or build it from source**
 
 ```bash
-uv run python scripts/fetch_index.py                       # prebuilt, ~350 MB
+uv run python scripts/fetch_index.py                       # prebuilt, ~260 MB
 # or
 uv run python pipeline/ingestion.py --corpus all --chunk-size 512 --chunk-overlap 64   # ~3 min on an Apple M5 CPU
 ```

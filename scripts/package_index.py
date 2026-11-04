@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import sqlite3
 import sys
 import tarfile
 from pathlib import Path
@@ -30,6 +31,19 @@ ENTRIES = [
 ]
 
 
+def _live_segments(store: Path) -> set[str]:
+    """Segment folders the store's database still refers to.
+
+    Deleting a collection leaves its vector folder behind, so a store that has
+    been rebuilt can hold folders no collection uses. They are left out.
+    """
+    con = sqlite3.connect(f"file:{store / 'chroma.sqlite3'}?mode=ro", uri=True)
+    try:
+        return {row[0] for row in con.execute("SELECT id FROM segments")}
+    finally:
+        con.close()
+
+
 def main() -> int:
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO_ROOT / "ragscope-index-v1.tar.gz"
     missing = [e for e in ENTRIES if not (DATA_DIR / e).exists()]
@@ -37,7 +51,13 @@ def main() -> int:
         print("Missing from data/:", ", ".join(missing))
         return 1
 
-    def _clean(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    live = _live_segments(DATA_DIR / "chroma_store")
+
+    def _clean(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
+        parts = Path(info.name).parts
+        if (len(parts) >= 2 and parts[0] == "chroma_store"
+                and (DATA_DIR / "chroma_store" / parts[1]).is_dir() and parts[1] not in live):
+            return None  # an orphaned segment folder
         # Fixed owner and mode, so the archive does not carry local account names.
         info.uid = info.gid = 0
         info.uname = info.gname = ""
