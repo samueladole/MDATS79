@@ -100,29 +100,49 @@ The platform is organised into six stages, each mapped to a specific research qu
 ## Features
 
 ### 🔬 Real-Time Evaluation
-- Per-query RAGAS metric computation (context relevance, answer faithfulness, answer correctness)
-- Composite hallucination risk scoring derived from faithfulness and relevance signals
-- Evaluation runs alongside query execution — no separate batch job required
+- Per-query RAGAS metrics: context relevance, answer faithfulness and answer correctness
+- A composite hallucination risk score, built from the faithfulness and relevance signals, with LOW / MEDIUM / HIGH bands
+- Evaluation runs with every query, with no separate batch job. The answer appears as soon as it is generated, and the scores follow
 
 ### 📡 Telemetry Collection
-- End-to-end latency profiling with stage-level decomposition (retrieval, generation and evaluation)
-- Token usage logging (prompt tokens, completion tokens, total)
-- Per-query cost estimation based on configurable per-token rate tables
-- Structured JSON telemetry store for reproducibility and offline analysis
+- Stage-level latency for every query: embedding, retrieval and its sub-stages, generation and RAGAS evaluation
+- Token usage per query (prompt, completion, total), with a cost estimate from configurable per-token rates ($0 for local models)
+- A structured JSON telemetry store, for reproducibility and offline analysis
+
+### 🔍 Retrieval Strategies
+- **Dense:** vector search in ChromaDB with `all-MiniLM-L6-v2` embeddings
+- **Hybrid:** BM25 keyword search fused with dense results by Reciprocal Rank Fusion
+- **Graph:** retrieval in three steps, with no language model at query time, so it takes milliseconds:
+  - matches the question to entities in a knowledge graph;
+  - walks their neighbourhood with Personalized PageRank;
+  - ranks the chunks those entities came from, either fused with dense retrieval or on their own.
+- Indexes and graphs load once and are reused across queries
+
+### 🕸️ Knowledge Graph
+- **What it holds:** diseases, genes and proteins, and chemicals and drugs, plus *inhibits* and *treats* relations. [docling-graph](https://github.com/IBM/docling-graph) extracts them offline with `llama3.2`, and every entity traces back to the chunks it came from
+- **One graph per knowledge base:** the BioASQ graph (the 300-chunk sample ships with the prebuilt index), and a graph of your own documents, built in the background when you index them
+- **Resumable builds:** each chunk is saved as soon as it is extracted, so an interrupted build continues where it stopped. The graph is republished as it grows, so graph retrieval works throughout
+- **Clear and rebuild:** from the dashboard or with `scripts/reset_data.py`
 
 ### 🔁 Comparative Experimentation
-- Pluggable retrieval strategies: **dense retrieval** (ChromaDB vector search), **hybrid retrieval** (BM25 + dense via Reciprocal Rank Fusion) and **graph retrieval** (knowledge-graph traversal, added after the experiment)
-- Any Ollama model as the generator, set with `GENERATOR_MODELS`; the experiment used **Llama 3 (8B)** and **Mistral 7B**. Everything runs locally, with no API key
-- 2 × 2 factorial experiment runner with automated result logging
+- Any Ollama model can be the generator, set with `GENERATOR_MODELS`; the experiment used **Llama 3 (8B)** and **Mistral 7B**. Everything runs locally, with no API key
+- A 2 × 2 factorial experiment runner (two LLMs × dense or hybrid retrieval) with automated result logging, which resumes from a checkpoint if interrupted
+- **LightRAG comparison:** times [LightRAG](https://github.com/HKUDS/LightRAG) against this platform's graph retriever on the same chunks and models (build cost, latency, what each returns), on the BioASQ sample or your own documents
+  - **Hit rate:** on your documents, it scores how often each system returns the file and page you name for each question
+  - **Single question:** `query` runs one question through both systems
 
 ### 📊 Interactive Dashboard
-- Live Monitor results persist across page interaction, so expanding a chunk does not clear the answer
-- Benchmark Results page comparing the four conditions: summary statistics, effect sizes, risk profile, latency and token breakdown, and metric correlations
-- Retrieved document chunk viewer with colour-graded per-chunk similarity scores
-- Sankey diagram of the full pipeline process flow — every instrumented stage (embedding, retrieval sub-stages, generation, RAGAS evaluation) sized by actual wall-clock duration for a single query
-- The generated answer appears as soon as it exists, while RAGAS evaluation is still running
-- Knowledge Base page: pick any ChromaDB collection, browse or search its chunks in one table, upload your own documents, and explore the knowledge graph as interactive left-to-right graphs (an entity's neighbourhood, or the path graph retrieval takes for a question)
-- CSV export of benchmark results for downstream analysis
+- **Live Monitor:** ask a question with the knowledge base, model and retrieval strategy of your choice, and get:
+  - the answer, then its RAGAS scores;
+  - the retrieved passages, numbered as the answer cites them and linked to their PubMed abstract or your file and page;
+  - a Sankey diagram of every stage's duration;
+  - for graph retrieval, the path the graph walk took.
+- **Query Explorer:** open any logged query with the same views
+- **Benchmark Results:** the four experimental conditions compared (summary statistics, effect sizes, risk profile, latency and token breakdown, metric correlations), with CSV export
+- **Knowledge Base:**
+  - **Chunks:** browse or search any ChromaDB collection in one table
+  - **Upload documents:** add files and index them
+  - **Knowledge graph:** explore either graph as interactive left-to-right diagrams, showing an entity's neighbourhood or the path graph retrieval takes for a question, and follow a build's progress
 
 ### 🗂️ Benchmark Pipeline
 - Pre-built BioASQ loaders covering three evaluation roles (Phase A retrieval, factoid, summary)
@@ -130,8 +150,15 @@ The platform is organised into six stages, each mapped to a specific research qu
 - Ground-truth answer alignment for RAGAS answer correctness computation
 
 ### 📄 Your Own Documents
-- Ingest PDF, plain-text and Markdown files into a knowledge base kept separate from the benchmark
+- Ingest PDF, plain-text and Markdown files into a knowledge base with its own collection, BM25 index and knowledge graph, kept apart from the benchmark
 - PDFs are read page by page, so every retrieved chunk cites its file and page
+- Ask about them with dense, hybrid or graph retrieval, and clear them to start over
+
+### 💻 Runs on an Ordinary Laptop
+- **CPU-only profile:** the default for a fresh install, with 3B models (`llama3.2:3b`, `qwen2.5:3b`). An answer takes about 25 s and a fully scored result about 2 minutes, with no GPU
+- **Lean install:** CPU-only PyTorch on Linux (no CUDA download), and ChromaDB embedded in the app, with no database server
+- **Prebuilt index:** download it (260 MB, checked by SHA-256) instead of ingesting the corpus and building the graph
+- **Docker:** one Compose file, with a watch mode that syncs code changes into the running container
 
 ---
 
