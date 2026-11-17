@@ -93,31 +93,7 @@ RAGScope fills the integration gap: it combines the evaluative richness of RAGAS
 
 The platform is organised into six stages, each mapped to a specific research question or SMART objective — see `docs/images/ragscope_system_architecture.svg` for the full diagram (and `docs/architecture.md` for the detailed prose description of every module).
 
-```
- 1. Data          2. RAG Query Pipeline        3. Evaluation
- ────────    ▶    ─────────────────────   ▶    ─────────────
- BioASQ corpus    Dense/hybrid/graph retrieval  RAGAS Runner (judge: qwen2.5:7b)
- → preprocess     → LLM generation              → Hallucination Risk score
- → index          (Llama 3 8B / Mistral 7B)     (RQ1)
- (RQ3)            (RQ3)
-
-                                                        │
-                                                        ▼
-
- 6. Experiments   ◀────────────────────────────  4. Telemetry
- ────────────                                    ─────────────
- 4 conditions ×                                  Per-stage latency + tokens
- 200 queries → CSV                               → flat JSON record (RQ2)
- → Cohen's d, Pearson r                                │
- (RQ3 / Objective 4)                                   ▼
-
-                                                  5. Dashboard
-                                                  ─────────────
-                                                  Live Monitor · Query
-                                                  Explorer · Benchmark
-                                                  Results · Knowledge Base
-                                                  (Objective 2)
-```
+![RagScope System Architecture](docs/ragscope_architecture_simplified.png)
 
 ---
 
